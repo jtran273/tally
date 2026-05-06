@@ -1,6 +1,7 @@
 import type {
   AccountRecord,
   AccountRow,
+  AuditEventRow,
   BalanceSnapshotRecord,
   BalanceSnapshotRow,
   CategoryRecord,
@@ -41,6 +42,7 @@ interface QueryResult<T> {
 type FinanceTables = Database["public"]["Tables"];
 type FinanceTableName = Extract<keyof FinanceTables, string>;
 type TableRow<Table extends FinanceTableName> = FinanceTables[Table]["Row"];
+type TableInsert<Table extends FinanceTableName> = FinanceTables[Table]["Insert"];
 type TableUpdate<Table extends FinanceTableName> = FinanceTables[Table]["Update"];
 
 interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
@@ -54,13 +56,16 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   single(): PromiseLike<QueryResult<Row>>;
 }
 
-interface FinanceTableBuilder<Row, Update> {
+interface FinanceTableBuilder<Row, Insert, Update> {
+  insert(values: Insert | Insert[]): FinanceFilterBuilder<Row>;
   select(columns?: string): FinanceFilterBuilder<Row>;
   update(values: Update): FinanceFilterBuilder<Row>;
 }
 
 export interface FinanceSupabaseClient {
-  from<Table extends FinanceTableName>(table: Table): FinanceTableBuilder<TableRow<Table>, TableUpdate<Table>>;
+  from<Table extends FinanceTableName>(
+    table: Table
+  ): FinanceTableBuilder<TableRow<Table>, TableInsert<Table>, TableUpdate<Table>>;
 }
 
 export class FinanceDbError extends Error {
@@ -107,9 +112,30 @@ export interface TransactionEnrichmentPatch {
   isRecurring?: boolean;
   confidence?: number;
   reviewedAt?: string | null;
+  source?: EnrichedTransactionRow["source"];
+}
+
+export interface CategoryMutationInput {
+  color?: string | null;
+  icon?: string | null;
+  name: string;
+  parentId?: string | null;
+}
+
+export interface AuditEventInput {
+  action: string;
+  actorId?: string | null;
+  afterData?: Json | null;
+  beforeData?: Json | null;
+  entityId: string | null;
+  entityTable: string;
+  metadata?: Json;
 }
 
 type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transactions"]["Update"];
+type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
+type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
+type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
 
 function expectData<T>(result: QueryResult<T>, context: string): T {
@@ -265,7 +291,7 @@ function buildTransactionRecord({
     merchant: row.merchant_name,
     amount: row.amount,
     categoryId: row.category_id,
-    category: category?.name ?? row.category_name,
+    category: row.category_name || category?.name || "Uncategorized",
     intent: row.intent,
     status: row.status,
     confidence: row.confidence,
@@ -353,6 +379,75 @@ export async function listCategories(client: FinanceSupabaseClient, userId: stri
   return expectData(result, "List categories").map(toCategoryRecord);
 }
 
+export async function getCategoryById(
+  client: FinanceSupabaseClient,
+  userId: string,
+  categoryId: string
+): Promise<CategoryRecord | null> {
+  const result = await client
+    .from("categories")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", categoryId)
+    .limit(1);
+
+  const [row] = expectData(result, "Get category");
+  return row ? toCategoryRecord(row) : null;
+}
+
+export async function createCategory(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: CategoryMutationInput
+): Promise<CategoryRecord> {
+  const insert: CategoryInsert = {
+    color: input.color ?? null,
+    icon: input.icon ?? null,
+    name: input.name,
+    parent_id: input.parentId ?? null,
+    user_id: userId
+  };
+
+  const result = await client
+    .from("categories")
+    .insert(insert)
+    .select("*")
+    .single();
+
+  return toCategoryRecord(expectData(result, "Create category"));
+}
+
+export async function updateCategory(
+  client: FinanceSupabaseClient,
+  userId: string,
+  categoryId: string,
+  input: Partial<CategoryMutationInput>
+): Promise<CategoryRecord> {
+  const update: CategoryUpdate = {};
+
+  if (input.color !== undefined) update.color = input.color;
+  if (input.icon !== undefined) update.icon = input.icon;
+  if (input.name !== undefined) update.name = input.name;
+  if (input.parentId !== undefined) update.parent_id = input.parentId;
+
+  const result = Object.keys(update).length === 0
+    ? await client
+      .from("categories")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("id", categoryId)
+      .single()
+    : await client
+      .from("categories")
+      .update(update)
+      .eq("user_id", userId)
+      .eq("id", categoryId)
+      .select("*")
+      .single();
+
+  return toCategoryRecord(expectData(result, "Update category"));
+}
+
 export async function listTransactions(
   client: FinanceSupabaseClient,
   userId: string,
@@ -410,6 +505,34 @@ export async function listTransactions(
     : transferFiltered;
 
   return slicePage(reviewFiltered, filters.limit, filters.offset);
+}
+
+export async function getEnrichedTransactionRow(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string
+): Promise<EnrichedTransactionRow | null> {
+  const result = await client
+    .from("enriched_transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", transactionId)
+    .limit(1);
+
+  const [row] = expectData(result, "Get enriched transaction");
+  return row ?? null;
+}
+
+export async function getTransactionById(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string
+): Promise<TransactionRecord | null> {
+  const row = await getEnrichedTransactionRow(client, userId, transactionId);
+  if (!row) return null;
+
+  const [transaction] = await hydrateTransactions(client, userId, [row]);
+  return transaction ?? null;
 }
 
 export async function listReviewItems(
@@ -587,6 +710,7 @@ export async function updateTransactionEnrichment(
   if (patch.isRecurring !== undefined) update.is_recurring = patch.isRecurring;
   if (patch.confidence !== undefined) update.confidence = patch.confidence;
   if (patch.reviewedAt !== undefined) update.reviewed_at = patch.reviewedAt;
+  if (patch.source !== undefined) update.source = patch.source;
 
   const result = Object.keys(update).length === 0
     ? await client
@@ -610,6 +734,31 @@ export async function updateTransactionEnrichment(
   );
 
   return transaction;
+}
+
+export async function recordAuditEvent(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: AuditEventInput
+): Promise<AuditEventRow> {
+  const insert: AuditEventInsert = {
+    action: input.action,
+    actor_id: input.actorId ?? null,
+    after_data: input.afterData ?? null,
+    before_data: input.beforeData ?? null,
+    entity_id: input.entityId,
+    entity_table: input.entityTable,
+    metadata: input.metadata ?? {},
+    user_id: userId
+  };
+
+  const result = await client
+    .from("audit_events")
+    .insert(insert)
+    .select("*")
+    .single();
+
+  return expectData(result, "Record audit event");
 }
 
 export async function resolveReviewItem(

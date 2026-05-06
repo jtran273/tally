@@ -73,7 +73,8 @@
 
 .textControl,
 .inputControl,
-.selectControl {
+.selectControl,
+.textareaControl {
   width: 100%;
   min-height: 36px;
   border: 1px solid var(--line);
@@ -101,8 +102,16 @@
 }
 
 .inputControl,
-.selectControl {
+.selectControl,
+.textareaControl {
   padding: 0 10px;
+}
+
+.textareaControl {
+  min-height: 118px;
+  padding: 10px;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .selectControl {
@@ -122,7 +131,8 @@
 
 .textControl:focus-within,
 .inputControl:focus,
-.selectControl:focus {
+.selectControl:focus,
+.textareaControl:focus {
   border-color: var(--ink);
 }
 
@@ -182,6 +192,11 @@
   border-color: var(--ink-2);
 }
 
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .notice,
 .errorNotice,
 .emptyState {
@@ -212,7 +227,7 @@
 
 .table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1210px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -254,6 +269,10 @@
 
 .table th:nth-child(6) {
   width: 180px;
+}
+
+.table th:nth-child(8) {
+  width: 92px;
 }
 
 .amountHead {
@@ -448,6 +467,125 @@
   font-size: 13px;
 }
 
+.iconLink {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.iconLink:hover {
+  border-color: var(--ink-2);
+  background: var(--surface-2);
+}
+
+.editShell {
+  display: flex;
+  width: min(100%, 1040px);
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.editHeader h2 {
+  margin: 4px 0 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+.editGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.editPanel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.fullField,
+.switchField,
+.formError,
+.buttonRow,
+.readonlyGrid {
+  grid-column: 1 / -1;
+}
+
+.switchField {
+  width: fit-content;
+}
+
+.formError {
+  border: 1px solid color-mix(in oklab, var(--neg) 26%, var(--line));
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+  font-size: 13px;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.readonlyGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.readonlyGrid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--line-2);
+  padding-bottom: 10px;
+}
+
+.readonlyGrid > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.readonlyGrid span {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.readonlyGrid strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 @media (max-width: 1180px) {
   .summaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -460,8 +598,15 @@
 
 @media (max-width: 760px) {
   .summaryGrid,
-  .filters {
+  .filters,
+  .editGrid,
+  .editPanel {
     grid-template-columns: 1fr;
+  }
+
+  .editHeader {
+    align-items: flex-start;
+    flex-direction: column-reverse;
   }
 
   .searchField {

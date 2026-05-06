@@ -1,5 +1,6 @@
 import type { ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
-import { Clock3, Repeat, TriangleAlert } from "lucide-react";
+import { Clock3, Pencil, Repeat, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import styles from "./transactions.module.css";
 
 interface TransactionTableProps {
@@ -100,6 +101,7 @@ export function TransactionTable({ filtersActive, limit, transactions }: Transac
               <th scope="col">Intent</th>
               <th scope="col">Review</th>
               <th className={styles.amountHead} scope="col">Amount</th>
+              <th scope="col">Edit</th>
             </tr>
           </thead>
           <tbody>
@@ -176,6 +178,12 @@ export function TransactionTable({ filtersActive, limit, transactions }: Transac
                   </td>
                   <td className={`${styles.amountCell} ${transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}`}>
                     {formatMoney(transaction.amount)}
+                  </td>
+                  <td>
+                    <Link className={styles.iconLink} href={`/transactions/${transaction.id}`} aria-label={`Edit ${transaction.merchant}`}>
+                      <Pencil size={14} aria-hidden />
+                      Edit
+                    </Link>
                   </td>
                 </tr>
               );
