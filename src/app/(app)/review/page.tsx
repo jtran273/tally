@@ -1,7 +1,9 @@
 import { ReviewQueueView } from "@/components/finance/review/review-queue-view";
 import {
+  listCategories,
   listReviewItems,
   listTransactions,
+  type CategoryRecord,
   type FinanceSupabaseClient,
   type ReviewQueueItem,
   type TransactionRecord
@@ -18,6 +20,7 @@ export default async function ReviewPage() {
   let dataError: string | undefined;
   let isConfigured = false;
   let isSignedIn = false;
+  let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
 
@@ -39,7 +42,8 @@ export default async function ReviewPage() {
       const financeClient = supabase as unknown as FinanceSupabaseClient;
 
       try {
-        [reviewItems, transactions] = await Promise.all([
+        [categories, reviewItems, transactions] = await Promise.all([
+          listCategories(financeClient, user.id),
           listReviewItems(financeClient, user.id, "open"),
           listTransactions(financeClient, user.id)
         ]);
@@ -51,6 +55,7 @@ export default async function ReviewPage() {
 
   return (
     <ReviewQueueView
+      categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}

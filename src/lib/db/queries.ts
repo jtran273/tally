@@ -57,6 +57,7 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
 }
 
 interface FinanceTableBuilder<Row, Insert, Update> {
+  delete(): FinanceFilterBuilder<Row>;
   insert(values: Insert | Insert[]): FinanceFilterBuilder<Row>;
   select(columns?: string): FinanceFilterBuilder<Row>;
   update(values: Update): FinanceFilterBuilder<Row>;
@@ -137,6 +138,15 @@ type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
 type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
+type TransactionSplitInsert = Database["public"]["Tables"]["transaction_splits"]["Insert"];
+
+export interface TransactionSplitMutationInput {
+  amount: number;
+  categoryId: string | null;
+  intent: TransactionIntent;
+  label: string;
+  notes?: string | null;
+}
 
 function expectData<T>(result: QueryResult<T>, context: string): T {
   if (result.error) {
@@ -168,6 +178,10 @@ function groupBy<T>(rows: T[], getKey: (row: T) => string) {
     grouped.set(key, [...(grouped.get(key) ?? []), row]);
   });
   return grouped;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function toAccountRecord(row: AccountRow, institution?: InstitutionRow): AccountRecord {
@@ -800,13 +814,18 @@ export async function resolveReviewItem(
   userId: string,
   reviewItemId: string,
   status: Exclude<ReviewStatus, "open">,
-  resolutionNote?: string
+  resolutionNote?: string,
+  options: { explanation?: string } = {}
 ): Promise<ReviewItemRecord> {
   const update: ReviewItemUpdate = {
     status,
     resolved_at: new Date().toISOString(),
     resolution_note: resolutionNote ?? null
   };
+
+  if (options.explanation !== undefined) {
+    update.explanation = options.explanation;
+  }
 
   const result = await client
     .from("review_items")
@@ -817,6 +836,51 @@ export async function resolveReviewItem(
     .single();
 
   return toReviewItemRecord(expectData(result, "Resolve review item"));
+}
+
+export async function replaceTransactionSplits(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitMutationInput[]
+): Promise<TransactionSplitRecord[]> {
+  const deleteResult = await client
+    .from("transaction_splits")
+    .delete()
+    .eq("user_id", userId)
+    .eq("enriched_transaction_id", transactionId);
+
+  if (deleteResult.error) {
+    throw new FinanceDbError("Replace transaction splits", deleteResult.error);
+  }
+
+  if (splits.length === 0) return [];
+
+  const inserts: TransactionSplitInsert[] = splits.map((split) => ({
+    amount: roundMoney(split.amount),
+    category_id: split.categoryId,
+    enriched_transaction_id: transactionId,
+    intent: split.intent,
+    label: split.label,
+    notes: split.notes ?? null,
+    user_id: userId
+  }));
+
+  const result = await client
+    .from("transaction_splits")
+    .insert(inserts)
+    .select("*");
+  const rows = expectData(result, "Insert transaction splits");
+  const categoryIds = unique(rows.map((row) => row.category_id));
+  const categoryRows = categoryIds.length > 0
+    ? expectData(
+      await client.from("categories").select("*").eq("user_id", userId).in("id", categoryIds),
+      "Load categories for transaction splits"
+    )
+    : [];
+  const categoryById = byId(categoryRows);
+
+  return rows.map((row) => toSplitRecord(row, row.category_id ? categoryById.get(row.category_id) : undefined));
 }
 
 export function asJsonObject(value: Json): Record<string, Json | undefined> {

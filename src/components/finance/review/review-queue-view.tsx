@@ -1,4 +1,5 @@
-import type { ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
+import { transactionSpendingAmount } from "@/lib/finance/spending";
 import {
   getReviewReasonCopy,
   isPeerToPeerReview,
@@ -9,18 +10,19 @@ import {
   ArrowRight,
   CheckCircle2,
   CircleDollarSign,
-  ExternalLink,
-  LockKeyhole,
   Pencil,
   ShieldCheck,
   TriangleAlert,
+  UsersRound,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
+import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
+  categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
   isSignedIn: boolean;
@@ -36,8 +38,6 @@ interface ReviewTotals {
   unresolvedSpending: number;
   unresolvedTransactions: number;
 }
-
-const ISSUE_13_URL = "https://github.com/jtran273/personal-finance-os/issues/13";
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -80,10 +80,6 @@ function formatConfidence(value: number | null | undefined) {
   return value === null || value === undefined ? "Unknown" : `${Math.round(value * 100)}%`;
 }
 
-function isSpendingTransaction(transaction: TransactionRecord) {
-  return transaction.amount < 0 && transaction.intent !== "transfer";
-}
-
 function uniqueOpenTransactions(reviewItems: ReviewQueueItem[]) {
   return [...new Map(reviewItems.map((item) => [item.transaction.id, item.transaction])).values()];
 }
@@ -91,19 +87,17 @@ function uniqueOpenTransactions(reviewItems: ReviewQueueItem[]) {
 function calculateTotals(reviewItems: ReviewQueueItem[], transactions: TransactionRecord[]): ReviewTotals {
   const openTransactions = uniqueOpenTransactions(reviewItems);
   const openTransactionIds = new Set(openTransactions.map((transaction) => transaction.id));
-  const spendingTransactions = transactions.filter(isSpendingTransaction);
   const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
 
   return {
     openItems: reviewItems.length,
     peerToPeerItems: peerToPeerItems.length,
     peerToPeerTotal: peerToPeerItems.reduce((sum, item) => sum + Math.abs(item.transaction.amount), 0),
-    trustedSpending: spendingTransactions
+    trustedSpending: transactions
       .filter((transaction) => !openTransactionIds.has(transaction.id))
-      .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0),
+      .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
     unresolvedSpending: openTransactions
-      .filter(isSpendingTransaction)
-      .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0),
+      .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
     unresolvedTransactions: openTransactions.length
   };
 }
@@ -241,12 +235,12 @@ function RawContext({ item }: { item: ReviewQueueItem }) {
   );
 }
 
-function ReviewCard({ item }: { item: ReviewQueueItem }) {
+function ReviewCard({ categories, item }: { categories: CategoryRecord[]; item: ReviewQueueItem }) {
   const copy = getReviewReasonCopy(item.reason);
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
-  const locked = isPeerToPeerReview(item.reason);
-  const canAccept = !locked && hasReviewSuggestionValue(suggestion);
-  const canDismiss = !locked;
+  const peerToPeer = isPeerToPeerReview(item.reason);
+  const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
+  const canDismiss = !peerToPeer;
 
   return (
     <article className={styles.reviewCard}>
@@ -283,17 +277,14 @@ function ReviewCard({ item }: { item: ReviewQueueItem }) {
       <RawContext item={item} />
 
       <div className={styles.cardActions}>
-        {locked ? (
-          <div className={styles.lockedPanel}>
-            <LockKeyhole size={14} aria-hidden />
-            <span>
-              Peer-to-peer reviews stay open until the split/explanation workflow lands in{" "}
-              <a href={ISSUE_13_URL} rel="noreferrer" target="_blank">
-                issue #13 <ExternalLink size={12} aria-hidden />
-              </a>
-              .
-            </span>
-          </div>
+        {peerToPeer ? (
+          <PeerToPeerSplitForm
+            categories={categories}
+            defaultExplanation={item.transaction.note}
+            reviewItemId={item.id}
+            suggestion={suggestion}
+            transaction={item.transaction}
+          />
         ) : (
           <ReviewItemActions canAccept={canAccept} canDismiss={canDismiss} reviewItemId={item.id} />
         )}
@@ -322,6 +313,7 @@ function EmptyQueue() {
 }
 
 export function ReviewQueueView({
+  categories,
   dataError,
   isConfigured,
   isSignedIn,
@@ -354,8 +346,8 @@ export function ReviewQueueView({
           tone={totals.unresolvedSpending > 0 ? "warn" : undefined}
         />
         <SummaryCard
-          detail="Peer-to-peer locked"
-          icon={LockKeyhole}
+          detail="Peer-to-peer open"
+          icon={UsersRound}
           value={`${totals.peerToPeerItems.toLocaleString("en-US")} / ${formatMoney(totals.peerToPeerTotal)}`}
           tone={totals.peerToPeerItems > 0 ? "warn" : undefined}
         />
@@ -419,7 +411,7 @@ export function ReviewQueueView({
                   </div>
                   <div className={styles.cardStack}>
                     {group.items.map((item) => (
-                      <ReviewCard item={item} key={item.id} />
+                      <ReviewCard categories={categories} item={item} key={item.id} />
                     ))}
                   </div>
                 </section>

@@ -1,11 +1,11 @@
 import type {
   AccountRecord,
-  InsightRecord,
   RecurringExpenseRecord,
   ReviewQueueItem,
   TransactionRecord
 } from "@/lib/db";
 import type { AccountGroup, AccountBalanceTotals, BalanceTrendPoint, SyncSummary } from "@/lib/finance/balances";
+import type { DashboardInsightCard } from "@/lib/insights";
 import {
   Clock3,
   CreditCard,
@@ -25,7 +25,7 @@ interface DashboardViewProps {
   accounts: AccountRecord[];
   dataError?: string;
   groups: AccountGroup[];
-  insights: InsightRecord[];
+  insightCards: DashboardInsightCard[];
   isConfigured: boolean;
   isSignedIn: boolean;
   recentTransactions: TransactionRecord[];
@@ -321,7 +321,7 @@ function RecurringPanel({ recurringExpenses }: { recurringExpenses: RecurringExp
   );
 }
 
-function InsightsPanel({ insights }: { insights: InsightRecord[] }) {
+function InsightsPanel({ insights }: { insights: DashboardInsightCard[] }) {
   return (
     <section className={styles.card}>
       <div className={styles.cardHead}>
@@ -332,13 +332,20 @@ function InsightsPanel({ insights }: { insights: InsightRecord[] }) {
         <Sparkles size={16} aria-hidden />
       </div>
       {insights.length === 0 ? (
-        <div className={styles.emptyMini}>No active persisted insights.</div>
+        <div className={styles.emptyMini}>No active insights yet.</div>
       ) : (
         <div className={styles.itemList}>
-          {insights.slice(0, 3).map((insight) => (
+          {insights.map((insight) => (
             <div className={`${styles.insight} ${styles[`tone-${insight.tone}`]}`} key={insight.id}>
               <strong>{insight.title}</strong>
               <span>{insight.body}</span>
+              <Link
+                aria-label={`View evidence for ${insight.title}`}
+                className={styles.insightLink}
+                href={insight.href}
+              >
+                {insight.evidenceLabel}
+              </Link>
             </div>
           ))}
         </div>
@@ -351,7 +358,7 @@ export function DashboardView({
   accounts,
   dataError,
   groups,
-  insights,
+  insightCards,
   isConfigured,
   isSignedIn,
   recentTransactions,
@@ -437,7 +444,7 @@ export function DashboardView({
             <RecentTransactions transactions={recentTransactions} />
             <ReviewQueue reviewItems={reviewItems} />
             <RecurringPanel recurringExpenses={recurringExpenses} />
-            <InsightsPanel insights={insights} />
+            <InsightsPanel insights={insightCards} />
           </div>
         </>
       )}

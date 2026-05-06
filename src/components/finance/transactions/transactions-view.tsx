@@ -1,4 +1,5 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
+import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { Database, Filter, Hourglass, Inbox } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
 import { TransactionFilters } from "./transaction-filters";
@@ -29,9 +30,7 @@ function formatMoney(value: number) {
 function summarize(transactions: TransactionRecord[]) {
   return transactions.reduce(
     (summary, transaction) => {
-      if (transaction.intent !== "transfer") {
-        if (transaction.amount < 0) summary.spending += Math.abs(transaction.amount);
-      }
+      summary.spending += transactionSpendingAmount(transaction);
 
       if (transaction.status === "pending") summary.pending += 1;
       if (transaction.reviewItems.some((review) => review.status === "open")) summary.needsReview += 1;

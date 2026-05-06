@@ -512,6 +512,138 @@
   text-decoration: none;
 }
 
+.peerForm {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--warn) 22%, var(--line));
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--warn) 4%, var(--surface));
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > span,
+.splitRow label > span,
+.splitHeader > span {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.inputControl,
+.selectControl,
+.textareaControl {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.inputControl,
+.selectControl {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.textareaControl {
+  min-height: 86px;
+  resize: vertical;
+  padding: 9px 10px;
+  line-height: 1.4;
+}
+
+.inputControl:focus,
+.selectControl:focus,
+.textareaControl:focus {
+  border-color: var(--ink-2);
+  outline: 2px solid color-mix(in oklab, var(--info) 18%, transparent);
+  outline-offset: 1px;
+}
+
+.splitHeader,
+.splitActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.splitHeader strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.allocationOk {
+  color: var(--pos);
+}
+
+.allocationWarn {
+  color: var(--warn);
+}
+
+.splitRows {
+  display: grid;
+  gap: 8px;
+}
+
+.splitRow {
+  display: grid;
+  grid-template-columns:
+    minmax(130px, 1.2fr)
+    minmax(112px, 0.8fr)
+    minmax(150px, 1fr)
+    minmax(96px, 0.65fr)
+    minmax(120px, 1fr)
+    36px;
+  gap: 8px;
+  align-items: end;
+}
+
+.splitRow label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.iconButton {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.iconButton:hover {
+  border-color: var(--ink-2);
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.inlineSuccess {
+  width: 100%;
+  color: var(--pos);
+  font-size: 12px;
+}
+
 .emptyState {
   display: grid;
   min-height: 260px;
@@ -564,6 +696,14 @@
   .detailList div {
     grid-template-columns: 1fr;
     gap: 1px;
+  }
+
+  .splitRow {
+    grid-template-columns: 1fr;
+  }
+
+  .iconButton {
+    width: 100%;
   }
 
   .primaryButton,

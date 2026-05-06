@@ -20,6 +20,7 @@ import {
   groupAccounts,
   summarizeSync
 } from "@/lib/finance/balances";
+import { buildDashboardInsightCards } from "@/lib/insights";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -81,11 +82,21 @@ export default async function DashboardPage() {
     }
   }
 
+  const now = new Date();
   const totals = calculateAccountTotals(accounts);
   const groups = groupAccounts(accounts);
   const trend = buildBalanceTrend(accounts, snapshots, {
-    asOfDate: new Date().toISOString().slice(0, 10),
+    asOfDate: now.toISOString().slice(0, 10),
     maxPoints: 24
+  });
+  const insightCards = buildDashboardInsightCards({
+    accounts,
+    persistedInsights: insights,
+    recentTransactions,
+    recurringExpenses,
+    reviewItems,
+    trend,
+    now
   });
 
   return (
@@ -93,7 +104,7 @@ export default async function DashboardPage() {
       accounts={accounts}
       dataError={dataError}
       groups={groups}
-      insights={insights}
+      insightCards={insightCards}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
       recentTransactions={recentTransactions}
