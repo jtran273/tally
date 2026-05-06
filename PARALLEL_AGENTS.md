@@ -2,35 +2,17 @@
 
 ## Current State
 
-The local repo has the Ledger frontend baseline implemented and verified. Before parallel agents start, commit and push this baseline so every worktree/agent starts from the same source of truth.
-
-Recommended baseline branch:
-
-```bash
-git checkout -b issue-01-02-ledger-baseline
-git add .
-git commit -m "Add Ledger frontend baseline and planning docs"
-git push -u origin issue-01-02-ledger-baseline
-```
-
-Then open a PR and merge it into `main`. After that, create issue branches/worktrees from updated `main`.
+The Ledger frontend baseline, CI checklist, and Supabase Auth foundation are committed to `main`. GitHub issues are created in `jtran273/personal-finance-os`; use the issue numbers in this runbook as the source of task ownership.
 
 ## GitHub Issue Creation Status
 
-I attempted to create issues through the connected GitHub app, but GitHub returned:
-
-```text
-403 Resource not accessible by integration
-```
-
-That means the app integration currently lacks issue-write permission for `jtran273/personal-finance-os`. To let Codex create issues directly, update the GitHub app permissions or use a local GitHub CLI install authenticated with issue-write access.
+Issues are created through the authenticated GitHub CLI. Use labels to track dependency state, and keep issue comments updated when agents start, hand off, or complete work.
 
 ## Best Immediate Sequence
 
-1. Commit and push the current Ledger baseline.
-2. Create GitHub issues from the issue map in `IMPLEMENTATION_PLAN.md`.
-3. Run the first parallel batch only after the baseline is merged.
-4. Keep secrets in `.env.local`, Vercel env vars, and Supabase/Plaid dashboards. Do not commit real keys.
+1. Land the database schema and seed data issue.
+2. Start the second parallel batch from the updated `main`.
+3. Keep secrets in `.env.local`, Vercel env vars, and Supabase/Plaid dashboards. Do not commit real keys.
 
 ## First Parallel Batch
 
@@ -57,7 +39,7 @@ Done criteria:
 
 - User can sign in and sign out.
 - Protected app routes redirect unauthenticated users.
-- `.env.example` remains accurate.
+- Environment requirements are documented, and local values live only in `.env.local`.
 - No secrets are committed.
 
 ### Agent B: Database Schema and Seed Data

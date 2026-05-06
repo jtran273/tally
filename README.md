@@ -11,7 +11,8 @@ Current docs:
 - [PRD.md](PRD.md)
 - [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 - [PARALLEL_AGENTS.md](PARALLEL_AGENTS.md)
-- [.env.example](.env.example)
+
+Local secrets and API keys belong in `.env.local`. That file is intentionally ignored by git.
 
 ## Local Development
 
@@ -25,6 +26,19 @@ Run the app:
 
 ```bash
 npm run dev
+```
+
+Required keys are added as the relevant features land:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_DB_URL=
+PLAID_CLIENT_ID=
+PLAID_SECRET=
+PLAID_ENV=sandbox
+OPENAI_API_KEY=
 ```
 
 Useful checks:
