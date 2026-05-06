@@ -577,6 +577,40 @@ export async function listReviewItems(
     .sort((a, b) => Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount));
 }
 
+export async function getReviewQueueItemById(
+  client: FinanceSupabaseClient,
+  userId: string,
+  reviewItemId: string
+): Promise<ReviewQueueItem | null> {
+  const result = await client
+    .from("review_items")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", reviewItemId)
+    .limit(1);
+
+  const [row] = expectData(result, "Get review item");
+  if (!row) return null;
+
+  const transactionResult = await client
+    .from("enriched_transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", row.enriched_transaction_id)
+    .limit(1);
+
+  const [transactionRow] = expectData(transactionResult, "Load review transaction");
+  if (!transactionRow) return null;
+
+  const [transaction] = await hydrateTransactions(client, userId, [transactionRow]);
+  if (!transaction) return null;
+
+  return {
+    ...toReviewItemRecord(row),
+    transaction
+  };
+}
+
 export async function listRecurringExpenses(
   client: FinanceSupabaseClient,
   userId: string,
