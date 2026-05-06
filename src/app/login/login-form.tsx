@@ -1,0 +1,143 @@
+"use client";
+
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { ArrowRight, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useState } from "react";
+import styles from "./login.module.css";
+
+interface LoginFormProps {
+  initialMessage: string | null;
+  isConfigured: boolean;
+  redirectTo: string;
+  userEmail: string | null;
+}
+
+type AuthStatus = {
+  message: string;
+  tone: "error" | "success";
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unable to complete authentication.";
+}
+
+export function LoginForm({ initialMessage, isConfigured, redirectTo, userEmail }: LoginFormProps) {
+  const router = useRouter();
+  const [status, setStatus] = useState<AuthStatus | null>(
+    initialMessage ? { message: initialMessage, tone: "success" } : null
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!isConfigured) {
+      setStatus({
+        message: "Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+        tone: "error"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus(null);
+
+    const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+
+    if (!email || !password) {
+      setStatus({ message: "Enter an email and password.", tone: "error" });
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        setStatus({ message: error.message, tone: "error" });
+        return;
+      }
+
+      router.push(redirectTo);
+      router.refresh();
+    } catch (error) {
+      setStatus({ message: getErrorMessage(error), tone: "error" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <main className={styles.shell}>
+      <section className={styles.panel} aria-labelledby="login-title">
+        <div className={styles.brand}>
+          <div className={styles.mark}>L</div>
+          <div>
+            <div className={styles.name}>Ledger</div>
+            <div className={styles.sub}>Personal Finance OS</div>
+          </div>
+        </div>
+
+        {userEmail ? (
+          <div className={styles.stack}>
+            <div className={styles.iconWrap}>
+              <ShieldCheck size={22} aria-hidden />
+            </div>
+            <div>
+              <p className={styles.eyebrow}>Authenticated</p>
+              <h1 id="login-title" className={styles.title}>Signed in</h1>
+              <p className={styles.copy}>{userEmail}</p>
+            </div>
+
+            {status ? <p className={`${styles.notice} ${styles[status.tone]}`}>{status.message}</p> : null}
+
+            <div className={styles.actions}>
+              <Link className={styles.primaryLink} href={redirectTo}>
+                Continue <ArrowRight size={16} aria-hidden />
+              </Link>
+              <form action="/login/logout" method="post">
+                <button className={styles.secondaryButton} type="submit">
+                  <LogOut size={16} aria-hidden /> Sign out
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <form className={styles.stack} onSubmit={handleSignIn}>
+            <div>
+              <p className={styles.eyebrow}>Supabase Auth</p>
+              <h1 id="login-title" className={styles.title}>Sign in to Ledger</h1>
+            </div>
+
+            {!isConfigured ? (
+              <p className={`${styles.notice} ${styles.error}`}>
+                Supabase Auth is not configured. Set the public Supabase URL and anon key in your environment.
+              </p>
+            ) : null}
+            {status ? <p className={`${styles.notice} ${styles[status.tone]}`}>{status.message}</p> : null}
+
+            <label className={styles.field}>
+              <span>Email</span>
+              <input autoComplete="email" name="email" placeholder="you@example.com" type="email" />
+            </label>
+
+            <label className={styles.field}>
+              <span>Password</span>
+              <input autoComplete="current-password" name="password" placeholder="Password" type="password" />
+            </label>
+
+            <button className={styles.primaryButton} disabled={isSubmitting || !isConfigured} type="submit">
+              <LogIn size={16} aria-hidden />
+              {isSubmitting ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
+        )}
+      </section>
+    </main>
+  );
+}

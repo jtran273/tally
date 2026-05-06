@@ -1,0 +1,193 @@
+.shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+  background:
+    linear-gradient(135deg, rgba(47, 111, 78, 0.08), transparent 34%),
+    var(--bg);
+}
+
+.panel {
+  width: min(100%, 420px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 28px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.mark,
+.iconWrap {
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 24px;
+}
+
+.iconWrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.name {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.sub,
+.copy {
+  color: var(--muted);
+}
+
+.sub {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.copy {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: var(--surface);
+  outline: none;
+}
+
+.field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.notice {
+  margin: 0;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.error {
+  background: rgba(181, 74, 58, 0.1);
+  color: var(--neg);
+}
+
+.success {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primaryButton,
+.secondaryButton,
+.primaryLink {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 7px;
+  padding: 10px 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.primaryButton,
+.primaryLink {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.primaryButton {
+  width: 100%;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+@media (max-width: 520px) {
+  .shell {
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .panel {
+    align-self: center;
+    padding: 22px;
+  }
+
+  .title {
+    font-size: 34px;
+  }
+
+  .actions,
+  .actions form,
+  .primaryLink,
+  .secondaryButton {
+    width: 100%;
+  }
+}
