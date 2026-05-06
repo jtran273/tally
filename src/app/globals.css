@@ -1878,6 +1878,13 @@ kbd {
   gap: 12px;
 }
 
+.plaid-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .setting-metric {
   border: 1px solid var(--line-2);
   border-radius: 8px;
@@ -1923,6 +1930,90 @@ kbd {
 .settings-row-sub {
   color: var(--muted);
   font-size: 12px;
+}
+
+.plaid-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+.plaid-alert.error {
+  border-color: color-mix(in oklab, var(--neg) 32%, var(--line));
+  color: var(--neg);
+}
+
+.plaid-alert.success {
+  border-color: color-mix(in oklab, var(--pos) 32%, var(--line));
+  color: var(--pos);
+}
+
+.plaid-connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plaid-connection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+
+.plaid-connection-icon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.plaid-connection-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.plaid-status {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.plaid-status.active {
+  border-color: color-mix(in oklab, var(--pos) 28%, var(--line));
+  color: var(--pos);
+}
+
+.plaid-status.error,
+.plaid-status.revoked {
+  border-color: color-mix(in oklab, var(--neg) 28%, var(--line));
+  color: var(--neg);
+}
+
+.plaid-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .switch {
@@ -2389,8 +2480,13 @@ kbd {
     align-items: flex-start;
   }
 
-  .settings-grid {
+  .settings-grid,
+  .plaid-metrics {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .plaid-connection-row {
+    align-items: flex-start;
   }
 
   .state-shell {

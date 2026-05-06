@@ -1,5 +1,6 @@
 "use client";
 
+import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
 import {
   ArrowRight,
   ArrowUp,
@@ -1141,6 +1142,8 @@ function SettingsView({ ctx }: { ctx: LedgerContext }) {
           <SettingMetric label="Spend records" value={String(spendingTxns)} />
         </div>
       </section>
+
+      <PlaidConnectionPanel />
 
       <section className="settings-panel">
         <div className="settings-panel-head">

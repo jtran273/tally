@@ -15,8 +15,10 @@
     "@supabase/supabase-js": "^2.105.3",
     "lucide-react": "^0.468.0",
     "next": "^16.2.5",
+    "plaid": "^42.2.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "react-plaid-link": "^4.1.1"
   },
   "overrides": {
     "postcss": "^8.5.14"
