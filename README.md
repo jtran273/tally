@@ -11,6 +11,7 @@ Current docs:
 - [PRD.md](PRD.md)
 - [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 - [PARALLEL_AGENTS.md](PARALLEL_AGENTS.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
 
 Local secrets and API keys belong in `.env.local`. That file is intentionally ignored by git.
 
