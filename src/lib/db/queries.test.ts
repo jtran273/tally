@@ -79,6 +79,13 @@ export const transactionFilterFixture = [
     id: "tx-grocery",
     merchant: "Grocery Mart",
     reviewItems: [review("review-grocery", "tx-grocery", "resolved")]
+  }),
+  transaction({
+    category: "Uncategorized",
+    categoryId: null,
+    confidence: 0.43,
+    id: "tx-uncategorized",
+    merchant: "Unknown POS"
   })
 ] satisfies readonly TransactionRecord[];
 
@@ -141,7 +148,7 @@ test("transaction search covers merchant, raw Plaid merchant/name, category, acc
 test("transaction list filters compose review, transfer exclusion, limit, and offset after search", () => {
   assert.deepEqual(
     filterTransactionRecordsForList(transactionFilterFixture, { excludeTransfers: true }).map((item) => item.id),
-    ["tx-coffee", "tx-rideshare", "tx-grocery"]
+    ["tx-coffee", "tx-rideshare", "tx-grocery", "tx-uncategorized"]
   );
   assert.deepEqual(
     filterTransactionRecordsForList(transactionFilterFixture, { reviewStatus: "open" }).map((item) => item.id),
@@ -154,6 +161,14 @@ test("transaction list filters compose review, transfer exclusion, limit, and of
       offset: 1
     }).map((item) => item.id),
     ["tx-rideshare"]
+  );
+  assert.deepEqual(
+    filterTransactionRecordsForList(transactionFilterFixture, { quality: "needs-cleanup" }).map((item) => item.id),
+    ["tx-rideshare", "tx-uncategorized"]
+  );
+  assert.deepEqual(
+    filterTransactionRecordsForList(transactionFilterFixture, { quality: "uncategorized" }).map((item) => item.id),
+    ["tx-uncategorized"]
   );
 });
 

@@ -90,6 +90,8 @@ export class FinanceDbError extends Error {
   }
 }
 
+export type TransactionQualityFilter = "all" | "needs-cleanup" | "low-confidence" | "uncategorized";
+
 export interface TransactionListFilters {
   accountIds?: string[];
   categoryIds?: string[];
@@ -98,6 +100,7 @@ export interface TransactionListFilters {
   toDate?: string;
   recurring?: boolean;
   reviewStatus?: ReviewStatus | "all";
+  quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
   search?: string;
   limit?: number;
@@ -335,9 +338,23 @@ function normalizeSearchText(value: string) {
     .replace(/\s+/g, " ");
 }
 
+function transactionNeedsCategoryCleanup(transaction: TransactionRecord) {
+  return transaction.confidence < 0.75 ||
+    !transaction.categoryId ||
+    transaction.category.toLowerCase() === "uncategorized" ||
+    transaction.reviewItems.some((review) => review.status === "open");
+}
+
+function transactionMatchesQuality(transaction: TransactionRecord, quality: TransactionQualityFilter | undefined) {
+  if (!quality || quality === "all") return true;
+  if (quality === "low-confidence") return transaction.confidence < 0.75;
+  if (quality === "uncategorized") return !transaction.categoryId || transaction.category.toLowerCase() === "uncategorized";
+  return transactionNeedsCategoryCleanup(transaction);
+}
+
 export function filterTransactionRecordsForList(
   transactions: readonly TransactionRecord[],
-  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "reviewStatus" | "search"> = {}
+  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "quality" | "reviewStatus" | "search"> = {}
 ) {
   const search = normalizeSearchText(filters.search ?? "");
   const searched = search
@@ -351,8 +368,9 @@ export function filterTransactionRecordsForList(
       transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
     )
     : transferFiltered;
+  const qualityFiltered = reviewFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
 
-  return slicePage(reviewFiltered, filters.limit, filters.offset);
+  return slicePage(qualityFiltered, filters.limit, filters.offset);
 }
 
 function buildTransactionRecord({

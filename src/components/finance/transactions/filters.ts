@@ -3,7 +3,8 @@ import type {
   CategoryRecord,
   ReviewStatus,
   TransactionIntent,
-  TransactionListFilters
+  TransactionListFilters,
+  TransactionQualityFilter
 } from "@/lib/db";
 
 export type TransactionSearchParamValue = string | string[] | undefined;
@@ -25,6 +26,13 @@ export const transactionReviewOptions: Array<{ label: string; value: ReviewStatu
   { value: "dismissed", label: "Dismissed" }
 ];
 
+export const transactionQualityOptions: Array<{ label: string; value: TransactionQualityFilter }> = [
+  { value: "all", label: "All quality states" },
+  { value: "needs-cleanup", label: "Needs category cleanup" },
+  { value: "low-confidence", label: "Low confidence" },
+  { value: "uncategorized", label: "Uncategorized" }
+];
+
 export const transactionLimitOptions = [100, 250, 500] as const;
 
 export interface TransactionFilterState {
@@ -33,6 +41,7 @@ export interface TransactionFilterState {
   categoryId: string;
   intent: TransactionIntent | "all";
   reviewStatus: ReviewStatus | "all";
+  quality: TransactionQualityFilter;
   month: string;
   fromDate: string;
   toDate: string;
@@ -46,6 +55,7 @@ export interface TransactionFilterState {
 
 const transactionIntents = new Set(transactionIntentOptions.map((option) => option.value));
 const reviewStatuses = new Set(transactionReviewOptions.map((option) => option.value));
+const qualityStates = new Set(transactionQualityOptions.map((option) => option.value));
 const DEFAULT_LIMIT = 250;
 
 function firstParam(value: TransactionSearchParamValue) {
@@ -117,6 +127,7 @@ function deriveState(input: Omit<TransactionFilterState, "isDateRangeInverted" |
       input.categoryId !== "all" ||
       input.intent !== "all" ||
       input.reviewStatus !== "all" ||
+      input.quality !== "all" ||
       input.month ||
       input.fromDate ||
       input.toDate ||
@@ -131,6 +142,7 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
   const requestedCategoryId = cleanText(params.category, 80);
   const requestedIntent = cleanText(params.intent, 24);
   const requestedReviewStatus = cleanText(params.review, 24);
+  const requestedQuality = cleanText(params.quality, 24);
   const requestedMonth = cleanText(params.month, 7);
   const requestedFromDate = cleanText(params.from, 10);
   const requestedToDate = cleanText(params.to, 10);
@@ -150,6 +162,9 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
       : "all",
     reviewStatus: reviewStatuses.has(requestedReviewStatus as ReviewStatus | "all")
       ? requestedReviewStatus as ReviewStatus | "all"
+      : "all",
+    quality: qualityStates.has(requestedQuality as TransactionQualityFilter)
+      ? requestedQuality as TransactionQualityFilter
       : "all",
     month,
     fromDate,
@@ -183,6 +198,7 @@ export function toTransactionListFilters(filters: TransactionFilterState): Trans
     categoryIds: filters.categoryId === "all" ? undefined : [filters.categoryId],
     intent: filters.intent,
     reviewStatus: filters.reviewStatus,
+    quality: filters.quality,
     fromDate: filters.effectiveFromDate,
     toDate: filters.effectiveToDate,
     excludeTransfers: filters.excludeTransfers,
@@ -202,6 +218,7 @@ export function transactionFiltersToSearchParams(filters: TransactionFilterState
   if (filters.categoryId !== "all") params.set("category", filters.categoryId);
   if (filters.intent !== "all") params.set("intent", filters.intent);
   if (filters.reviewStatus !== "all") params.set("review", filters.reviewStatus);
+  if (filters.quality !== "all") params.set("quality", filters.quality);
   if (filters.excludeTransfers) params.set("exclude_transfers", "1");
   params.set("limit", String(filters.limit));
 

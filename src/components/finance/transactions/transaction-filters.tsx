@@ -5,6 +5,7 @@ import {
   transactionIntentOptions,
   transactionFiltersHref,
   transactionLimitOptions,
+  transactionQualityOptions,
   transactionReviewOptions,
   type TransactionFilterState
 } from "./filters";
@@ -82,6 +83,15 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
         <span>Review</span>
         <select className={styles.selectControl} defaultValue={filters.reviewStatus} name="review">
           {transactionReviewOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className={styles.field}>
+        <span>Quality</span>
+        <select className={styles.selectControl} defaultValue={filters.quality} name="quality">
+          {transactionQualityOptions.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>

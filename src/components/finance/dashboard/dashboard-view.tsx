@@ -590,6 +590,7 @@ function CategoryCleanupPanel({ summary }: { summary: SpendingInsightSummary }) 
                 exclude_transfers: true,
                 from: current.fromDate,
                 q: item.id ? undefined : item.label,
+                quality: "needs-cleanup",
                 review: item.openReviewCount > 0 ? "open" : undefined,
                 to: current.toDate
               })}
