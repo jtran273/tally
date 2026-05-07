@@ -7,6 +7,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { AccountGroup, AccountBalanceTotals, BalanceTrendPoint, SyncSummary } from "@/lib/finance/balances";
+import type { SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
 import type { DashboardInsightCard } from "@/lib/insights";
 import {
   Clock3,
@@ -15,6 +16,8 @@ import {
   Inbox,
   Landmark,
   Sparkles,
+  Store,
+  Tags,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -40,6 +43,7 @@ interface DashboardViewProps {
   recurringExpenses: RecurringExpenseRecord[];
   reviewItems: ReviewQueueItem[];
   snapshotCount: number;
+  spendingSummary: SpendingInsightSummary;
   syncSummary: SyncSummary;
   totals: AccountBalanceTotals;
   trend: BalanceTrendPoint[];
@@ -107,6 +111,37 @@ function formatDate(value: string) {
 
 function formatLongDate(value: string) {
   return longDateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
+function transactionsHref(params: Record<string, boolean | number | string | undefined>) {
+  const search = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === "" || value === false) return;
+    search.set(key, value === true ? "1" : String(value));
+  });
+
+  const query = search.toString();
+  return query ? `/transactions?${query}` : "/transactions";
+}
+
+function spendingGroupHref(
+  group: SpendingGroupSummary,
+  kind: "category" | "merchant",
+  summary: SpendingInsightSummary
+) {
+  return transactionsHref({
+    category: kind === "category" ? group.id ?? undefined : undefined,
+    exclude_transfers: true,
+    from: summary.currentMonth.fromDate,
+    q: kind === "merchant" || !group.id ? group.label : undefined,
+    to: summary.currentMonth.toDate
+  });
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "0.0%";
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
 function formatRelativeTime(value: string | null) {
@@ -444,6 +479,111 @@ function SummaryCard({
   );
 }
 
+function SpendingTrendRows({
+  groups,
+  kind,
+  summary
+}: {
+  groups: SpendingGroupSummary[];
+  kind: "category" | "merchant";
+  summary: SpendingInsightSummary;
+}) {
+  if (groups.length === 0) {
+    return <div className={styles.emptyMini}>No spending rows in this period.</div>;
+  }
+
+  return (
+    <div className={styles.spendRows}>
+      {groups.slice(0, 4).map((group) => {
+        const isUp = group.deltaAmount > 0;
+        const isDown = group.deltaAmount < 0;
+        const deltaClass = isUp ? styles.negative : isDown ? styles.positive : undefined;
+        return (
+          <Link
+            className={styles.spendRow}
+            href={spendingGroupHref(group, kind, summary)}
+            key={`${kind}-${group.id ?? group.label}`}
+          >
+            <div>
+              <strong>{group.label}</strong>
+              <span>
+                {group.count} {group.count === 1 ? "transaction" : "transactions"}
+                {group.openReviewCount > 0 ? ` - ${formatMoney(group.unresolvedReviewAmount)} unresolved` : ""}
+              </span>
+            </div>
+            <div>
+              <strong>{formatMoney(group.amount)}</strong>
+              <span className={deltaClass}>
+                {group.previousAmount > 0 ? `${formatSignedMoney(group.deltaAmount)} (${formatPercent(group.deltaPercent)})` : "New this month"}
+              </span>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function SpendingPanel({ summary }: { summary: SpendingInsightSummary }) {
+  const current = summary.currentMonth;
+  const unresolved = current.unresolvedReviewSpending;
+  const hasUnresolved = unresolved > 0;
+  const periodLabel = `${formatDate(current.fromDate)} - ${formatDate(current.toDate)}`;
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.eyebrow}>Spending</div>
+          <h2>Money out by trust state</h2>
+        </div>
+        <Link
+          className={styles.textLink}
+          href={transactionsHref({
+            exclude_transfers: true,
+            from: current.fromDate,
+            to: current.toDate
+          })}
+        >
+          Open period
+        </Link>
+      </div>
+
+      <div className={styles.trustSummary}>
+        <div>
+          <span>Trusted spending</span>
+          <strong>{formatMoney(current.trustedSpending)}</strong>
+          <em>{periodLabel}</em>
+        </div>
+        <Link
+          className={`${styles.trustReview} ${hasUnresolved ? styles.trustReviewActive : ""}`}
+          href={transactionsHref({
+            exclude_transfers: true,
+            from: current.fromDate,
+            review: "open",
+            to: current.toDate
+          })}
+        >
+          <span>Unresolved review impact</span>
+          <strong>{formatMoney(unresolved)}</strong>
+          <em>{current.openReviewTransactionCount} open {current.openReviewTransactionCount === 1 ? "transaction" : "transactions"}</em>
+        </Link>
+      </div>
+
+      <div className={styles.spendSections}>
+        <div>
+          <h3><Tags size={14} aria-hidden /> Top categories</h3>
+          <SpendingTrendRows groups={current.topCategories} kind="category" summary={summary} />
+        </div>
+        <div>
+          <h3><Store size={14} aria-hidden /> Top merchants</h3>
+          <SpendingTrendRows groups={current.topMerchants} kind="merchant" summary={summary} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AccountGroups({ groups }: { groups: AccountGroup[] }) {
   return (
     <section className={styles.card}>
@@ -673,6 +813,7 @@ export function DashboardView({
   recurringExpenses,
   reviewItems,
   snapshotCount,
+  spendingSummary,
   syncSummary,
   totals,
   trend
@@ -737,6 +878,7 @@ export function DashboardView({
           </section>
 
           <AccountGroups groups={groups} />
+          <SpendingPanel summary={spendingSummary} />
 
           <div className={styles.contentGrid}>
             <CashflowRunwayPanel summary={cashflowRunway} />

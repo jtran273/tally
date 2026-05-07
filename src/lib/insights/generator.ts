@@ -345,8 +345,11 @@ function buildCashflowInsight(summary: SpendingInsightSummary): DashboardInsight
   if (summary.currentMonth.transactionCount === 0) return null;
 
   const net = summary.currentMonth.netCashflow;
+  const unresolvedText = summary.currentMonth.unresolvedReviewSpending > 0
+    ? ` ${formatMoney(summary.currentMonth.unresolvedReviewSpending)} of spending is still affected by ${summary.currentMonth.openReviewTransactionCount} open ${pluralize(summary.currentMonth.openReviewTransactionCount, "review transaction")}.`
+    : " All counted spending is trusted for this period.";
   return {
-    body: `${formatMoney(summary.currentMonth.income)} came in and ${formatMoney(summary.currentMonth.spending)} went out from ${formatDate(summary.currentMonth.fromDate)} to ${formatDate(summary.currentMonth.toDate)}.`,
+    body: `${formatMoney(summary.currentMonth.income)} came in, ${formatMoney(summary.currentMonth.trustedSpending)} trusted spending went out, and ${formatMoney(summary.currentMonth.spending)} total spending is visible from ${formatDate(summary.currentMonth.fromDate)} to ${formatDate(summary.currentMonth.toDate)}.${unresolvedText}`,
     evidenceLabel: "Open month transactions",
     evidenceTransactionIds: [],
     generatedAt: null,
@@ -365,9 +368,12 @@ function buildTopCategoryInsight(summary: SpendingInsightSummary): DashboardInsi
 
   const otherText = groupListText(summary.currentMonth.topCategories.slice(1));
   const detail = otherText ? ` Next: ${otherText}.` : "";
+  const trustText = topCategory.unresolvedReviewAmount > 0
+    ? ` ${formatMoney(topCategory.unresolvedReviewAmount)} remains unresolved.`
+    : "";
 
   return {
-    body: `${topCategory.label} leads month-to-date spending with ${formatMoney(topCategory.amount)} across ${topCategory.count} ${pluralize(topCategory.count, "transaction")}.${detail}`,
+    body: `${topCategory.label} leads month-to-date spending with ${formatMoney(topCategory.amount)} across ${topCategory.count} ${pluralize(topCategory.count, "transaction")}.${trustText}${detail}`,
     evidenceLabel: "Open category spend",
     evidenceTransactionIds: topCategory.transactionIds,
     generatedAt: null,
@@ -385,7 +391,7 @@ function buildTopMerchantInsight(summary: SpendingInsightSummary): DashboardInsi
   if (!topMerchant) return null;
 
   return {
-    body: `${topMerchant.label} accounts for ${formatMoney(topMerchant.amount)} across ${topMerchant.count} ${pluralize(topMerchant.count, "transaction")} month to date.`,
+    body: `${topMerchant.label} accounts for ${formatMoney(topMerchant.amount)} across ${topMerchant.count} ${pluralize(topMerchant.count, "transaction")} month to date.${topMerchant.unresolvedReviewAmount > 0 ? ` ${formatMoney(topMerchant.unresolvedReviewAmount)} remains unresolved.` : ""}`,
     evidenceLabel: "Open merchant spend",
     evidenceTransactionIds: topMerchant.transactionIds,
     generatedAt: null,
@@ -470,7 +476,7 @@ function buildConfidenceCaveatInsight(summary: SpendingInsightSummary): Dashboar
   if (caveats.length === 0) return null;
 
   return {
-    body: `${caveats.join(", ")} ${pluralize(caveats.length, "caveat")} affect month-to-date category precision. Raw transactions remain unchanged; these are enriched labels to review.`,
+    body: `${caveats.join(", ")} ${pluralize(caveats.length, "caveat")} affect month-to-date category precision, including ${formatMoney(summary.currentMonth.unresolvedReviewSpending)} of open-review spending. Raw transactions remain unchanged; these are enriched labels to review.`,
     evidenceLabel: "Open review items",
     evidenceTransactionIds: [],
     generatedAt: null,
@@ -483,10 +489,43 @@ function buildConfidenceCaveatInsight(summary: SpendingInsightSummary): Dashboar
   };
 }
 
-function buildSpendingInsights(transactions: readonly TransactionRecord[], now: Date) {
+function transactionsWithOpenReviewState(
+  transactions: readonly TransactionRecord[],
+  reviewItems: readonly ReviewQueueItem[]
+) {
+  if (reviewItems.length === 0) return transactions;
+
+  const openReviewsByTransaction = new Map<string, ReviewQueueItem[]>();
+  reviewItems.forEach((item) => {
+    openReviewsByTransaction.set(item.transaction.id, [...(openReviewsByTransaction.get(item.transaction.id) ?? []), item]);
+  });
+
+  return transactions.map((transaction) => {
+    const openReviews = openReviewsByTransaction.get(transaction.id) ?? [];
+    if (openReviews.length === 0) return transaction;
+
+    return {
+      ...transaction,
+      reviewItems: [
+        ...transaction.reviewItems,
+        ...openReviews.filter((item) => !transaction.reviewItems.some((review) => review.id === item.id))
+      ],
+      reviewReason: transaction.reviewReason ?? openReviews[0]?.reason ?? null,
+      reviewStatus: "open" as const
+    };
+  });
+}
+
+function buildSpendingInsights(
+  transactions: readonly TransactionRecord[],
+  reviewItems: readonly ReviewQueueItem[],
+  now: Date
+) {
   if (transactions.length === 0) return [];
 
-  const summary = buildSpendingInsightSummary(transactions, { asOfDate: now.toISOString().slice(0, 10) });
+  const summary = buildSpendingInsightSummary(transactionsWithOpenReviewState(transactions, reviewItems), {
+    asOfDate: now.toISOString().slice(0, 10)
+  });
 
   return [
     buildCashflowInsight(summary),
@@ -605,7 +644,7 @@ export function buildDashboardInsightCards(input: DashboardInsightInput): Dashbo
     buildReviewBacklogInsight(input.reviewItems),
     buildRecurringPriceChangeInsight(input.recurringCandidates ?? []),
     buildRecurringInsight(input.recurringExpenses, input.recurringCandidates ?? []),
-    ...buildSpendingInsights(input.spendingTransactions ?? input.recentTransactions, now),
+    ...buildSpendingInsights(input.spendingTransactions ?? input.recentTransactions, input.reviewItems, now),
     buildSyncInsight(input.accounts, now),
     buildBalanceTrendInsight(input.trend),
     buildRecentTransactionInsight(input.recentTransactions, input.reviewItems)

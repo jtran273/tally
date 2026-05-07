@@ -251,8 +251,13 @@ function assertInsightGeneratorFixture(cards: ReturnType<typeof buildDashboardIn
   }
 
   const cashflowCard = requireCard(cards, "spending-cashflow");
-  if (!cashflowCard.title.includes("Month cashflow") || !cashflowCard.href.includes("exclude_transfers=1")) {
-    throw new Error("Expected generated cashflow insight to summarize spending and link to filtered transactions.");
+  if (
+    !cashflowCard.title.includes("Month cashflow") ||
+    !cashflowCard.href.includes("exclude_transfers=1") ||
+    !cashflowCard.body.includes("trusted spending") ||
+    !cashflowCard.body.includes("open review")
+  ) {
+    throw new Error("Expected generated cashflow insight to split trusted and unresolved spending with filtered evidence.");
   }
 
   const categoryCard = requireCard(cards, "spending-top-category");

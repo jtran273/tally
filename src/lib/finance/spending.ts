@@ -7,7 +7,13 @@ export interface SpendingGroupSummary {
   id: string | null;
   label: string;
   amount: number;
+  trustedAmount: number;
+  unresolvedReviewAmount: number;
+  previousAmount: number;
+  deltaAmount: number;
+  deltaPercent: number;
   count: number;
+  openReviewCount: number;
   transactionIds: string[];
 }
 
@@ -15,9 +21,12 @@ export interface SpendingWindowSummary {
   fromDate: string;
   toDate: string;
   spending: number;
+  trustedSpending: number;
+  unresolvedReviewSpending: number;
   income: number;
   netCashflow: number;
   transactionCount: number;
+  openReviewTransactionCount: number;
   topCategories: SpendingGroupSummary[];
   topMerchants: SpendingGroupSummary[];
 }
@@ -83,9 +92,21 @@ function inDateRange(transaction: Pick<TransactionRecord, "date">, fromDate: str
 
 function groupSpending(
   transactions: readonly TransactionRecord[],
-  group: "category" | "merchant"
+  group: "category" | "merchant",
+  previousTransactions: readonly TransactionRecord[] = []
 ): SpendingGroupSummary[] {
   const grouped = new Map<string, SpendingGroupSummary>();
+  const previousGrouped = new Map<string, number>();
+
+  previousTransactions.forEach((transaction) => {
+    const amount = transactionSpendingAmount(transaction);
+    if (amount <= 0) return;
+
+    const id = group === "category" ? transaction.categoryId : transaction.merchant;
+    const label = group === "category" ? transaction.category : transaction.merchant;
+    const key = id ?? label;
+    previousGrouped.set(key, roundMoney((previousGrouped.get(key) ?? 0) + amount));
+  });
 
   transactions.forEach((transaction) => {
     const amount = transactionSpendingAmount(transaction);
@@ -96,19 +117,41 @@ function groupSpending(
     const key = id ?? label;
     const current = grouped.get(key) ?? {
       amount: 0,
+      deltaAmount: 0,
+      deltaPercent: 0,
       count: 0,
       id,
       label,
-      transactionIds: []
+      openReviewCount: 0,
+      previousAmount: 0,
+      trustedAmount: 0,
+      transactionIds: [],
+      unresolvedReviewAmount: 0
     };
 
     current.amount = roundMoney(current.amount + amount);
+    if (hasOpenReview(transaction)) {
+      current.openReviewCount += 1;
+      current.unresolvedReviewAmount = roundMoney(current.unresolvedReviewAmount + amount);
+    } else {
+      current.trustedAmount = roundMoney(current.trustedAmount + amount);
+    }
     current.count += 1;
     current.transactionIds.push(transaction.id);
     grouped.set(key, current);
   });
 
   return [...grouped.values()]
+    .map((item) => {
+      const previousAmount = previousGrouped.get(item.id ?? item.label) ?? 0;
+      const deltaAmount = roundMoney(item.amount - previousAmount);
+      return {
+        ...item,
+        deltaAmount,
+        deltaPercent: deltaPercent(item.amount, previousAmount),
+        previousAmount
+      };
+    })
     .sort((left, right) => right.amount - left.amount || left.label.localeCompare(right.label))
     .slice(0, 5);
 }
@@ -116,16 +159,24 @@ function groupSpending(
 function summarizeWindow(
   transactions: readonly TransactionRecord[],
   fromDate: string,
-  toDate: string
+  toDate: string,
+  previousTransactions: readonly TransactionRecord[] = []
 ): SpendingWindowSummary {
   const windowTransactions = transactions.filter((transaction) => inDateRange(transaction, fromDate, toDate));
   const totals = windowTransactions.reduce(
     (summary, transaction) => {
-      summary.spending += transactionSpendingAmount(transaction);
+      const spendingAmount = transactionSpendingAmount(transaction);
+      summary.spending += spendingAmount;
+      if (spendingAmount > 0 && hasOpenReview(transaction)) {
+        summary.openReviewTransactionCount += 1;
+        summary.unresolvedReviewSpending += spendingAmount;
+      } else {
+        summary.trustedSpending += spendingAmount;
+      }
       if (transaction.amount > 0 && transaction.intent !== "transfer") summary.income += transaction.amount;
       return summary;
     },
-    { income: 0, spending: 0 }
+    { income: 0, openReviewTransactionCount: 0, spending: 0, trustedSpending: 0, unresolvedReviewSpending: 0 }
   );
 
   const spending = roundMoney(totals.spending);
@@ -135,11 +186,14 @@ function summarizeWindow(
     fromDate,
     income,
     netCashflow: roundMoney(income - spending),
+    openReviewTransactionCount: totals.openReviewTransactionCount,
     spending,
+    trustedSpending: roundMoney(totals.trustedSpending),
     toDate,
-    topCategories: groupSpending(windowTransactions, "category"),
-    topMerchants: groupSpending(windowTransactions, "merchant"),
-    transactionCount: windowTransactions.length
+    topCategories: groupSpending(windowTransactions, "category", previousTransactions),
+    topMerchants: groupSpending(windowTransactions, "merchant", previousTransactions),
+    transactionCount: windowTransactions.length,
+    unresolvedReviewSpending: roundMoney(totals.unresolvedReviewSpending)
   };
 }
 
@@ -218,6 +272,17 @@ export function transactionSpendingAmount(
   return isSpendingIntent(transaction.intent) ? Math.abs(transaction.amount) : 0;
 }
 
+export function hasOpenReview(
+  transaction: Pick<TransactionRecord, "reviewItems" | "reviewStatus">
+) {
+  return transaction.reviewStatus === "open" || transaction.reviewItems.some((item) => item.status === "open");
+}
+
+export function deltaPercent(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+}
+
 export function transactionSplitTotal(transaction: Pick<TransactionRecord, "amount" | "splits">) {
   return roundMoney(transaction.splits.reduce((sum, split) => sum + Math.abs(split.amount), 0));
 }
@@ -242,12 +307,14 @@ export function buildSpendingInsightSummary(
   const previousMonthFrom = previousMonthStart(asOfDate);
   const previousMonthTo = previousMonthEnd(asOfDate);
 
-  const currentWeek = summarizeWindow(transactions, currentWeekFrom, asOfDate);
+  const previousWeekTransactions = transactions.filter((transaction) => inDateRange(transaction, previousWeekFrom, previousWeekTo));
+  const previousMonthTransactions = transactions.filter((transaction) => inDateRange(transaction, previousMonthFrom, previousMonthTo));
+  const currentWeek = summarizeWindow(transactions, currentWeekFrom, asOfDate, previousWeekTransactions);
 
   return {
     asOfDate,
     confidence: summarizeConfidence(transactions.filter((transaction) => transaction.date >= currentMonthFrom && transaction.date <= asOfDate)),
-    currentMonth: summarizeWindow(transactions, currentMonthFrom, asOfDate),
+    currentMonth: summarizeWindow(transactions, currentMonthFrom, asOfDate, previousMonthTransactions),
     currentWeek,
     previousMonth: summarizeWindow(transactions, previousMonthFrom, previousMonthTo),
     previousWeek: summarizeWindow(transactions, previousWeekFrom, previousWeekTo),

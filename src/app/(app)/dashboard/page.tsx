@@ -21,6 +21,7 @@ import {
   summarizeSync
 } from "@/lib/finance/balances";
 import { buildMonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
+import { buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildDashboardInsightCards } from "@/lib/insights";
 import { detectRecurringCandidates, normalizeRecurringMerchant, type RecurringCandidate } from "@/lib/recurring";
 
@@ -97,6 +98,9 @@ export default async function DashboardPage() {
     maxPoints: 366,
     transactions: trendTransactions
   });
+  const spendingSummary = buildSpendingInsightSummary(trendTransactions, {
+    asOfDate: now.toISOString().slice(0, 10)
+  });
   const cashflowRunway = buildMonthlyCashflowRunwaySummary({
     accounts,
     asOfDate: now.toISOString().slice(0, 10),
@@ -130,6 +134,7 @@ export default async function DashboardPage() {
       recurringCandidates={recurringCandidates}
       reviewItems={reviewItems}
       snapshotCount={snapshots.length}
+      spendingSummary={spendingSummary}
       syncSummary={summarizeSync(accounts)}
       totals={totals}
       trend={trend}

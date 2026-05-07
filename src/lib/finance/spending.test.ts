@@ -156,12 +156,25 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected current week cashflow to count spend, income, and transfer exclusions deterministically.");
   }
 
+  if (summary.currentWeek.trustedSpending !== 480 || summary.currentWeek.unresolvedReviewSpending !== 42 || summary.currentWeek.openReviewTransactionCount !== 1) {
+    throw new Error("Expected spending windows to separate trusted spending from open-review spending.");
+  }
+
   if (summary.previousWeek.spending !== 60 || summary.currentMonth.topCategories[0]?.label !== "Travel") {
     throw new Error("Expected previous week and top category spending summaries.");
   }
 
   if (summary.previousMonth.spending !== 280 || summary.currentMonth.topMerchants[0]?.label !== "Delta") {
     throw new Error("Expected previous month and top merchant spending summaries.");
+  }
+
+  if (summary.currentMonth.topCategories[0]?.previousAmount !== 220 || summary.currentMonth.topCategories[0]?.deltaAmount !== 180) {
+    throw new Error("Expected top category trend helpers to compare current period spend with previous period spend.");
+  }
+
+  const unresolvedCategory = summary.currentMonth.topCategories.find((category) => category.label === "Uncategorized");
+  if (unresolvedCategory?.unresolvedReviewAmount !== 42 || unresolvedCategory.openReviewCount !== 1) {
+    throw new Error("Expected category summaries to expose unresolved review amounts.");
   }
 
   if (summary.unusualSpend?.transactionId !== "tx-flight" || summary.unusualSpend.baselineAmount !== 220) {
