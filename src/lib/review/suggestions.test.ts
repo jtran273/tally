@@ -112,6 +112,18 @@ test("normalizeReviewSuggestion: handles heuristic-only suggestion payload (no r
   assert.deepEqual(result.signals, ["plaid-category-missing"]);
 });
 
+test("normalizeReviewSuggestion: filters provider diagnostics out of user-facing signals", () => {
+  const result = normalizeReviewSuggestion({
+    categoryName: "Food / Restaurants",
+    signals: [
+      "merchant cue: cafe",
+      "OpenAI unavailable or returned no additional signals"
+    ]
+  } as Json);
+
+  assert.deepEqual(result.signals, ["merchant cue: cafe"]);
+});
+
 test("normalizeReviewSuggestion: empty object returns empty suggestion", () => {
   const result = normalizeReviewSuggestion({} as Json);
 

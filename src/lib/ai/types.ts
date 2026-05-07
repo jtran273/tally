@@ -58,8 +58,8 @@ export interface CategorySuggestion {
 }
 
 /**
- * Providers return suggestion records only. Persisting these values to
- * enriched_transactions should happen only after an explicit user action.
+ * Providers return suggestion records only. Persistence is owned by app-level
+ * policies, which may auto-apply only conservative import-time cleanup.
  */
 export interface TransactionAiSuggestion {
   suggestionId: string;

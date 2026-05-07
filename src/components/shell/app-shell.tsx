@@ -82,6 +82,7 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
 };
 
 const navigation: RouteKey[] = ["dashboard", "transactions", "agentInbox", "review", "recurring", "accounts", "settings"];
+const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
 
 function currentRoute(pathname: string): RouteKey {
   const match = navigation.find((route) => pathname === routeHref[route] || pathname.startsWith(`${routeHref[route]}/`));
@@ -161,7 +162,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
 
         <nav className="nav" aria-label="Main navigation">
-          {navigation.map((item) => {
+          {primaryNavigation.map((item) => {
             const Icon = routeMeta[item].icon;
             const active = route === item;
             return (
@@ -184,8 +185,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Sparkles size={14} aria-hidden />
               <span>AI suggestions</span>
             </div>
-            <div className="ai-card-body">Review cleanup can draft merchant, category, and intent updates for approval.</div>
-            <Link className="ai-card-link" href={routeHref.agentInbox}>Open agent inbox</Link>
+            <div className="ai-card-body">High-confidence imports clean themselves up. Exceptions wait in review.</div>
+            <Link className="ai-card-link" href={routeHref.review}>Open review queue</Link>
           </div>
           <Link className="user-row" href={routeHref.settings}>
             <div className="avatar">J</div>

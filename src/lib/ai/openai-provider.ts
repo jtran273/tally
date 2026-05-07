@@ -34,6 +34,19 @@ interface OpenAiSuggestionPayload {
   signals?: unknown;
 }
 
+interface OpenAiResponseBody {
+  error?: {
+    message?: unknown;
+    type?: unknown;
+  } | null;
+  incomplete_details?: {
+    reason?: unknown;
+  } | null;
+  output?: unknown;
+  output_text?: unknown;
+  status?: unknown;
+}
+
 type SupportedIntent = TransactionAiSuggestion["intent"]["value"];
 
 const SUPPORTED_INTENTS = new Set<SupportedIntent>(["business", "personal", "reimbursable", "shared", "transfer"]);
@@ -72,7 +85,11 @@ export function createOpenAiSuggestionAdapter(options: OpenAiSuggestionAdapterOp
 
     try {
       return await suggestTransactionWithOpenAi({ apiKey, baseline, model, request });
-    } catch {
+    } catch (error) {
+      console.warn("openai_suggestion_failed", {
+        error: sanitizeOpenAiError(error),
+        model
+      });
       return baseline;
     }
   };
@@ -175,16 +192,18 @@ async function callOpenAi({
           role: "user"
         }
       ],
-      max_output_tokens: 450,
+      max_output_tokens: 1200,
       model,
       text: {
         format: {
           type: "json_schema",
           name: "transaction_suggestion",
+          description: "A concise transaction cleanup suggestion for a personal finance ledger.",
           strict: false,
           schema: {
             type: "object",
             additionalProperties: false,
+            required: ["merchantName", "categoryName", "intent", "recurring", "confidence", "reason", "signals"],
             properties: {
               merchantName: { type: "string" },
               categoryName: { type: "string" },
@@ -213,9 +232,16 @@ async function callOpenAi({
     throw new Error(`OpenAI suggestion request failed with ${response.status}.`);
   }
 
-  const data = await response.json() as { output_text?: unknown };
+  const data = await response.json() as OpenAiResponseBody;
+  if (data.status && data.status !== "completed") {
+    const reason = coerceString(data.incomplete_details?.reason) ?? coerceString(data.error?.message);
+    throw new Error(`OpenAI suggestion response ended with status ${String(data.status)}${reason ? `: ${reason}` : ""}.`);
+  }
+
   const outputText = typeof data.output_text === "string" ? data.output_text : extractOutputText(data);
-  if (!outputText) return {};
+  if (!outputText) {
+    throw new Error("OpenAI suggestion response had no output text.");
+  }
 
   const parsed = JSON.parse(outputText) as OpenAiSuggestionPayload;
   return parsed && typeof parsed === "object" ? parsed : {};
@@ -319,7 +345,7 @@ function coerceConfidence(value: unknown, fallback: number) {
 }
 
 function coerceSignals(value: unknown, fallback: readonly string[]) {
-  if (!Array.isArray(value)) return [...fallback, "OpenAI unavailable or returned no additional signals"];
+  if (!Array.isArray(value)) return [...fallback];
 
   const signals = value
     .filter((signal): signal is string => typeof signal === "string" && signal.trim().length > 0)
@@ -327,6 +353,12 @@ function coerceSignals(value: unknown, fallback: readonly string[]) {
     .slice(0, 5);
 
   return signals.length > 0 ? signals : [...fallback];
+}
+
+function sanitizeOpenAiError(error: unknown) {
+  if (error instanceof Error) return error.message.slice(0, 240);
+  if (typeof error === "string") return error.slice(0, 240);
+  return "Unknown OpenAI suggestion error";
 }
 
 export function createConfiguredSuggestionAdapter(): AiSuggestionAdapter {

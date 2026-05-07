@@ -28,8 +28,10 @@ import type {
   RawTransactionRow,
   TransactionIntent
 } from "../db/types";
+import type { TransactionEnrichmentPatch } from "../db/queries";
 import { createConfiguredTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
+import { evaluateAutoCategorization } from "../review/auto-categorization";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
 import { getPlaidConfig } from "./config";
@@ -51,6 +53,7 @@ type BalanceSnapshotInsert = Database["public"]["Tables"]["balance_snapshots"]["
 type RawTransactionInsert = Database["public"]["Tables"]["raw_transactions"]["Insert"];
 type RawTransactionUpdate = Database["public"]["Tables"]["raw_transactions"]["Update"];
 type EnrichedTransactionInsert = Database["public"]["Tables"]["enriched_transactions"]["Insert"];
+type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transactions"]["Update"];
 type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
 const INSTITUTION_COLUMNS = "id,user_id,name,plaid_institution_id,logo_url,primary_color,website_url,created_at,updated_at";
@@ -1372,6 +1375,7 @@ async function seedEnrichedTransactions({
 
   await insertGeneratedReviewItems(client, changedRows, {
     categoryRows,
+    merchantRules,
     rawRows
   });
 
@@ -1403,19 +1407,26 @@ async function insertGeneratedReviewItems(
   transactions: EnrichedTransactionRow[],
   context: {
     categoryRows: CategoryRow[];
+    merchantRules: MerchantRuleRow[];
     rawRows: RawTransactionRow[];
   }
 ) {
   const reviewItems: ReviewItemInsert[] = transactions.flatMap(buildTransactionReviewItems);
   const aiUpdates = await attachAiSuggestionsToReviewItems(reviewItems, {
     categories: context.categoryRows.map(toCategoryRecordForAi),
+    merchantRules: context.merchantRules,
     rawRows: context.rawRows,
     suggestionService: createConfiguredTransactionSuggestionService(),
     transactions
   });
   const reviewItemsWithSuggestions = applyReviewSuggestionUpdates(reviewItems, aiUpdates);
+  const autoAppliedKeys = await autoApplyReviewSuggestions(client, reviewItemsWithSuggestions, transactions, context);
+  const openReviewItems = reviewItemsWithSuggestions.filter((item) => {
+    const key = reviewItemKey(item);
+    return !key || !autoAppliedKeys.has(key);
+  });
 
-  for (const batch of chunk(reviewItemsWithSuggestions, UPSERT_CHUNK_SIZE)) {
+  for (const batch of chunk(openReviewItems, UPSERT_CHUNK_SIZE)) {
     if (batch.length === 0) continue;
 
     const result = await client
@@ -1432,6 +1443,8 @@ async function insertGeneratedReviewItems(
   for (const update of aiUpdates) {
     const item = update.item;
     if (!item.enriched_transaction_id || !item.reason) continue;
+    const key = reviewItemKey(item);
+    if (key && autoAppliedKeys.has(key)) continue;
 
     const result = await client
       .from("review_items")
@@ -1447,6 +1460,164 @@ async function insertGeneratedReviewItems(
 
     expectData(result, "Refresh generated Plaid review AI suggestions");
   }
+}
+
+function reviewItemKey(item: Pick<ReviewItemInsert, "enriched_transaction_id" | "reason">) {
+  return item.enriched_transaction_id && item.reason
+    ? `${item.enriched_transaction_id}:${item.reason}`
+    : null;
+}
+
+function enrichedUpdateFromPatch(patch: TransactionEnrichmentPatch): EnrichedTransactionUpdate {
+  const update: EnrichedTransactionUpdate = {};
+
+  if (patch.merchantName !== undefined) update.merchant_name = patch.merchantName;
+  if (patch.categoryId !== undefined) update.category_id = patch.categoryId;
+  if (patch.categoryName !== undefined) update.category_name = patch.categoryName;
+  if (patch.intent !== undefined) update.intent = patch.intent;
+  if (patch.note !== undefined) update.note = patch.note;
+  if (patch.isRecurring !== undefined) update.is_recurring = patch.isRecurring;
+  if (patch.confidence !== undefined) update.confidence = patch.confidence;
+  if (patch.reviewedAt !== undefined) update.reviewed_at = patch.reviewedAt;
+  if (patch.source !== undefined) update.source = patch.source;
+
+  return update;
+}
+
+function toJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
+}
+
+async function recordAutoCategorizationAuditEvent(
+  client: FinanceSupabaseClient,
+  plan: {
+    decision: ReturnType<typeof evaluateAutoCategorization> & { patch: TransactionEnrichmentPatch };
+    items: ReviewItemInsert[];
+    transaction: EnrichedTransactionRow;
+  }
+) {
+  const result = await client
+    .from("audit_events")
+    .insert({
+      action: "review.suggestion_auto_applied",
+      actor_id: null,
+      after_data: toJson({
+        appliedPatch: plan.decision.patch,
+        suggestion: plan.items[0]?.ai_suggestion ?? {}
+      }),
+      before_data: toJson({
+        categoryId: plan.transaction.category_id,
+        categoryName: plan.transaction.category_name,
+        confidence: plan.transaction.confidence,
+        intent: plan.transaction.intent,
+        merchantName: plan.transaction.merchant_name,
+        reviewedAt: plan.transaction.reviewed_at,
+        source: plan.transaction.source
+      }),
+      entity_id: plan.transaction.id,
+      entity_table: "enriched_transactions",
+      metadata: toJson({
+        reason: plan.decision.reason,
+        reviewItemIds: plan.items.map((item) => item.id).filter(Boolean),
+        reviewReasons: plan.items.map((item) => item.reason).filter(Boolean),
+        transactionId: plan.transaction.id
+      }),
+      user_id: plan.transaction.user_id
+    })
+    .select("id");
+
+  expectData(result, "Record auto-applied AI categorization audit event");
+}
+
+async function autoApplyReviewSuggestions(
+  client: FinanceSupabaseClient,
+  reviewItems: ReviewItemInsert[],
+  transactions: EnrichedTransactionRow[],
+  context: {
+    categoryRows: CategoryRow[];
+    rawRows: RawTransactionRow[];
+  }
+) {
+  const categories = context.categoryRows.map(toCategoryRecordForAi);
+  const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+  const rawById = new Map(context.rawRows.map((raw) => [raw.id, raw]));
+  const reviewedAt = new Date().toISOString();
+  const plans = new Map<string, {
+    decision: ReturnType<typeof evaluateAutoCategorization> & { patch: TransactionEnrichmentPatch };
+    items: ReviewItemInsert[];
+    transaction: EnrichedTransactionRow;
+  }>();
+
+  for (const item of reviewItems) {
+    const key = reviewItemKey(item);
+    const transaction = item.enriched_transaction_id ? transactionById.get(item.enriched_transaction_id) : null;
+    const raw = transaction ? rawById.get(transaction.raw_transaction_id) ?? null : null;
+    if (!key || !transaction || !item.reason) continue;
+
+    const decision = evaluateAutoCategorization({
+      categories,
+      rawTransaction: raw,
+      reviewReason: item.reason,
+      reviewedAt,
+      suggestion: item.ai_suggestion ?? {},
+      transaction
+    });
+    if (!decision.shouldApply || !decision.patch) continue;
+
+    const existing = plans.get(transaction.id);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      plans.set(transaction.id, {
+        decision: decision as typeof decision & { patch: TransactionEnrichmentPatch },
+        items: [item],
+        transaction
+      });
+    }
+  }
+
+  const autoAppliedKeys = new Set<string>();
+  const resolvedReviewItems: ReviewItemInsert[] = [];
+
+  for (const plan of plans.values()) {
+    const result = await client
+      .from("enriched_transactions")
+      .update(enrichedUpdateFromPatch(plan.decision.patch))
+      .eq("user_id", plan.transaction.user_id)
+      .eq("id", plan.transaction.id)
+      .select("id");
+
+    expectData(result, "Auto-apply high-confidence AI categorization");
+    await recordAutoCategorizationAuditEvent(client, plan);
+
+    for (const item of plan.items) {
+      const key = reviewItemKey(item);
+      if (key) autoAppliedKeys.add(key);
+
+      resolvedReviewItems.push({
+        ...item,
+        confidence: plan.decision.suggestion.confidence ?? item.confidence ?? null,
+        resolution_note: "Auto-applied high-confidence non-manual categorization.",
+        resolved_at: reviewedAt,
+        status: "resolved"
+      });
+    }
+  }
+
+  for (const batch of chunk(resolvedReviewItems, UPSERT_CHUNK_SIZE)) {
+    if (batch.length === 0) continue;
+
+    const result = await client
+      .from("review_items")
+      .upsert(batch, {
+        onConflict: "user_id,enriched_transaction_id,reason"
+      })
+      .select("id");
+
+    expectData(result, "Store auto-resolved Plaid review items");
+  }
+
+  return autoAppliedKeys;
 }
 
 async function persistTransactionUpdates({

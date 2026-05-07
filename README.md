@@ -85,15 +85,16 @@ The review queue flags transactions that need judgment, including:
 - missing categories,
 - recurring candidates.
 
+Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
 Users can accept suggestions one at a time, bulk accept accept-ready AI suggestions after reviewing each preview row, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows stay out of bulk acceptance.
 When an accepted cleanup would create a merchant rule, the review card previews the deterministic impact on recent safe transaction context before acceptance, including matched rows, changed rows, and whether any matched transactions are still open in review. The preview uses app-owned transaction ids and enriched/raw merchant labels only, not provider ids.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
 
 ### Agent Inbox
 
-The `/agent-inbox` route collects finance-agent recommendations into a proposal queue. It shows accept-ready changes from stored review suggestions, safe transaction context, and manual-review routes without exposing raw Plaid payloads, provider identifiers, access tokens, auth headers, or service-role secrets.
+The `/agent-inbox` route remains available as a secondary proposal/audit queue for finance-agent recommendations. The primary workflow is `/review`; the main navigation points there so high-confidence automation stays out of the way and only exceptions need attention.
 
-Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Agent output remains advisory and proposal-first.
+Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Import-time auto-categorization is limited to conservative high-confidence cleanup and records audit events.
 
 ### Edit Enriched Records
 

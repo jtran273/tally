@@ -28,6 +28,9 @@ const transactionIntents = new Set<TransactionIntent>([
   "reimbursable",
   "transfer"
 ]);
+const providerDiagnosticSignals = new Set([
+  "openai unavailable or returned no additional signals"
+]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -115,7 +118,10 @@ function normalizeMerchant(value: unknown) {
 
 function normalizeSignals(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.map(cleanString).filter((signal): signal is string => Boolean(signal))
+    ? value
+      .map(cleanString)
+      .filter((signal): signal is string => Boolean(signal))
+      .filter((signal) => !providerDiagnosticSignals.has(signal.toLowerCase()))
     : [];
 }
 

@@ -97,6 +97,24 @@ test("agent inbox routes peer-to-peer and empty suggestions to manual review", (
   assert.deepEqual(proposals.map((proposal) => proposal.action), ["manual-review", "manual-review"]);
 });
 
+test("agent inbox does not surface provider diagnostics as recommendation signals", () => {
+  const [proposal] = buildAgentInboxProposals([
+    reviewItem({
+      aiSuggestion: {
+        categoryName: "Groceries",
+        confidence: 0.91,
+        signals: [
+          "merchant cue: grocery",
+          "OpenAI unavailable or returned no additional signals"
+        ]
+      },
+      id: "review-diagnostic"
+    })
+  ]);
+
+  assert.deepEqual(proposal?.recommendation.signals, ["merchant cue: grocery"]);
+});
+
 test("agent inbox summary counts proposals and changed fields", () => {
   const proposals = buildAgentInboxProposals([
     reviewItem({
