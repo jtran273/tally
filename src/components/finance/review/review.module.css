@@ -790,6 +790,41 @@
   gap: 8px;
 }
 
+.inlineEditForm {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 12px;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in oklab, var(--info) 22%, var(--line));
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--info) 4%, var(--surface));
+}
+
+.inlineEditGrid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.inlineEditNotes {
+  grid-column: span 3;
+}
+
+.inlineEditRecurring {
+  align-self: end;
+}
+
+.inlineEditActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .primaryButton,
 .secondaryButton {
   display: inline-flex;
@@ -878,11 +913,31 @@
 }
 
 .field > span,
+.checkboxField > span,
 .splitRow label > span,
 .splitHeader > span {
   color: var(--muted);
   font-size: 10.5px;
   text-transform: uppercase;
+}
+
+.checkboxField {
+  display: inline-flex;
+  min-height: 36px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--surface);
+}
+
+.checkboxField input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ink);
 }
 
 .inputControl,
@@ -1039,6 +1094,14 @@
 }
 
 @media (max-width: 900px) {
+  .inlineEditGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inlineEditNotes {
+    grid-column: 1 / -1;
+  }
+
   .splitRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1084,6 +1147,14 @@
 
   .splitRow {
     grid-template-columns: 1fr;
+  }
+
+  .inlineEditGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .inlineEditNotes {
+    grid-column: auto;
   }
 
   .iconButton {

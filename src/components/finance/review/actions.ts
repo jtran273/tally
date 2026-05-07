@@ -252,6 +252,19 @@ function transactionAuditData(item: ReviewQueueItem): Record<string, Json> {
   };
 }
 
+function transactionEditableAuditData(item: ReviewQueueItem): Record<string, Json> {
+  return {
+    ...transactionAuditData(item),
+    isRecurring: item.transaction.recurring,
+    merchantName: item.transaction.merchant
+  };
+}
+
+function getSelectedCategory(categories: CategoryRecord[], categoryId: string | null) {
+  if (!categoryId) return null;
+  return categories.find((category) => category.id === categoryId) ?? null;
+}
+
 async function applyAcceptedReviewSuggestion(
   client: FinanceSupabaseClient,
   userId: string,
@@ -687,6 +700,109 @@ export async function dismissReviewItemAction(
 
     revalidateReviewPaths(item.transaction.id);
     return { message: "Review item dismissed." };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
+export async function editReviewTransactionAction(
+  _state: ReviewActionState,
+  formData: FormData
+): Promise<ReviewActionState> {
+  try {
+    const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
+
+    const merchantName = cleanString(formData.get("merchantName"), 160);
+    if (!merchantName) return { error: "Merchant is required." };
+
+    const categoryId = cleanOptionalUuid(formData.get("categoryId"));
+    if (categoryId === undefined || categoryId === null) {
+      return { error: "Choose a category to finalize this review." };
+    }
+
+    const requestedIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
+    if (!transactionIntents.has(requestedIntent)) return { error: "Choose a valid intent." };
+
+    const { client, userId } = await getFinanceContext();
+    const [item, categories] = await Promise.all([
+      getOpenReviewItem(client, userId, reviewItemId),
+      listCategories(client, userId)
+    ]);
+
+    if (isPeerToPeerReview(item.reason)) {
+      return { error: "Use the peer-to-peer split form to finalize this item." };
+    }
+
+    const selectedCategory = getSelectedCategory(categories, categoryId);
+    if (!selectedCategory) return { error: "Choose one of your categories." };
+
+    const categoryName = cleanString(formData.get("categoryName"), 160) || selectedCategory.name;
+    const note = cleanString(formData.get("note"), 1000);
+    const reviewedAt = new Date().toISOString();
+    const transactionPatch = {
+      categoryId,
+      categoryName,
+      confidence: 1,
+      intent: requestedIntent,
+      isRecurring: formData.get("isRecurring") === "1",
+      merchantName,
+      note,
+      reviewedAt,
+      source: "manual" as const
+    };
+    const openItems = await listReviewItems(client, userId, "open");
+    const relatedItems = openItems.filter((candidate) =>
+      candidate.transaction.id === item.transaction.id && !isPeerToPeerReview(candidate.reason)
+    );
+    const itemsToResolve = relatedItems.length > 0 ? relatedItems : [item];
+    const resolvedItems = [];
+
+    await updateTransactionEnrichment(client, userId, item.transaction.id, transactionPatch);
+
+    for (const target of itemsToResolve) {
+      const resolved = await resolveReviewItem(
+        client,
+        userId,
+        target.id,
+        "resolved",
+        "Edited transaction in review queue and finalized."
+      );
+      resolvedItems.push(resolved);
+
+      await recordAuditEvent(client, userId, {
+        action: "review.transaction_edited_resolved",
+        actorId: userId,
+        afterData: {
+          ...reviewItemAuditData(target),
+          appliedPatch: transactionPatch as Record<string, Json | undefined>,
+          resolvedAt: resolved.resolvedAt,
+          status: resolved.status,
+          transaction: {
+            ...transactionEditableAuditData(target),
+            ...transactionPatch
+          }
+        },
+        beforeData: {
+          ...reviewItemAuditData(target),
+          transaction: transactionEditableAuditData(target)
+        },
+        entityId: target.id,
+        entityTable: "review_items",
+        metadata: {
+          resolvedRelatedCount: itemsToResolve.length,
+          source: "review_inline_edit",
+          transactionId: item.transaction.id
+        }
+      });
+    }
+
+    revalidateReviewPaths(item.transaction.id);
+    return {
+      message: resolvedItems.length > 1
+        ? `Transaction saved and ${resolvedItems.length.toLocaleString("en-US")} review items finalized.`
+        : "Transaction saved and review finalized."
+    };
   } catch (error) {
     return errorState(error);
   }

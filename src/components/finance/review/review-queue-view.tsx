@@ -25,7 +25,6 @@ import {
   CheckCircle2,
   CircleDollarSign,
   HandCoins,
-  Pencil,
   ShieldCheck,
   TriangleAlert,
   type LucideIcon
@@ -35,6 +34,7 @@ import { ReviewAiActions } from "./review-ai-actions";
 import { BulkReviewActions } from "./bulk-review-actions";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
+import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
 import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
@@ -484,10 +484,13 @@ function ReviewCard({
           <ReviewItemActions canAccept={canAccept} canDismiss={canDismiss} reviewItemId={item.id} />
         )}
 
-        <Link className={styles.secondaryButton} href={`/transactions/${item.transaction.id}`}>
-          <Pencil size={14} aria-hidden />
-          Edit transaction
-        </Link>
+        {!peerToPeer ? (
+          <ReviewTransactionEditForm
+            categories={categories}
+            reviewItemId={item.id}
+            transaction={item.transaction}
+          />
+        ) : null}
       </div>
     </article>
   );
