@@ -173,9 +173,10 @@ export function buildAcceptedReviewSuggestionPatch(
   }
   if (suggestion.categoryName) {
     patch.categoryName = suggestion.categoryName;
-    patch.categoryId = suggestion.categoryId !== undefined
+    const knownId = suggestion.categoryId && categories.some((c) => c.id === suggestion.categoryId)
       ? suggestion.categoryId
       : findCategoryId(categories, suggestion.categoryName);
+    patch.categoryId = knownId;
   }
   if (suggestion.intent) {
     patch.intent = suggestion.intent;

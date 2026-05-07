@@ -4,6 +4,7 @@ import type {
   CategoryRecord,
   EnrichedTransactionRow,
   Json,
+  MerchantRuleRow,
   RawTransactionRow,
   ReviewReason
 } from "@/lib/db";
@@ -19,6 +20,7 @@ export interface ReviewAiSuggestionItem {
 export interface AttachAiReviewSuggestionsOptions {
   categories: readonly CategoryRecord[];
   maxSuggestions?: number;
+  merchantRules?: readonly MerchantRuleRow[];
   rawRows: readonly RawTransactionRow[];
   suggestionService: Pick<TransactionSuggestionService, "suggestTransaction">;
   transactions: readonly EnrichedTransactionRow[];
@@ -44,6 +46,7 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
   {
     categories,
     maxSuggestions = DEFAULT_MAX_AI_REVIEW_SUGGESTIONS,
+    merchantRules,
     rawRows,
     suggestionService,
     transactions
@@ -64,6 +67,7 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
     try {
       const suggestion = await suggestionService.suggestTransaction({
         categories,
+        merchantRules,
         rawTransaction: raw
       });
       generated += 1;
