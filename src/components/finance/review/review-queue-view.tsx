@@ -594,7 +594,7 @@ export function ReviewQueueView({
             <p>{aiPanelBody}</p>
           </div>
           <div className={styles.aiCleanupActions}>
-            <ReviewAiActions disabled={aiPreview.eligible === 0} />
+            <ReviewAiActions disabled={aiPreview.eligible === 0} eligibleCount={aiPreview.eligible} />
             <BulkReviewActions plan={bulkPlan} />
           </div>
         </section>

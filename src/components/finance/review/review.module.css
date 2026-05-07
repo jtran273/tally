@@ -126,6 +126,59 @@
   gap: 8px;
 }
 
+.aiCleanupProgress {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 7px;
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--line));
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in oklab, var(--accent) 7%, var(--surface));
+}
+
+.aiCleanupProgressMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.aiCleanupProgressMeta strong,
+.aiCleanupProgressMeta span {
+  overflow-wrap: anywhere;
+}
+
+.aiCleanupProgressMeta span {
+  color: var(--muted);
+}
+
+.aiCleanupProgressTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+}
+
+.aiCleanupProgressTrack span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  animation: aiCleanupProgress 1.2s ease-in-out infinite;
+  background: var(--accent);
+}
+
+.aiCleanupProgress p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .aiCleanupActions {
   display: grid;
   min-width: 360px;
@@ -938,6 +991,16 @@
   width: 100%;
   color: var(--pos);
   font-size: 12px;
+}
+
+@keyframes aiCleanupProgress {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(265%);
+  }
 }
 
 .emptyState {

@@ -56,6 +56,7 @@ type EnrichedTransactionInsert = Database["public"]["Tables"]["enriched_transact
 type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transactions"]["Update"];
 type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
+const PLAID_IMPORT_AI_REVIEW_SUGGESTION_LIMIT = 10;
 const INSTITUTION_COLUMNS = "id,user_id,name,plaid_institution_id,logo_url,primary_color,website_url,created_at,updated_at";
 const PLAID_ITEM_COLUMNS = [
   "id",
@@ -1414,6 +1415,7 @@ async function insertGeneratedReviewItems(
   const reviewItems: ReviewItemInsert[] = transactions.flatMap(buildTransactionReviewItems);
   const aiUpdates = await attachAiSuggestionsToReviewItems(reviewItems, {
     categories: context.categoryRows.map(toCategoryRecordForAi),
+    maxSuggestions: PLAID_IMPORT_AI_REVIEW_SUGGESTION_LIMIT,
     merchantRules: context.merchantRules,
     rawRows: context.rawRows,
     suggestionService: createConfiguredTransactionSuggestionService(),
