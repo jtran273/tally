@@ -711,3 +711,104 @@
     flex: 1 1 140px;
   }
 }
+
+@media (max-width: 720px) {
+  .tableScroll {
+    overflow-x: visible;
+  }
+
+  .table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table tbody {
+    padding: 10px;
+  }
+
+  .table tr {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  .table td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    border-bottom: 1px solid var(--line-2);
+    padding: 10px 12px;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+    text-transform: uppercase;
+  }
+
+  .table td:last-child {
+    border-bottom: 0;
+  }
+
+  .table tbody tr:hover td,
+  .pendingRow td,
+  .reviewRow td,
+  .pendingRow.reviewRow td {
+    background: transparent;
+  }
+
+  .pendingRow,
+  .reviewRow,
+  .pendingRow.reviewRow {
+    background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+  }
+
+  .amountCell {
+    text-align: left;
+  }
+
+  .amountCell::before {
+    font-family: inherit;
+  }
+
+  .iconLink {
+    width: fit-content;
+  }
+
+  .merchantName,
+  .qualityBadges {
+    flex-wrap: wrap;
+  }
+
+  .dateCell span:first-child,
+  .merchantName,
+  .categoryCell span:first-child,
+  .accountCell span:first-child,
+  .dateCell span:last-child,
+  .categoryCell span:last-child,
+  .accountCell span:last-child,
+  .secondaryLine,
+  .noteLine,
+  .mutedText,
+  .confidenceText,
+  .lowConfidenceText {
+    white-space: normal;
+  }
+}

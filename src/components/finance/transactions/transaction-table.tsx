@@ -178,13 +178,13 @@ export function TransactionTable({
                   className={`${transaction.status === "pending" ? styles.pendingRow : ""} ${hasOpenReview ? styles.reviewRow : ""}`}
                   key={transaction.id}
                 >
-                  <td>
+                  <td data-label="Date">
                     <div className={styles.dateCell}>
                       <span>{formatDate(transaction.date)}</span>
                       <span>{transaction.date}</span>
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Merchant">
                     <div className={styles.merchantCell}>
                       <div className={styles.merchantName}>
                         <span className={styles.merchantText}>{transaction.merchant}</span>
@@ -226,7 +226,7 @@ export function TransactionTable({
                       ) : null}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Category">
                     <div className={styles.categoryCell}>
                       <span>{transaction.category}</span>
                       <span className={transaction.confidence < 0.75 ? styles.lowConfidenceText : styles.confidenceText}>
@@ -244,26 +244,26 @@ export function TransactionTable({
                       ) : null}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Account">
                     <div className={styles.accountCell}>
                       <span>{accountLabel(transaction)}</span>
                       <span>{transaction.institutionName}</span>
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Intent">
                     <span className={`${styles.intentChip} ${styles[`intent-${transaction.intent}`]}`}>
                       {intentLabels[transaction.intent]}
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Review">
                     <span className={hasOpenReview ? styles.reviewText : styles.mutedText}>
                       {reviewLabel(transaction)}
                     </span>
                   </td>
-                  <td className={`${styles.amountCell} ${transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}`}>
+                  <td className={`${styles.amountCell} ${transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}`} data-label="Amount">
                     {formatMoney(transaction.amount)}
                   </td>
-                  <td>
+                  <td data-label="Edit">
                     <Link className={styles.iconLink} href={`/transactions/${transaction.id}`} aria-label={`Edit ${transaction.merchant}`}>
                       <Pencil size={14} aria-hidden />
                       Edit
