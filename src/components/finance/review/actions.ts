@@ -465,10 +465,14 @@ export async function acceptReviewSuggestionAction(
       return { error: "This review item does not include an accept-ready suggestion." };
     }
 
-    await applyAcceptedReviewSuggestion(client, userId, item, categories, { reviewedAt, source: "single" });
+    const result = await applyAcceptedReviewSuggestion(client, userId, item, categories, { reviewedAt, source: "single" });
 
     revalidateReviewPaths(item.transaction.id);
-    return { message: "Suggestion accepted." };
+    return {
+      message: result.merchantRuleId
+        ? "Suggestion accepted and merchant rule saved for future matching."
+        : "Suggestion accepted."
+    };
   } catch (error) {
     return errorState(error);
   }
@@ -497,6 +501,7 @@ export async function bulkAcceptReviewSuggestionsAction(
     const plan = buildBulkReviewPlan(targets, { limit: 40 });
 
     let acceptedCount = 0;
+    const merchantRuleIds = new Set<string>();
     const touchedTransactionIds = new Set<string>();
     const reviewedAt = new Date().toISOString();
 
@@ -504,11 +509,12 @@ export async function bulkAcceptReviewSuggestionsAction(
       const target = targets.find((candidate) => candidate.id === item.reviewItemId);
       if (!target) continue;
 
-      await applyAcceptedReviewSuggestion(client, userId, target, categories, {
+      const result = await applyAcceptedReviewSuggestion(client, userId, target, categories, {
         reviewedAt,
         source: "bulk"
       });
       acceptedCount += 1;
+      if (result.merchantRuleId) merchantRuleIds.add(result.merchantRuleId);
       touchedTransactionIds.add(target.transaction.id);
     }
 
@@ -523,10 +529,14 @@ export async function bulkAcceptReviewSuggestionsAction(
       ? ` Skipped ${skippedCount.toLocaleString("en-US")} item${skippedCount === 1 ? "" : "s"} that were no longer eligible.`
       : "";
 
+    const ruleSuffix = merchantRuleIds.size > 0
+      ? ` Saved ${merchantRuleIds.size.toLocaleString("en-US")} merchant rule${merchantRuleIds.size === 1 ? "" : "s"} for future matching.`
+      : "";
+
     return {
       message: acceptedCount === 0
         ? `No suggestions were accepted.${skippedSuffix}`
-        : `Accepted ${acceptedCount.toLocaleString("en-US")} AI suggestion${acceptedCount === 1 ? "" : "s"}.${skippedSuffix}`
+        : `Accepted ${acceptedCount.toLocaleString("en-US")} AI suggestion${acceptedCount === 1 ? "" : "s"}.${ruleSuffix}${skippedSuffix}`
     };
   } catch (error) {
     return errorState(error);
