@@ -83,7 +83,7 @@ The review queue flags transactions that need judgment, including:
 - missing categories,
 - recurring candidates.
 
-Users can accept suggestions, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits.
+Users can accept suggestions one at a time, bulk accept accept-ready AI suggestions after reviewing each preview row, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows stay out of bulk acceptance.
 
 ### Edit Enriched Records
 
