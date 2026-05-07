@@ -12,12 +12,14 @@ import {
   type SpendingGroupSummary,
   type SpendingInsightSummary
 } from "@/lib/finance/spending";
+import type { RecurringCandidate } from "@/lib/recurring";
 import type { DashboardInsightCard } from "./types";
 
 interface DashboardInsightInput {
   accounts: readonly AccountRecord[];
   persistedInsights?: readonly InsightRecord[];
   recentTransactions: readonly TransactionRecord[];
+  recurringCandidates?: readonly RecurringCandidate[];
   recurringExpenses: readonly RecurringExpenseRecord[];
   reviewItems: readonly ReviewQueueItem[];
   spendingTransactions?: readonly TransactionRecord[];
@@ -166,10 +168,36 @@ function buildReviewBacklogInsight(reviewItems: readonly ReviewQueueItem[]): Das
   };
 }
 
-function buildRecurringInsight(recurringExpenses: readonly RecurringExpenseRecord[]): DashboardInsightCard | null {
+function buildRecurringPriceChangeInsight(candidates: readonly RecurringCandidate[] = []): DashboardInsightCard | null {
+  const candidate = candidates.find((item) => item.priceChange?.source === "known-recurring");
+  const priceChange = candidate?.priceChange;
+  if (!candidate || !priceChange) return null;
+
+  return {
+    body: `${candidate.merchant} changed from ${formatMoney(priceChange.previousAmount)} to ${formatMoney(priceChange.currentAmount)} on ${formatDate(priceChange.changedAt)}. Confirm whether the recurring row should use the new amount.`,
+    evidenceLabel: "Open transaction",
+    evidenceTransactionIds: [priceChange.transactionId],
+    generatedAt: null,
+    href: `/transactions/${priceChange.transactionId}`,
+    id: buildGeneratedId("recurring-price-change"),
+    key: "recurring-price-change",
+    source: "generated",
+    title: `${candidate.merchant} recurring price changed`,
+    tone: "warn"
+  };
+}
+
+function buildRecurringInsight(
+  recurringExpenses: readonly RecurringExpenseRecord[],
+  recurringCandidates: readonly RecurringCandidate[] = []
+): DashboardInsightCard | null {
   const pending = recurringExpenses
     .filter((expense) => expense.status === "pending" || expense.isNew)
     .sort((left, right) => left.nextDueDate.localeCompare(right.nextDueDate));
+
+  const pendingCandidates = recurringCandidates
+    .filter((candidate) => candidate.isNew)
+    .sort((left, right) => right.confidence - left.confidence || left.nextDueDate.localeCompare(right.nextDueDate));
 
   if (pending.length > 0) {
     const lead = pending[0];
@@ -183,6 +211,22 @@ function buildRecurringInsight(recurringExpenses: readonly RecurringExpenseRecor
       key: "recurring-pending",
       source: "generated",
       title: `${pending.length} recurring ${pluralize(pending.length, "signal")} need confirmation`,
+      tone: "warn"
+    };
+  }
+
+  if (pendingCandidates.length > 0) {
+    const lead = pendingCandidates[0];
+    return {
+      body: `${lead.merchant} is a detected recurring candidate. It is excluded from confirmed recurring load until reviewed.`,
+      evidenceLabel: "View transaction evidence",
+      evidenceTransactionIds: lead.transactions.map((transaction) => transaction.id),
+      generatedAt: null,
+      href: transactionsHref({ q: lead.merchant }),
+      id: buildGeneratedId("recurring-candidate-pending"),
+      key: "recurring-candidate-pending",
+      source: "generated",
+      title: `${pendingCandidates.length} recurring ${pluralize(pendingCandidates.length, "candidate")} pending`,
       tone: "warn"
     };
   }
@@ -559,7 +603,8 @@ export function buildDashboardInsightCards(input: DashboardInsightInput): Dashbo
   const generated = [
     buildPeerReviewInsight(input.reviewItems),
     buildReviewBacklogInsight(input.reviewItems),
-    buildRecurringInsight(input.recurringExpenses),
+    buildRecurringPriceChangeInsight(input.recurringCandidates ?? []),
+    buildRecurringInsight(input.recurringExpenses, input.recurringCandidates ?? []),
     ...buildSpendingInsights(input.spendingTransactions ?? input.recentTransactions, now),
     buildSyncInsight(input.accounts, now),
     buildBalanceTrendInsight(input.trend),

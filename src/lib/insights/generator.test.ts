@@ -7,6 +7,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { BalanceTrendPoint } from "@/lib/finance/balances";
+import type { RecurringCandidate } from "@/lib/recurring";
 import { buildDashboardInsightCards } from ".";
 
 const userId = "11111111-1111-1111-1111-111111111111";
@@ -146,6 +147,55 @@ export const insightGeneratorRecurringFixture = [
   }
 ] satisfies readonly RecurringExpenseRecord[];
 
+export const insightGeneratorRecurringCandidateFixture = [
+  {
+    accountId: "account-checking",
+    amount: 13.99,
+    amountEvidence: {
+      averageAmount: 11.33,
+      baselineAmount: 10,
+      maxAmount: 13.99,
+      minAmount: 10,
+      score: 0.82,
+      toleranceAmount: 2
+    },
+    cadence: "monthly",
+    cadenceEvidence: {
+      averageIntervalDays: 30,
+      intervalDays: [31, 30],
+      matchingIntervals: 2,
+      score: 0.95,
+      totalIntervals: 2
+    },
+    category: "Media",
+    categoryId: "category-media",
+    confidence: 0.88,
+    existingRecurringId: "rec-streaming",
+    firstChargeDate: "2026-03-05",
+    flags: [],
+    id: "candidate-streaming",
+    isNew: false,
+    lastAmount: 13.99,
+    lastChargeDate: "2026-05-05",
+    lastTransactionId: "tx-streaming",
+    merchant: "Streaming Co",
+    nextDueDate: "2026-06-05",
+    normalizedMerchant: "streaming",
+    occurrenceCount: 3,
+    priceChange: {
+      changedAt: "2026-05-05",
+      currentAmount: 13.99,
+      deltaAmount: 3.99,
+      deltaRatio: 0.4,
+      previousAmount: 10,
+      source: "known-recurring",
+      transactionId: "tx-streaming"
+    },
+    transactions: [],
+    userId
+  }
+] satisfies readonly RecurringCandidate[];
+
 export const insightGeneratorPersistedFixture = [
   {
     actionLabel: "See breakdown",
@@ -171,6 +221,7 @@ export const insightGeneratorCardsFixture = buildDashboardInsightCards({
   now: new Date("2026-05-06T20:00:00.000Z"),
   persistedInsights: insightGeneratorPersistedFixture,
   recentTransactions: insightGeneratorTransactionsFixture,
+  recurringCandidates: insightGeneratorRecurringCandidateFixture,
   recurringExpenses: insightGeneratorRecurringFixture,
   reviewItems: insightGeneratorReviewFixture,
   trend: insightGeneratorTrendFixture
@@ -187,6 +238,11 @@ function assertInsightGeneratorFixture(cards: ReturnType<typeof buildDashboardIn
   const recurringCard = requireCard(cards, "recurring-pending");
   if (!recurringCard.body.includes("pending confirmation") || !recurringCard.href.includes("Substack")) {
     throw new Error("Expected pending recurring insight to link back to transaction evidence.");
+  }
+
+  const priceChangeCard = requireCard(cards, "recurring-price-change");
+  if (!priceChangeCard.body.includes("$10.00 to $13.99") || priceChangeCard.href !== "/transactions/tx-streaming") {
+    throw new Error("Expected known recurring price changes to become actionable insight cards.");
   }
 
   const persistedCard = requireCard(cards, "software-costs-up");

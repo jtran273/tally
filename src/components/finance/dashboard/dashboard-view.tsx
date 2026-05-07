@@ -18,20 +18,25 @@ import {
   TrendingDown,
   TrendingUp,
   TriangleAlert,
+  WalletCards,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
+import type { MonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
+import type { RecurringCandidate } from "@/lib/recurring";
 
 interface DashboardViewProps {
   accounts: AccountRecord[];
+  cashflowRunway: MonthlyCashflowRunwaySummary;
   dataError?: string;
   groups: AccountGroup[];
   insightCards: DashboardInsightCard[];
   isConfigured: boolean;
   isSignedIn: boolean;
   recentTransactions: TransactionRecord[];
+  recurringCandidates: RecurringCandidate[];
   recurringExpenses: RecurringExpenseRecord[];
   reviewItems: ReviewQueueItem[];
   snapshotCount: number;
@@ -170,6 +175,11 @@ function syncLabel(summary: SyncSummary) {
   if (summary.status === "never") return "Never synced";
   if (summary.status === "stale") return `${summary.staleCount + summary.neverSyncedCount} stale`;
   return "Fresh";
+}
+
+function monthProgressLabel(summary: MonthlyCashflowRunwaySummary) {
+  if (!summary.isPartialMonth) return "Full month";
+  return `Day ${summary.monthElapsedDays} of ${summary.monthTotalDays}`;
 }
 
 function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: BalanceTrendPoint[] }) {
@@ -525,11 +535,59 @@ function ReviewQueue({ reviewItems }: { reviewItems: ReviewQueueItem[] }) {
   );
 }
 
-function RecurringPanel({ recurringExpenses }: { recurringExpenses: RecurringExpenseRecord[] }) {
-  const monthlyTotal = recurringExpenses
-    .filter((expense) => expense.status === "active" || expense.status === "pending")
-    .reduce((sum, expense) => sum + expense.amount, 0);
+function CashflowRunwayPanel({ summary }: { summary: MonthlyCashflowRunwaySummary }) {
+  const netTone = summary.currentMonth.netCashflow >= 0 ? "positive" : "negative";
+  const syncText = syncLabel(summary.syncSummary);
 
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.eyebrow}>Cashflow</div>
+          <h2>Monthly runway</h2>
+        </div>
+        <span className={styles.compactValue}>{monthProgressLabel(summary)}</span>
+      </div>
+      <div className={styles.cashflowGrid}>
+        <div>
+          <span>Income</span>
+          <strong className={styles.positive}>{formatMoney(summary.currentMonth.income)}</strong>
+        </div>
+        <div>
+          <span>Spending</span>
+          <strong className={styles.negative}>{formatMoney(summary.currentMonth.spending)}</strong>
+        </div>
+        <div>
+          <span>Net cashflow</span>
+          <strong className={styles[netTone]}>{formatSignedMoney(summary.currentMonth.netCashflow)}</strong>
+        </div>
+        <div>
+          <span>Confirmed recurring load</span>
+          <strong>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</strong>
+        </div>
+      </div>
+      <div className={styles.cashflowMeta}>
+        <span>
+          Pending recurring signals: {summary.pendingRecurringCount.toLocaleString("en-US")}
+          {summary.pendingRecurringCount > 0 ? ` (${formatMoney(summary.pendingRecurringMonthlyLoad)}/mo not confirmed)` : ""}
+        </span>
+        <span>{syncText} sync - {formatRelativeTime(summary.syncSummary.latestSyncedAt)}</span>
+      </div>
+    </section>
+  );
+}
+
+function RecurringPanel({
+  recurringCandidates,
+  recurringExpenses,
+  summary
+}: {
+  recurringCandidates: RecurringCandidate[];
+  recurringExpenses: RecurringExpenseRecord[];
+  summary: MonthlyCashflowRunwaySummary;
+}) {
+  const visibleRecurring = recurringExpenses.filter((expense) => expense.status !== "dismissed");
+  const priceChange = summary.priceChanges[0];
   return (
     <section className={styles.card}>
       <div className={styles.cardHead}>
@@ -537,13 +595,19 @@ function RecurringPanel({ recurringExpenses }: { recurringExpenses: RecurringExp
           <div className={styles.eyebrow}>Recurring</div>
           <h2>Upcoming fixed costs</h2>
         </div>
-        <span className={styles.compactValue}>{formatMoney(monthlyTotal)}</span>
+        <span className={styles.compactValue}>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</span>
       </div>
-      {recurringExpenses.length === 0 ? (
+      {priceChange ? (
+        <div className={styles.inlineAlert}>
+          <TriangleAlert size={14} aria-hidden />
+          <span>{priceChange.merchant} changed from {formatMoney(priceChange.previousAmount)} to {formatMoney(priceChange.currentAmount)}</span>
+        </div>
+      ) : null}
+      {visibleRecurring.length === 0 ? (
         <div className={styles.emptyMini}>No persisted recurring expenses yet.</div>
       ) : (
         <div className={styles.itemList}>
-          {recurringExpenses.slice(0, 4).map((expense) => (
+          {visibleRecurring.slice(0, 4).map((expense) => (
             <div className={styles.transactionRow} key={expense.id}>
               <div>
                 <strong>{expense.merchant}</strong>
@@ -554,6 +618,11 @@ function RecurringPanel({ recurringExpenses }: { recurringExpenses: RecurringExp
           ))}
         </div>
       )}
+      {recurringCandidates.filter((candidate) => candidate.isNew).length > 0 ? (
+        <div className={styles.pendingNote}>
+          {recurringCandidates.filter((candidate) => candidate.isNew).length.toLocaleString("en-US")} detected candidates are pending and excluded from confirmed load.
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -593,12 +662,14 @@ function InsightsPanel({ insights }: { insights: DashboardInsightCard[] }) {
 
 export function DashboardView({
   accounts,
+  cashflowRunway,
   dataError,
   groups,
   insightCards,
   isConfigured,
   isSignedIn,
   recentTransactions,
+  recurringCandidates,
   recurringExpenses,
   reviewItems,
   snapshotCount,
@@ -658,12 +729,24 @@ export function DashboardView({
             <SummaryCard detail={`${reviewItems.length} open review items`} icon={Inbox} label="Review" value={reviewItems.length.toLocaleString("en-US")} />
           </section>
 
+          <section className={styles.summaryGrid} aria-label="Monthly cashflow summary">
+            <SummaryCard detail={monthProgressLabel(cashflowRunway)} icon={TrendingUp} label="Income" tone="positive" value={formatMoney(cashflowRunway.currentMonth.income)} />
+            <SummaryCard detail={`${cashflowRunway.currentMonth.transactionCount} month transactions`} icon={TrendingDown} label="Spending" tone="negative" value={formatMoney(cashflowRunway.currentMonth.spending)} />
+            <SummaryCard detail="Income minus spending" icon={WalletCards} label="Net cashflow" tone={cashflowRunway.currentMonth.netCashflow >= 0 ? "positive" : "negative"} value={formatSignedMoney(cashflowRunway.currentMonth.netCashflow)} />
+            <SummaryCard detail={`${cashflowRunway.pendingRecurringCount} pending signals excluded`} icon={Clock3} label="Confirmed recurring" value={formatMoney(cashflowRunway.confirmedRecurringMonthlyLoad)} />
+          </section>
+
           <AccountGroups groups={groups} />
 
           <div className={styles.contentGrid}>
+            <CashflowRunwayPanel summary={cashflowRunway} />
             <RecentTransactions transactions={recentTransactions} />
             <ReviewQueue reviewItems={reviewItems} />
-            <RecurringPanel recurringExpenses={recurringExpenses} />
+            <RecurringPanel
+              recurringCandidates={recurringCandidates}
+              recurringExpenses={recurringExpenses}
+              summary={cashflowRunway}
+            />
             <InsightsPanel insights={insightCards} />
           </div>
         </>
