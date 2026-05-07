@@ -1,14 +1,20 @@
 import type { AiSuggestionProviderKind } from "@/lib/ai/types";
-import type { CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { AuditEventRow, CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import {
   getReviewReasonCopy,
   isPeerToPeerReview,
   REVIEW_REASON_ORDER
 } from "@/lib/review/reasons";
+import {
+  buildAiBulkPreviewMetrics,
+  deriveReviewProductivityMetrics,
+  type ReviewProductivityGroup
+} from "@/lib/review/productivity-metrics";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
 import {
   ArrowRight,
+  BarChart3,
   CheckCircle2,
   CircleDollarSign,
   Pencil,
@@ -25,6 +31,8 @@ import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
   aiProviderKind: AiSuggestionProviderKind;
+  allReviewItems: ReviewQueueItem[];
+  auditEvents: AuditEventRow[];
   categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
@@ -114,24 +122,6 @@ function groupedReviewItems(reviewItems: ReviewQueueItem[]) {
     .filter((group) => group.items.length > 0);
 }
 
-function aiSuggestionCounts(reviewItems: ReviewQueueItem[]) {
-  return reviewItems.reduce(
-    (sum, item) => {
-      if (isPeerToPeerReview(item.reason)) {
-        sum.manualOnly += 1;
-        return sum;
-      }
-
-      sum.aiEligible += 1;
-      if (hasReviewSuggestionValue(normalizeReviewSuggestion(item.aiSuggestion))) {
-        sum.acceptReady += 1;
-      }
-      return sum;
-    },
-    { acceptReady: 0, aiEligible: 0, manualOnly: 0 }
-  );
-}
-
 function SummaryCard({
   detail,
   icon: Icon,
@@ -151,6 +141,67 @@ function SummaryCard({
       </span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function formatGroupList(groups: ReviewProductivityGroup[]) {
+  if (groups.length === 0) return "No history yet";
+  return groups.map((group) => `${group.label} (${group.count})`).join(", ");
+}
+
+function ProductivityPanel({
+  metrics,
+  preview
+}: {
+  metrics: ReturnType<typeof deriveReviewProductivityMetrics>;
+  preview: ReturnType<typeof buildAiBulkPreviewMetrics>;
+}) {
+  const skippedCount = Object.values(preview.skipped).reduce((sum, count) => sum + count, 0);
+
+  return (
+    <section className={styles.aiCleanupPanel} aria-label="AI review productivity metrics">
+      <div>
+        <div className={styles.eyebrow}>
+          <BarChart3 size={13} aria-hidden />
+          Review productivity
+          <span className={styles.providerBadge}>Safe metrics</span>
+        </div>
+        <h2>{metrics.savingsScore.toLocaleString("en-US")} reviews saved or avoided</h2>
+        <p>
+          Accepted AI: {metrics.acceptedSuggestions.toLocaleString("en-US")}.
+          Dismissed: {metrics.dismissedSuggestions.toLocaleString("en-US")}.
+          Edited manually: {metrics.editedReviews.toLocaleString("en-US")}.
+          Repeated avoided: {metrics.repeatedReviewsAvoided.toLocaleString("en-US")}.
+        </p>
+
+        <div className={styles.rawContext}>
+          <div>
+            <span>Reason</span>
+            <strong>{formatGroupList(metrics.byReason)}</strong>
+          </div>
+          <div>
+            <span>Category</span>
+            <strong>{formatGroupList(metrics.byCategory)}</strong>
+          </div>
+          <div>
+            <span>Merchant</span>
+            <strong>{formatGroupList(metrics.byMerchant)}</strong>
+          </div>
+          <div>
+            <span>Provider</span>
+            <strong>{formatGroupList(metrics.byProvider)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.lockedPanel}>
+        <strong>{preview.acceptReady.toLocaleString("en-US")} safe bulk candidates</strong>
+        <span>
+          Preview only: {preview.eligible.toLocaleString("en-US")} AI-eligible open reviews checked,
+          {` ${skippedCount.toLocaleString("en-US")} skipped`} for peer-to-peer, missing, or stale suggestions.
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -339,6 +390,8 @@ function EmptyQueue() {
 
 export function ReviewQueueView({
   aiProviderKind,
+  allReviewItems,
+  auditEvents,
   categories,
   dataError,
   isConfigured,
@@ -349,7 +402,11 @@ export function ReviewQueueView({
   const canShowQueue = isConfigured && isSignedIn && !dataError;
   const totals = calculateTotals(reviewItems, transactions);
   const groups = groupedReviewItems(reviewItems);
-  const aiCounts = aiSuggestionCounts(reviewItems);
+  const productivityMetrics = deriveReviewProductivityMetrics({
+    auditEvents,
+    reviewItems: allReviewItems
+  });
+  const aiPreview = buildAiBulkPreviewMetrics(reviewItems, categories);
 
   return (
     <div className={styles.shell}>
@@ -407,16 +464,20 @@ export function ReviewQueueView({
                 {aiProviderKind === "openai" ? "OpenAI" : "Mock"}
               </span>
             </div>
-            <h2>{aiCounts.acceptReady.toLocaleString("en-US")} accept-ready suggestions</h2>
+            <h2>{aiPreview.acceptReady.toLocaleString("en-US")} accept-ready suggestions</h2>
             <p>
-              {aiCounts.aiEligible.toLocaleString("en-US")} review items can receive merchant,
+              {aiPreview.eligible.toLocaleString("en-US")} review items can receive merchant,
               category, intent, and recurring suggestions from the configured provider.
-              {aiCounts.manualOnly > 0 ? ` ${aiCounts.manualOnly.toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}
+              {aiPreview.skipped["peer-to-peer"] > 0 ? ` ${aiPreview.skipped["peer-to-peer"].toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}
               {aiProviderKind !== "openai" ? " Suggestions are deterministic (no OPENAI_API_KEY configured)." : ""}
             </p>
           </div>
-          <ReviewAiActions disabled={aiCounts.aiEligible === 0} />
+          <ReviewAiActions disabled={aiPreview.eligible === 0} />
         </section>
+      ) : null}
+
+      {canShowQueue ? (
+        <ProductivityPanel metrics={productivityMetrics} preview={aiPreview} />
       ) : null}
 
       <ReasonGuide />
