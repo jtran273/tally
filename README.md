@@ -25,6 +25,7 @@ This separation is the core of the product. It lets the app preserve evidence, e
 - Visibility: private
 - Default branch: `main`
 - Deployment target: Vercel
+- Production URL: `https://personal-finance-os-jtran273s-projects.vercel.app`
 - Database/Auth: Supabase
 - Financial data provider: Plaid
 - Optional AI provider: OpenAI

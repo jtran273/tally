@@ -6,7 +6,9 @@ Ledger is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an o
 
 - **Local development**: `npm run dev`, Plaid Sandbox, `.env.local`, local demo mode allowed.
 - **Vercel Preview**: branch deployments for testing Supabase and Plaid Sandbox or limited real-data checks.
-- **Vercel Production**: canonical HTTPS app URL, Supabase Auth, Plaid intended environment, demo mode disabled.
+- **Vercel Production**: `https://personal-finance-os-jtran273s-projects.vercel.app`, Supabase Auth, Plaid intended environment, demo mode disabled.
+
+Use the stable production alias above for day-to-day access. Vercel also creates per-deployment URLs such as `personal-finance-<hash>-jtran273s-projects.vercel.app`; those are immutable build artifacts, not the main app URL.
 
 ## Required Services
 
@@ -49,7 +51,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_PRODUCTION_SECRET` | Server only | Production yes | Used before `PLAID_SECRET` when `PLAID_ENV=production`. |
 | `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Keep stable. |
 | `PLAID_ENV` | Server only | Yes | `sandbox` or `production`. Use `sandbox` locally. |
-| `PLAID_REDIRECT_URI` | Server only | Production OAuth yes | Exact HTTPS redirect URI registered in Plaid. Usually `https://your-app/settings`. |
+| `PLAID_REDIRECT_URI` | Server only | Production OAuth yes | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled outside production and disabled in production. Do not enable on real production. |
@@ -111,7 +113,7 @@ Local OAuth redirects may require registering the local URI in Plaid. Non-OAuth 
 2. Set `PLAID_ENV=production`.
 3. Set `PLAID_PRODUCTION_SECRET`.
 4. Set `PLAID_TOKEN_ENCRYPTION_KEY`.
-5. Set `PLAID_REDIRECT_URI=https://your-domain/settings`.
+5. Set `PLAID_REDIRECT_URI=https://personal-finance-os-jtran273s-projects.vercel.app/settings`.
 6. Register the exact redirect URI in the Plaid dashboard.
 7. Start with one institution.
 8. Confirm import, manual sync, disconnect, and no duplicate transactions.
@@ -153,7 +155,7 @@ OpenAI suggestions are advisory and do not write records autonomously.
 `next.config.ts` applies security headers globally. After deploy, verify:
 
 ```bash
-curl -I https://your-domain
+curl -I https://personal-finance-os-jtran273s-projects.vercel.app
 ```
 
 Expected headers include:
