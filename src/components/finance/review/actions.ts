@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   getReviewQueueItemById,
   listCategories,
+  listMerchantRules,
   recordAuditEvent,
   replaceTransactionSplits,
   resolveReviewItem,
@@ -256,7 +257,10 @@ export async function generateAiReviewSuggestionsAction(
       ? Math.max(1, Math.min(80, Math.floor(requestedLimit)))
       : 40;
     const { client, userId } = await getFinanceContext();
-    const categories = await listCategories(client, userId);
+    const [categories, merchantRules] = await Promise.all([
+      listCategories(client, userId),
+      listMerchantRules(client, userId)
+    ]);
     const reviewRows = expectRows<ReviewItemRow>(
       await client
         .from("review_items")
@@ -297,6 +301,7 @@ export async function generateAiReviewSuggestionsAction(
     const updates = await attachAiSuggestionsToReviewItems(reviewTargets, {
       categories,
       maxSuggestions: limit,
+      merchantRules,
       rawRows,
       suggestionService: createConfiguredTransactionSuggestionService(),
       transactions

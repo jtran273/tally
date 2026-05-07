@@ -13,6 +13,7 @@ import type {
   InsightRow,
   InstitutionRow,
   Json,
+  MerchantRuleRow,
   RawTransactionRow,
   RecurringExpenseRecord,
   RecurringExpenseRow,
@@ -448,6 +449,15 @@ export async function listAccounts(client: FinanceSupabaseClient, userId: string
 export async function listCategories(client: FinanceSupabaseClient, userId: string): Promise<CategoryRecord[]> {
   const result = await client.from("categories").select("*").eq("user_id", userId).order("name");
   return expectData(result, "List categories").map(toCategoryRecord);
+}
+
+export async function listMerchantRules(client: FinanceSupabaseClient, userId: string): Promise<MerchantRuleRow[]> {
+  const result = await client
+    .from("merchant_rules")
+    .select("*")
+    .eq("user_id", userId)
+    .order("priority");
+  return expectData(result, "List merchant rules");
 }
 
 export async function getCategoryById(

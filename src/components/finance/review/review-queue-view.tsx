@@ -1,3 +1,4 @@
+import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import type { CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import {
@@ -23,6 +24,7 @@ import { ReviewItemActions } from "./review-item-actions";
 import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
+  aiProviderKind: AiSuggestionProviderKind;
   categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
@@ -336,6 +338,7 @@ function EmptyQueue() {
 }
 
 export function ReviewQueueView({
+  aiProviderKind,
   categories,
   dataError,
   isConfigured,
@@ -398,12 +401,18 @@ export function ReviewQueueView({
       {canShowQueue && reviewItems.length > 0 ? (
         <section className={styles.aiCleanupPanel} aria-label="AI review cleanup">
           <div>
-            <div className={styles.eyebrow}>AI cleanup</div>
+            <div className={styles.eyebrow}>
+              AI cleanup
+              <span className={styles.providerBadge} title={aiProviderKind === "openai" ? "OpenAI is configured" : "Using deterministic fallback — set OPENAI_API_KEY to enable AI suggestions"}>
+                {aiProviderKind === "openai" ? "OpenAI" : "Mock"}
+              </span>
+            </div>
             <h2>{aiCounts.acceptReady.toLocaleString("en-US")} accept-ready suggestions</h2>
             <p>
               {aiCounts.aiEligible.toLocaleString("en-US")} review items can receive merchant,
               category, intent, and recurring suggestions from the configured provider.
               {aiCounts.manualOnly > 0 ? ` ${aiCounts.manualOnly.toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}
+              {aiProviderKind !== "openai" ? " Suggestions are deterministic (no OPENAI_API_KEY configured)." : ""}
             </p>
           </div>
           <ReviewAiActions disabled={aiCounts.aiEligible === 0} />

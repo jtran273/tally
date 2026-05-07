@@ -7,6 +7,7 @@ import {
   type ReviewQueueItem,
   type TransactionRecord
 } from "@/lib/db";
+import { getAiProviderStatus } from "@/lib/ai/server";
 import { getFinanceServerContext } from "@/lib/demo/server";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function ReviewPage() {
   let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
+  const aiStatus = getAiProviderStatus();
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
@@ -42,6 +44,7 @@ export default async function ReviewPage() {
 
   return (
     <ReviewQueueView
+      aiProviderKind={aiStatus.activeKind}
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
