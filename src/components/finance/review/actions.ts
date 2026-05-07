@@ -9,13 +9,18 @@ import {
   resolveReviewItem,
   updateTransactionEnrichment,
   type CategoryRecord,
+  type EnrichedTransactionRow,
   type FinanceSupabaseClient,
   type Json,
+  type RawTransactionRow,
+  type ReviewItemRow,
   type ReviewQueueItem,
   type TransactionIntent,
   type TransactionSplitMutationInput,
   type TransactionSplitRecord
 } from "@/lib/db";
+import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
+import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
 import { isSpendingIntent } from "@/lib/finance/spending";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import {
@@ -23,7 +28,7 @@ import {
   hasReviewSuggestionValue,
   type NormalizedReviewSuggestion
 } from "@/lib/review/suggestions";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getFinanceServerContext } from "@/lib/demo/server";
 
 export interface ReviewActionState {
   error?: string;
@@ -156,21 +161,22 @@ function primarySplit(splits: ParsedSplit[]) {
 }
 
 async function getFinanceContext() {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) throw new Error("Supabase is not configured.");
-
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser();
-
-  if (error) throw new Error(`Unable to verify Supabase session: ${error.message}`);
-  if (!user) throw new Error("Sign in to update review items.");
+  const context = await getFinanceServerContext();
+  if (!context.client) throw new Error("Supabase is not configured.");
+  if (!context.userId) throw new Error("Sign in to update review items.");
 
   return {
-    client: supabase as unknown as FinanceSupabaseClient,
-    userId: user.id
+    client: context.client,
+    userId: context.userId
   };
+}
+
+function expectRows<T>(
+  result: { data: T[] | null; error: { message: string } | null },
+  label: string
+) {
+  if (result.error) throw new Error(`${label}: ${result.error.message}`);
+  return result.data ?? [];
 }
 
 async function getOpenReviewItem(
@@ -189,6 +195,12 @@ function revalidateReviewPaths(transactionId: string) {
   revalidatePath("/review");
   revalidatePath("/transactions");
   revalidatePath(`/transactions/${transactionId}`);
+}
+
+function revalidateReviewListPaths() {
+  revalidatePath("/dashboard");
+  revalidatePath("/review");
+  revalidatePath("/transactions");
 }
 
 function suggestionFieldSummary(suggestion: NormalizedReviewSuggestion) {
@@ -232,6 +244,91 @@ function transactionAuditData(item: ReviewQueueItem): Record<string, Json> {
     note: item.transaction.note,
     reviewedAt: item.transaction.reviewedAt
   };
+}
+
+export async function generateAiReviewSuggestionsAction(
+  _state: ReviewActionState,
+  formData: FormData
+): Promise<ReviewActionState> {
+  try {
+    const requestedLimit = Number(cleanString(formData.get("limit"), 8) || "40");
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(80, Math.floor(requestedLimit)))
+      : 40;
+    const { client, userId } = await getFinanceContext();
+    const categories = await listCategories(client, userId);
+    const reviewRows = expectRows<ReviewItemRow>(
+      await client
+        .from("review_items")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("status", "open")
+        .order("created_at", { ascending: true })
+        .limit(limit),
+      "Load open review items for AI cleanup"
+    );
+
+    const reviewTargets = reviewRows.filter((row) => !isPeerToPeerReview(row.reason));
+    if (reviewTargets.length === 0) {
+      return { message: "No AI-ready review items are open." };
+    }
+
+    const transactionIds = [...new Set(reviewTargets.map((row) => row.enriched_transaction_id))];
+    const transactions = expectRows<EnrichedTransactionRow>(
+      await client
+        .from("enriched_transactions")
+        .select("*")
+        .eq("user_id", userId)
+        .in("id", transactionIds),
+      "Load review transactions for AI cleanup"
+    );
+    const rawIds = [...new Set(transactions.map((transaction) => transaction.raw_transaction_id))];
+    const rawRows = rawIds.length > 0
+      ? expectRows<RawTransactionRow>(
+        await client
+          .from("raw_transactions")
+          .select("*")
+          .eq("user_id", userId)
+          .in("id", rawIds),
+        "Load raw Plaid rows for AI cleanup"
+      )
+      : [];
+
+    const updates = await attachAiSuggestionsToReviewItems(reviewTargets, {
+      categories,
+      maxSuggestions: limit,
+      rawRows,
+      suggestionService: createConfiguredTransactionSuggestionService(),
+      transactions
+    });
+
+    let updatedCount = 0;
+    for (const { item } of updates) {
+      if (!item.id) continue;
+
+      const result = await client
+        .from("review_items")
+        .update({
+          ai_suggestion: item.ai_suggestion,
+          confidence: item.confidence ?? null
+        })
+        .eq("user_id", userId)
+        .eq("id", item.id)
+        .eq("status", "open")
+        .select("id");
+
+      updatedCount += expectRows<{ id: string }>(result, "Store AI review suggestion").length;
+    }
+
+    revalidateReviewListPaths();
+    return {
+      message: updatedCount === 0
+        ? "No new AI suggestions were stored."
+        : `Stored ${updatedCount.toLocaleString("en-US")} AI cleanup ${updatedCount === 1 ? "suggestion" : "suggestions"}.`
+    };
+  } catch (error) {
+    return errorState(error);
+  }
 }
 
 export async function acceptReviewSuggestionAction(

@@ -17,6 +17,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
+import { ReviewAiActions } from "./review-ai-actions";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import styles from "./review.module.css";
@@ -109,6 +110,24 @@ function groupedReviewItems(reviewItems: ReviewQueueItem[]) {
       reason
     }))
     .filter((group) => group.items.length > 0);
+}
+
+function aiSuggestionCounts(reviewItems: ReviewQueueItem[]) {
+  return reviewItems.reduce(
+    (sum, item) => {
+      if (isPeerToPeerReview(item.reason)) {
+        sum.manualOnly += 1;
+        return sum;
+      }
+
+      sum.aiEligible += 1;
+      if (hasReviewSuggestionValue(normalizeReviewSuggestion(item.aiSuggestion))) {
+        sum.acceptReady += 1;
+      }
+      return sum;
+    },
+    { acceptReady: 0, aiEligible: 0, manualOnly: 0 }
+  );
 }
 
 function SummaryCard({
@@ -327,6 +346,7 @@ export function ReviewQueueView({
   const canShowQueue = isConfigured && isSignedIn && !dataError;
   const totals = calculateTotals(reviewItems, transactions);
   const groups = groupedReviewItems(reviewItems);
+  const aiCounts = aiSuggestionCounts(reviewItems);
 
   return (
     <div className={styles.shell}>
@@ -373,6 +393,21 @@ export function ReviewQueueView({
         <div className={styles.errorNotice} role="alert">
           {dataError}
         </div>
+      ) : null}
+
+      {canShowQueue && reviewItems.length > 0 ? (
+        <section className={styles.aiCleanupPanel} aria-label="AI review cleanup">
+          <div>
+            <div className={styles.eyebrow}>AI cleanup</div>
+            <h2>{aiCounts.acceptReady.toLocaleString("en-US")} accept-ready suggestions</h2>
+            <p>
+              {aiCounts.aiEligible.toLocaleString("en-US")} review items can receive merchant,
+              category, intent, and recurring suggestions from the configured provider.
+              {aiCounts.manualOnly > 0 ? ` ${aiCounts.manualOnly.toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}
+            </p>
+          </div>
+          <ReviewAiActions disabled={aiCounts.aiEligible === 0} />
+        </section>
       ) : null}
 
       <ReasonGuide />

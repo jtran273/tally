@@ -97,10 +97,17 @@ kbd {
 }
 
 .page {
+  display: flex;
   min-width: 0;
   flex: 1;
+  align-items: flex-start;
+  justify-content: center;
   overflow: auto;
   padding: 28px 36px 60px;
+}
+
+.page > * {
+  width: min(100%, var(--content-max));
 }
 
 .sidebar {

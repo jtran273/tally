@@ -28,7 +28,7 @@
   overflow-wrap: anywhere;
   font-family: inherit;
   font-size: 30px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -67,6 +67,48 @@
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
   background: color-mix(in oklab, var(--neg) 7%, var(--surface));
   color: var(--neg);
+}
+
+.aiCleanupPanel {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--line));
+  border-radius: 8px;
+  padding: 16px;
+  background: color-mix(in oklab, var(--accent) 5%, var(--surface));
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.aiCleanupPanel h2 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.aiCleanupPanel p {
+  max-width: 760px;
+  margin: 7px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.aiCleanupForm {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .reasonGuide {
@@ -236,7 +278,7 @@
   margin: 3px 0 0;
   font-family: inherit;
   font-size: 27px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.05;
 }
 
@@ -674,7 +716,7 @@
   margin: 6px 0 0;
   font-family: inherit;
   font-size: 28px;
-  font-weight: 400;
+  font-weight: 700;
 }
 
 .emptyState p {
@@ -711,6 +753,14 @@
 }
 
 @media (max-width: 760px) {
+  .aiCleanupPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .aiCleanupForm {
+    justify-content: stretch;
+  }
+
   .summaryGrid,
   .reasonGuide,
   .reviewCardHead,

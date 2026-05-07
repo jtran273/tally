@@ -86,6 +86,14 @@ test("dashboard trend range controls update the change-over-time view", async ({
   expect(chartBox?.width ?? 0).toBeGreaterThan(250);
   expect(chartBox?.height ?? 0).toBeGreaterThan(100);
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
+  await expect(page.getByText("Selected point")).toBeVisible();
+  await expect(page.getByText("Y-axis scale")).toBeVisible();
+
+  const trendPoints = chart.locator("g[role='button']");
+  const trendPointCount = await trendPoints.count();
+  expect(trendPointCount).toBeGreaterThan(1);
+  await trendPoints.nth(Math.min(1, trendPointCount - 1)).click();
+  await expect(page.getByText("Point change")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 

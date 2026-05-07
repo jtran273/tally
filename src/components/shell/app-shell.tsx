@@ -176,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Sparkles size={14} aria-hidden />
               <span>AI suggestions</span>
             </div>
-            <div className="ai-card-body">Review and recurring tabs load from persisted Plaid transaction data.</div>
+            <div className="ai-card-body">Review cleanup can draft merchant, category, and intent updates for approval.</div>
             <Link className="ai-card-link" href={routeHref.review}>Open review queue</Link>
           </div>
           <Link className="user-row" href={routeHref.settings}>

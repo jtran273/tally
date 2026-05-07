@@ -13,6 +13,7 @@ import type {
   AccountRow,
   AccountType,
   BalanceSnapshotRow,
+  CategoryRecord,
   CategoryRow,
   Database,
   EnrichedTransactionRow,
@@ -22,6 +23,8 @@ import type {
   RawTransactionRow,
   TransactionIntent
 } from "../db/types";
+import { createConfiguredTransactionSuggestionService } from "../ai/server";
+import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { getPlaidConfig } from "./config";
 import { getPlaidClient } from "./client";
@@ -949,6 +952,18 @@ async function loadCategoryRows(client: FinanceSupabaseClient, userId: string) {
   return expectData(result, "Load categories for Plaid enrichment") as CategoryRow[];
 }
 
+function toCategoryRecordForAi(row: CategoryRow): CategoryRecord {
+  return {
+    color: row.color,
+    icon: row.icon,
+    id: row.id,
+    isSystem: row.is_system,
+    name: row.name,
+    parentId: row.parent_id,
+    userId: row.user_id
+  };
+}
+
 function buildEnrichedTransactionInsert({
   categoryByName,
   raw,
@@ -1039,7 +1054,10 @@ async function seedEnrichedTransactions({
     changedRows.push(...expectData(result, "Seed Plaid enriched transactions") as unknown as EnrichedTransactionRow[]);
   }
 
-  await insertGeneratedReviewItems(client, changedRows);
+  await insertGeneratedReviewItems(client, changedRows, {
+    categoryRows,
+    rawRows
+  });
 
   return {
     enrichedTransactionsInserted: inserts.length,
@@ -1047,13 +1065,41 @@ async function seedEnrichedTransactions({
   };
 }
 
+function applyReviewSuggestionUpdates(
+  reviewItems: ReviewItemInsert[],
+  updates: Awaited<ReturnType<typeof attachAiSuggestionsToReviewItems<ReviewItemInsert>>>
+) {
+  if (updates.length === 0) return reviewItems;
+
+  const suggestionByKey = new Map(updates.map(({ item }) => [
+    `${item.enriched_transaction_id}:${item.reason}`,
+    item
+  ]));
+
+  return reviewItems.map((item) => {
+    const suggested = suggestionByKey.get(`${item.enriched_transaction_id}:${item.reason}`);
+    return suggested ?? item;
+  });
+}
+
 async function insertGeneratedReviewItems(
   client: FinanceSupabaseClient,
-  transactions: EnrichedTransactionRow[]
+  transactions: EnrichedTransactionRow[],
+  context: {
+    categoryRows: CategoryRow[];
+    rawRows: RawTransactionRow[];
+  }
 ) {
   const reviewItems: ReviewItemInsert[] = transactions.flatMap(buildTransactionReviewItems);
+  const aiUpdates = await attachAiSuggestionsToReviewItems(reviewItems, {
+    categories: context.categoryRows.map(toCategoryRecordForAi),
+    rawRows: context.rawRows,
+    suggestionService: createConfiguredTransactionSuggestionService(),
+    transactions
+  });
+  const reviewItemsWithSuggestions = applyReviewSuggestionUpdates(reviewItems, aiUpdates);
 
-  for (const batch of chunk(reviewItems, UPSERT_CHUNK_SIZE)) {
+  for (const batch of chunk(reviewItemsWithSuggestions, UPSERT_CHUNK_SIZE)) {
     if (batch.length === 0) continue;
 
     const result = await client
@@ -1065,6 +1111,25 @@ async function insertGeneratedReviewItems(
       .select("id");
 
     expectData(result, "Insert generated Plaid review items");
+  }
+
+  for (const update of aiUpdates) {
+    const item = update.item;
+    if (!item.enriched_transaction_id || !item.reason) continue;
+
+    const result = await client
+      .from("review_items")
+      .update({
+        ai_suggestion: item.ai_suggestion,
+        confidence: item.confidence ?? null
+      })
+      .eq("user_id", item.user_id)
+      .eq("enriched_transaction_id", item.enriched_transaction_id)
+      .eq("reason", item.reason)
+      .eq("status", "open")
+      .select("id");
+
+    expectData(result, "Refresh generated Plaid review AI suggestions");
   }
 }
 

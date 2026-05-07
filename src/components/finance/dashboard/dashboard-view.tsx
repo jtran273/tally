@@ -135,6 +135,17 @@ function latestTrendDelta(trend: readonly BalanceTrendPoint[]) {
   return { amount, percent };
 }
 
+function pointDelta(trend: readonly BalanceTrendPoint[], index: number) {
+  if (index <= 0 || trend.length < 2) return null;
+
+  const previous = trend[index - 1];
+  const current = trend[index];
+  const amount = current.netWorth - previous.netWorth;
+  const percent = previous.netWorth === 0 ? 0 : (amount / Math.abs(previous.netWorth)) * 100;
+
+  return { amount, percent };
+}
+
 function filterTrendByRange(trend: readonly BalanceTrendPoint[], rangeKey: TrendRangeKey) {
   const range = trendRangeOptions.find((option) => option.key === rangeKey);
   if (!range?.days || trend.length < 2) return [...trend];
@@ -163,6 +174,7 @@ function syncLabel(summary: SyncSummary) {
 
 function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: BalanceTrendPoint[] }) {
   const [rangeKey, setRangeKey] = useState<TrendRangeKey>("6M");
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const selectedTrend = useMemo(() => filterTrendByRange(trend, rangeKey), [rangeKey, trend]);
   const delta = latestTrendDelta(selectedTrend);
   const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
@@ -183,8 +195,8 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
   const min = Math.min(...values);
   const range = max - min || 1;
   const width = 720;
-  const height = 180;
-  const padding = { bottom: 24, left: 8, right: 8, top: 14 };
+  const height = 220;
+  const padding = { bottom: 34, left: 64, right: 22, top: 18 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const points = selectedTrend.map((point, index) => {
@@ -202,36 +214,93 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
       : `${line} L${points[points.length - 1][0].toFixed(1)},${height - padding.bottom} L${points[0][0].toFixed(1)},${height - padding.bottom} Z`;
   const start = selectedTrend[0];
   const end = selectedTrend[selectedTrend.length - 1];
-  const gridLines = [0, 0.5, 1].map((position) => padding.top + position * plotHeight);
+  const selectedIndex = activeIndex === null
+    ? selectedTrend.length - 1
+    : Math.min(activeIndex, selectedTrend.length - 1);
+  const activePoint = selectedTrend[selectedIndex];
+  const activeCoords = points[selectedIndex];
+  const activeDelta = pointDelta(selectedTrend, selectedIndex);
+  const activeDeltaClass = activeDelta
+    ? activeDelta.amount < 0
+      ? styles.negative
+      : styles.positive
+    : undefined;
+  const gridLines = [
+    { label: max, y: padding.top },
+    { label: min + range / 2, y: padding.top + plotHeight / 2 },
+    { label: min, y: padding.top + plotHeight }
+  ];
+  const sourceLabel = hasSnapshotTrend
+    ? `${snapshotCount.toLocaleString("en-US")} balance snapshots available`
+    : hasTransactionTrend
+      ? "Estimated from posted non-transfer transaction history"
+      : "Snapshot trend unavailable; using current persisted balances";
+  const activeSourceLabel = activePoint.source === "snapshot"
+    ? "Daily Plaid balance snapshot"
+    : activePoint.source === "transaction"
+      ? "Estimated from posted transactions"
+      : "Current persisted balance";
 
   return (
     <div className={styles.trendPanel}>
-      <div className={styles.trendControls} aria-label="Balance trend range">
-        {trendRangeOptions.map((option) => (
-          <button
-            aria-pressed={rangeKey === option.key}
-            className={rangeKey === option.key ? styles.trendRangeActive : undefined}
-            key={option.key}
-            onClick={() => setRangeKey(option.key)}
-            type="button"
-          >
-            {option.label}
-          </button>
-        ))}
+      <div className={styles.trendPanelHead}>
+        <div className={styles.trendControls} aria-label="Balance trend range">
+          {trendRangeOptions.map((option) => (
+            <button
+              aria-pressed={rangeKey === option.key}
+              className={rangeKey === option.key ? styles.trendRangeActive : undefined}
+              key={option.key}
+              onClick={() => {
+                setRangeKey(option.key);
+                setActiveIndex(null);
+              }}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.trendSummary}>
+          <span className={delta ? delta.amount < 0 ? styles.negative : styles.positive : undefined}>
+            <DeltaIcon size={14} aria-hidden />
+            {delta ? (
+              <>
+                {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%)
+              </>
+            ) : (
+              "No period delta yet"
+            )}
+          </span>
+          <span>{selectedTrend.length.toLocaleString("en-US")} {selectedTrend.length === 1 ? "point" : "points"}</span>
+        </div>
       </div>
-      <div className={styles.trendSummary}>
-        <span className={delta ? delta.amount < 0 ? styles.negative : styles.positive : undefined}>
-          <DeltaIcon size={14} aria-hidden />
-          {delta ? (
-            <>
-              {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%)
-            </>
-          ) : (
-            "No period delta yet"
-          )}
-        </span>
-        <span>{selectedTrend.length.toLocaleString("en-US")} {selectedTrend.length === 1 ? "point" : "points"}</span>
+
+      <div className={styles.trendInspector} aria-live="polite">
+        <div>
+          <span>Selected point</span>
+          <strong>{formatLongDate(activePoint.date)}</strong>
+          <em>{formatMoney(activePoint.netWorth)}</em>
+        </div>
+        <div>
+          <span>Point change</span>
+          <strong className={activeDeltaClass}>
+            {activeDelta ? (
+              <>
+                {formatSignedMoney(activeDelta.amount)} ({activeDelta.percent >= 0 ? "+" : ""}{activeDelta.percent.toFixed(1)}%)
+              </>
+            ) : (
+              "Range start"
+            )}
+          </strong>
+          <em>{activeSourceLabel}</em>
+        </div>
+        <div>
+          <span>Y-axis scale</span>
+          <strong>{formatMoney(min, true)} to {formatMoney(max, true)}</strong>
+          <em>{formatLongDate(start.date)} to {formatLongDate(end.date)}</em>
+        </div>
       </div>
+
       <div className={styles.trend}>
         <svg aria-label="Net worth balance trend" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
         <defs>
@@ -240,51 +309,88 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {gridLines.map((y) => (
-          <line
-            key={y}
-            stroke="var(--line-2)"
-            strokeDasharray="4 6"
-            strokeWidth="1"
-            x1={padding.left}
-            x2={width - padding.right}
-            y1={y}
-            y2={y}
-          />
+        {gridLines.map(({ label, y }) => (
+          <g key={`${label}-${y}`}>
+            <line
+              stroke="var(--line-2)"
+              strokeDasharray="4 6"
+              strokeWidth="1"
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={y}
+              y2={y}
+            />
+            <text className={styles.trendScaleLabel} x="4" y={y + 4}>
+              {formatMoney(label, true)}
+            </text>
+          </g>
         ))}
         {area ? <path d={area} fill="url(#dashboardTrendFill)" /> : null}
         <path d={line} fill="none" stroke="var(--accent)" strokeLinecap="round" strokeWidth="2" />
-        {points.map(([x, y], index) => (
-          <circle
-            cx={x}
-            cy={y}
-            fill="var(--surface)"
-            key={`${selectedTrend[index].date}-${index}`}
-            r={index === 0 || index === points.length - 1 ? "4.5" : "3"}
-            stroke="var(--accent)"
-            strokeWidth="1.5"
+        {activeCoords ? (
+          <line
+            className={styles.trendCrosshair}
+            x1={activeCoords[0]}
+            x2={activeCoords[0]}
+            y1={padding.top}
+            y2={height - padding.bottom}
+          />
+        ) : null}
+        {points.map(([x, y], index) => {
+          const point = selectedTrend[index];
+          const isActive = index === selectedIndex;
+          return (
+          <g
+            aria-label={`${formatLongDate(point.date)} net worth ${formatMoney(point.netWorth)}`}
+            className={styles.trendPoint}
+            key={`${point.date}-${index}`}
+            onClick={() => setActiveIndex(index)}
+            onFocus={() => setActiveIndex(index)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              setActiveIndex(index);
+            }}
+            onMouseEnter={() => setActiveIndex(index)}
+            role="button"
+            tabIndex={0}
           >
-            <title>{`${formatLongDate(selectedTrend[index].date)}: ${formatMoney(selectedTrend[index].netWorth)}`}</title>
-          </circle>
-        ))}
+            <circle
+              cx={x}
+              cy={y}
+              fill="transparent"
+              r="11"
+            />
+            <circle
+              className={isActive ? styles.activeTrendDot : styles.trendDot}
+              cx={x}
+              cy={y}
+              fill="var(--surface)"
+              r={isActive ? "6" : index === 0 || index === points.length - 1 ? "4.5" : "3"}
+              stroke="var(--accent)"
+              strokeWidth={isActive ? "2" : "1.5"}
+            >
+              <title>{`${formatLongDate(point.date)}: ${formatMoney(point.netWorth)}`}</title>
+            </circle>
+          </g>
+        );
+        })}
+        <text className={styles.trendDateLabel} x={padding.left} y={height - 8}>{formatDate(start.date)}</text>
+        <text className={styles.trendDateLabel} textAnchor="end" x={width - padding.right} y={height - 8}>{formatDate(end.date)}</text>
       </svg>
       </div>
       <div className={styles.trendAxis}>
         <span>
-          <strong>{formatLongDate(start.date)}</strong>
-          {formatMoney(start.netWorth, true)}
+          <strong>Range start</strong>
+          {formatLongDate(start.date)} - {formatMoney(start.netWorth, true)}
         </span>
         <span>
-          <strong>{selectedTrend.length > 1 ? formatLongDate(end.date) : "Current"}</strong>
-          {formatMoney(end.netWorth, true)}
+          <strong>Range end</strong>
+          {formatLongDate(end.date)} - {formatMoney(end.netWorth, true)}
         </span>
       </div>
       <div className={styles.trendSource}>
-        {hasSnapshotTrend
-          ? `${snapshotCount.toLocaleString("en-US")} balance snapshots available`
-          : hasTransactionTrend
-            ? "Estimated from posted non-transfer transaction history"
-          : "Snapshot trend unavailable; using current persisted balances"}
+        {sourceLabel}
       </div>
     </div>
   );

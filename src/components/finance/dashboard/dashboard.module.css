@@ -135,9 +135,18 @@
   margin-top: 18px;
 }
 
+.trendPanelHead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
 .trendControls {
   display: inline-flex;
   max-width: 100%;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border: 1px solid var(--line);
@@ -173,9 +182,8 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
-  margin-top: 12px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -191,6 +199,48 @@
   font-weight: 500;
 }
 
+.trendInspector {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.15fr) minmax(180px, 1fr) minmax(220px, 1.1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.trendInspector div {
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: var(--surface-2);
+}
+
+.trendInspector span,
+.trendInspector em {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.trendInspector strong {
+  display: block;
+  min-width: 0;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trendInspector em {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .trend {
   margin-top: 10px;
 }
@@ -198,7 +248,10 @@
 .trend svg {
   display: block;
   width: 100%;
-  height: 180px;
+  height: clamp(210px, 18vw, 280px);
+  overflow: visible;
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 62%, transparent), transparent 72%);
 }
 
 .trendAxis,
@@ -237,6 +290,31 @@
   font-family: inherit;
   font-size: 11px;
   font-weight: 500;
+}
+
+.trendScaleLabel,
+.trendDateLabel {
+  fill: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendCrosshair {
+  stroke: color-mix(in oklab, var(--accent) 55%, var(--line));
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.trendPoint {
+  cursor: pointer;
+  outline: none;
+}
+
+.trendPoint:hover .trendDot,
+.trendPoint:focus-visible .trendDot,
+.activeTrendDot {
+  filter: drop-shadow(0 2px 5px rgba(47, 111, 78, 0.22));
 }
 
 .emptyTrend {
@@ -503,7 +581,8 @@
   }
 
   .heroTop,
-  .cardHead {
+  .cardHead,
+  .trendPanelHead {
     flex-direction: column;
     align-items: stretch;
   }
@@ -519,7 +598,16 @@
   }
 
   .trend svg {
-    height: 150px;
+    height: 210px;
+  }
+
+  .trendScaleLabel,
+  .trendDateLabel {
+    display: none;
+  }
+
+  .trendInspector {
+    grid-template-columns: 1fr;
   }
 
   .trendSummary,
