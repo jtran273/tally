@@ -85,6 +85,7 @@ export default async function DashboardPage() {
     recentTransactions,
     recurringExpenses,
     reviewItems,
+    spendingTransactions: trendTransactions,
     trend,
     now
   });

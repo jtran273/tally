@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -19,7 +20,11 @@ jobs:
   app-checks:
     name: Ledger app checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      CI: true
+      ENABLE_DEMO_MODE: true
+      NEXT_TELEMETRY_DISABLED: 1
 
     steps:
       - name: Check out repository
@@ -37,11 +42,20 @@ jobs:
       - name: Run lint
         run: npm run lint
 
-      - name: Run tests and typecheck
-        run: npm test
+      - name: Run typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test:unit
 
       - name: Build app
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        run: npm run test:e2e
 
       - name: Audit production dependencies
         run: npm audit --omit=dev

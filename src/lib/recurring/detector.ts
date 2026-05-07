@@ -13,7 +13,7 @@ import type {
 
 const DAY_MS = 86_400_000;
 
-const DEFAULT_ALLOWED_CADENCES = ["weekly", "monthly", "annual"] as const satisfies readonly DetectedRecurringCadence[];
+const DEFAULT_ALLOWED_CADENCES = ["weekly", "biweekly", "monthly", "quarterly", "annual"] as const satisfies readonly DetectedRecurringCadence[];
 
 const DEFAULT_OPTIONS = {
   minOccurrences: 2,
@@ -24,7 +24,9 @@ const DEFAULT_OPTIONS = {
   amountToleranceRatio: 0.15,
   amountToleranceAmount: 2,
   priceChangeThresholdRatio: 0.1,
-  priceChangeThresholdAmount: 1
+  priceChangeThresholdAmount: 1,
+  includeInactiveCandidates: false,
+  inactiveCandidateGraceIntervals: 2.5
 };
 
 const CADENCE_CONFIG = {
@@ -34,11 +36,23 @@ const CADENCE_CONFIG = {
     maxDays: 10,
     toleranceDays: 4
   },
+  biweekly: {
+    expectedDays: 14,
+    minDays: 11,
+    maxDays: 18,
+    toleranceDays: 5
+  },
   monthly: {
     expectedDays: 30.4375,
     minDays: 21,
     maxDays: 45,
     toleranceDays: 12
+  },
+  quarterly: {
+    expectedDays: 91.3125,
+    minDays: 75,
+    maxDays: 110,
+    toleranceDays: 20
   },
   annual: {
     expectedDays: 365.25,
@@ -69,6 +83,8 @@ interface ResolvedDetectionOptions {
   amountToleranceAmount: number;
   priceChangeThresholdRatio: number;
   priceChangeThresholdAmount: number;
+  includeInactiveCandidates: boolean;
+  inactiveCandidateGraceIntervals: number;
 }
 
 interface DatedTransaction {
@@ -132,8 +148,10 @@ export function normalizeRecurringMerchant(merchant: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/&/g, " and ")
-    .replace(/\b(?:pos|debit|card|purchase|online|recurring|subscription|inc|llc|ltd|corp|co)\b/g, " ")
-    .replace(/\b\d{3,}\b/g, " ")
+    .replace(/\b(?:ach|autopay|bill|card|debit|payment|pos|purchase|recurring|subscription|visa|web|online|inc|llc|ltd|corp|co)\b/g, " ")
+    .replace(/\b(?:com|net|org)\b/g, " ")
+    .replace(/\b(?:ca|ny|tx|wa|az|fl|il|ma|nj|pa|us|usa)\b/g, " ")
+    .replace(/\b\d+[a-z]?\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
@@ -169,7 +187,12 @@ function resolveOptions(options: RecurringDetectionOptions): ResolvedDetectionOp
     amountToleranceRatio: options.amountToleranceRatio ?? DEFAULT_OPTIONS.amountToleranceRatio,
     amountToleranceAmount: options.amountToleranceAmount ?? DEFAULT_OPTIONS.amountToleranceAmount,
     priceChangeThresholdRatio: options.priceChangeThresholdRatio ?? DEFAULT_OPTIONS.priceChangeThresholdRatio,
-    priceChangeThresholdAmount: options.priceChangeThresholdAmount ?? DEFAULT_OPTIONS.priceChangeThresholdAmount
+    priceChangeThresholdAmount: options.priceChangeThresholdAmount ?? DEFAULT_OPTIONS.priceChangeThresholdAmount,
+    includeInactiveCandidates: options.includeInactiveCandidates ?? DEFAULT_OPTIONS.includeInactiveCandidates,
+    inactiveCandidateGraceIntervals: Math.max(
+      1,
+      options.inactiveCandidateGraceIntervals ?? DEFAULT_OPTIONS.inactiveCandidateGraceIntervals
+    )
   };
 }
 
@@ -257,9 +280,10 @@ function evaluateCadence({
   const first = rows[0];
   const last = rows[rows.length - 1];
   if (!first || !last) return null;
+  if (!existingRecurring && isInactiveCandidate(last, cadence, asOfDate, options)) return null;
 
   const isNew = existingRecurring === null || existingRecurring.isNew;
-  const flags = buildFlags(isNew, amountEvaluation.priceChange, last.transaction.id);
+  const flags = buildFlags(isNew, amountEvaluation.priceChange, confidence, last.transaction.id);
   const transactions = rows.map(toCandidateTransaction);
   const candidate: RecurringCandidate = {
     id: candidateId(userId, normalizedMerchant, cadence),
@@ -438,6 +462,7 @@ function priceChangeSignal(
 function buildFlags(
   isNew: boolean,
   priceChange: RecurringPriceChangeSignal | null,
+  confidence: number,
   lastTransactionId: string
 ): RecurringCandidateFlag[] {
   const flags: RecurringCandidateFlag[] = [];
@@ -456,6 +481,14 @@ function buildFlags(
       severity: "warning",
       transactionIds: [priceChange.transactionId],
       priceChange
+    });
+  }
+
+  if (confidence < 0.78) {
+    flags.push({
+      kind: "needs-review",
+      severity: "warning",
+      transactionIds: [lastTransactionId]
     });
   }
 
@@ -506,8 +539,29 @@ function resolveAsOfDate(asOfDate: string | undefined, rows: readonly DatedTrans
 
 function addCadence(date: string, cadence: DetectedRecurringCadence): string {
   if (cadence === "weekly") return addDays(date, 7);
+  if (cadence === "biweekly") return addDays(date, 14);
+  if (cadence === "quarterly") return addMonths(date, 3);
   if (cadence === "annual") return addMonths(date, 12);
   return addMonths(date, 1);
+}
+
+function isInactiveCandidate(
+  last: DatedTransaction,
+  cadence: DetectedRecurringCadence,
+  asOfDate: string | undefined,
+  options: ResolvedDetectionOptions
+): boolean {
+  if (options.includeInactiveCandidates) return false;
+
+  const asOfDay = asOfDate ? dateToDay(asOfDate) : null;
+  if (asOfDay === null) return false;
+
+  const config = CADENCE_CONFIG[cadence];
+  const inactiveAfterDays = Math.max(
+    config.maxDays,
+    config.expectedDays * options.inactiveCandidateGraceIntervals
+  );
+  return asOfDay - last.day > inactiveAfterDays;
 }
 
 function addDays(date: string, days: number): string {

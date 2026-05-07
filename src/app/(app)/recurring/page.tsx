@@ -60,7 +60,6 @@ export default async function RecurringPage() {
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
       recurringExpenses={recurringExpenses}
-      transactions={transactions}
     />
   );
 }

@@ -23,10 +23,18 @@
 ## Verification
 
 - [ ] `npm run lint`
+- [ ] `npm run typecheck`
 - [ ] `npm test`
+- [ ] `npm run test:e2e`
 - [ ] `npm run build`
 - [ ] `npm audit --omit=dev`
 - [ ] `git diff --check`
+
+## Agent Handoff
+
+- [ ] Scope stayed limited to the requested behavior.
+- [ ] Unrelated local changes were not reverted or bundled.
+- [ ] Any skipped checks, missing env vars, or follow-up risks are called out.
 
 ## Screenshots Or Notes
 

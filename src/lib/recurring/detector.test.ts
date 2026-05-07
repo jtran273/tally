@@ -1,7 +1,8 @@
 import {
   buildConfirmRecurringPayload,
   buildDismissRecurringPayload,
-  detectRecurringCandidates
+  detectRecurringCandidates,
+  normalizeRecurringMerchant
 } from ".";
 import type {
   KnownRecurringExpense,
@@ -34,9 +35,13 @@ function tx(
 }
 
 export const recurringDetectionFixture = [
-  tx("weekly-1", "Coffee Club", "2026-04-01", -9.99),
-  tx("weekly-2", "Coffee Club", "2026-04-08", -9.99),
-  tx("weekly-3", "Coffee Club", "2026-04-15", -9.99),
+  tx("weekly-1", "Coffee Club", "2026-05-01", -9.99),
+  tx("weekly-2", "Coffee Club", "2026-05-08", -9.99),
+  tx("weekly-3", "Coffee Club", "2026-05-15", -9.99),
+  tx("biweekly-1", "NYTimes 12345 WEB", "2026-03-13", -6),
+  tx("biweekly-2", "NYTimes WEB PAYMENT", "2026-03-27", -6),
+  tx("biweekly-3", "NYTimes 67890", "2026-04-10", -6),
+  tx("biweekly-4", "NYTimes NY", "2026-04-24", -6),
   tx("monthly-1", "Substack", "2026-03-06", -8),
   {
     ...tx("monthly-2", "Substack", "2026-04-06", -8),
@@ -51,6 +56,13 @@ export const recurringDetectionFixture = [
   tx("monthly-3", "Substack", "2026-05-06", -8),
   tx("annual-1", "Domain Renewal", "2025-05-01", -120),
   tx("annual-2", "Domain Renewal", "2026-05-01", -120),
+  tx("quarterly-1", "Cloud Backup", "2025-08-10", -30),
+  tx("quarterly-2", "Cloud Backup", "2025-11-10", -30),
+  tx("quarterly-3", "Cloud Backup", "2026-02-10", -30),
+  tx("quarterly-4", "Cloud Backup", "2026-05-10", -30),
+  tx("stale-1", "Old Membership", "2025-09-01", -19),
+  tx("stale-2", "Old Membership", "2025-10-01", -19),
+  tx("stale-3", "Old Membership", "2025-11-01", -19),
   tx("streaming-1", "Streaming Co", "2026-03-15", -10, true),
   tx("streaming-2", "Streaming Co", "2026-04-15", -10, true),
   tx("streaming-3", "Streaming Co", "2026-05-15", -13.99, true),
@@ -121,9 +133,13 @@ export const recurringDismissedCandidateAssertions = assertDismissedCandidateFix
   recurringDismissedCandidateFixture
 );
 
+export const recurringNormalizationAssertions = assertMerchantNormalization();
+
 function assertRecurringDetectionFixture(candidates: readonly RecurringCandidate[]): true {
   expectCandidate(candidates, "Coffee Club", "weekly", "new-recurring");
+  expectCandidate(candidates, "NYTimes NY", "biweekly", "new-recurring");
   expectCandidate(candidates, "Substack", "monthly", "new-recurring");
+  expectCandidate(candidates, "Cloud Backup", "quarterly", "new-recurring");
   expectCandidate(candidates, "Domain Renewal", "annual", "new-recurring");
 
   const streaming = requireCandidate(candidates, "Streaming Co");
@@ -133,6 +149,10 @@ function assertRecurringDetectionFixture(candidates: readonly RecurringCandidate
 
   if (candidates.some((candidate) => candidate.merchant === "Grocery Mart")) {
     throw new Error("Expected grocery noise to be excluded from recurring candidates.");
+  }
+
+  if (candidates.some((candidate) => candidate.merchant === "Old Membership")) {
+    throw new Error("Expected stale recurring-looking rows to be suppressed by default.");
   }
 
   return true;
@@ -206,6 +226,18 @@ function assertRecurringPayloadFixtures(
 function assertDismissedCandidateFixture(candidates: readonly RecurringCandidate[]): true {
   if (candidates.some((candidate) => candidate.merchant === "Substack")) {
     throw new Error("Expected dismissed recurring rows to suppress matching detected candidates.");
+  }
+
+  return true;
+}
+
+function assertMerchantNormalization(): true {
+  if (normalizeRecurringMerchant("NYTimes 12345 WEB") !== normalizeRecurringMerchant("NYTimes NY")) {
+    throw new Error("Expected descriptor-heavy merchant names to normalize into one recurring merchant.");
+  }
+
+  if (normalizeRecurringMerchant("Apple.com/Bill 866-712-7753 CA") !== "apple") {
+    throw new Error("Expected card statement descriptors to be removed from recurring merchant names.");
   }
 
   return true;

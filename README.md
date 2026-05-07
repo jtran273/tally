@@ -156,10 +156,14 @@ Run the core checks:
 ```bash
 npm run lint
 npm run typecheck
+npm run test:unit
 npm test
+npm run test:e2e
 npm run build
 npm audit --omit=dev
 ```
+
+`npm test` runs `npm run typecheck` followed by the Node unit tests. `npm run test:e2e` starts the Next.js dev server through Playwright and exercises the seeded demo workspace. Use `PLAYWRIGHT_BASE_URL` to choose a local host or port for that server.
 
 ## Environment Variables
 
@@ -192,6 +196,18 @@ openssl rand -base64 32
 ```
 
 Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
+
+## Demo Mode
+
+Demo mode is intended for local development, screenshots, smoke tests, and CI. It is enabled by default outside production and disabled by default when `NODE_ENV=production` or `VERCEL_ENV=production`.
+
+Set it explicitly when a scripted environment needs the seeded workspace:
+
+```bash
+ENABLE_DEMO_MODE=true npm run test:e2e
+```
+
+Set `ENABLE_DEMO_MODE=false` when testing the real Supabase sign-in path locally. Do not enable demo mode on the production app that contains real financial data.
 
 ## Repository Map
 
@@ -226,8 +242,20 @@ The repo intentionally keeps only the main docs:
 - [SECURITY.md](SECURITY.md): auth, RLS, secret handling, Plaid token protection, headers, and incident response.
 - [DEPLOYMENT.md](DEPLOYMENT.md): Vercel, Supabase, Plaid, OpenAI, and production environment setup.
 - [OPERATIONS.md](OPERATIONS.md): day-to-day checks, smoke tests, troubleshooting, maintenance, and rotation runbooks.
+- [AGENTS.md](AGENTS.md): contribution guardrails for agent-driven PRs and overnight maintenance work.
 
 Historical planning, handoff, and parallel-agent notes were removed because they were useful during buildout but noisy for normal repo use.
+
+## PR Workflow
+
+Before opening a PR:
+
+1. Keep the diff scoped to the requested behavior.
+2. Update docs for setup, environment, security, CI, route, or data-model changes.
+3. Run the relevant checks from [OPERATIONS.md](OPERATIONS.md), or call out any skipped checks and why.
+4. Fill in the PR template with user impact, security/data-safety notes, verification, and agent handoff details.
+
+CI runs install, lint, typecheck, unit tests, build, Playwright smoke tests in demo mode, production dependency audit, and whitespace checks on PRs to `main`.
 
 ## Development Rules
 

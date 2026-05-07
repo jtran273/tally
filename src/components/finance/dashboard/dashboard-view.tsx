@@ -21,7 +21,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
 
 interface DashboardViewProps {
@@ -175,6 +175,19 @@ function syncLabel(summary: SyncSummary) {
 function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: BalanceTrendPoint[] }) {
   const [rangeKey, setRangeKey] = useState<TrendRangeKey>("6M");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(720);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setContainerWidth(Math.round(entry.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const selectedTrend = useMemo(() => filterTrendByRange(trend, rangeKey), [rangeKey, trend]);
   const delta = latestTrendDelta(selectedTrend);
   const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
@@ -194,7 +207,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const width = 720;
+  const width = containerWidth;
   const height = 220;
   const padding = { bottom: 34, left: 64, right: 22, top: 18 };
   const plotWidth = width - padding.left - padding.right;
@@ -301,8 +314,8 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
         </div>
       </div>
 
-      <div className={styles.trend}>
-        <svg aria-label="Net worth balance trend" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+      <div className={styles.trend} ref={containerRef}>
+        <svg aria-label="Net worth balance trend" viewBox={`0 0 ${width} ${height}`}>
         <defs>
           <linearGradient id="dashboardTrendFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.16" />

@@ -1,4 +1,5 @@
 import {
+  buildSpendingInsightSummary,
   isSpendingIntent,
   transactionSpendingAmount,
   transactionSplitRemaining,
@@ -31,6 +32,36 @@ function tx(amount: number, intent: TransactionIntent, splits: TransactionSplitR
   } satisfies Pick<TransactionRecord, "amount" | "intent" | "splits">;
 }
 
+function transaction(
+  input: Pick<TransactionRecord, "amount" | "date" | "id" | "merchant"> & Partial<TransactionRecord>
+): TransactionRecord {
+  return {
+    accountId: "account-checking",
+    accountMask: "1111",
+    accountName: "Checking",
+    category: "Food",
+    categoryId: "category-food",
+    confidence: 0.94,
+    institutionName: "Seed Bank",
+    intent: "personal",
+    note: "",
+    plaidCategory: null,
+    plaidMerchant: null,
+    plaidName: null,
+    plaidTransactionId: null,
+    rawTransactionId: `raw-${input.id}`,
+    recurring: false,
+    reviewedAt: null,
+    reviewItems: [],
+    reviewReason: null,
+    reviewStatus: null,
+    splits: [],
+    status: "posted",
+    userId: "user-1",
+    ...input
+  };
+}
+
 export const spendingFixtureAssertions = assertSpendingFixtures();
 
 function assertSpendingFixtures(): true {
@@ -57,6 +88,88 @@ function assertSpendingFixtures(): true {
 
   if (transactionSpendingAmount(tx(75, "personal", [split("incoming", 75, "personal")])) !== 0) {
     throw new Error("Expected positive transactions to preserve sign semantics and not count as spending.");
+  }
+
+  const summary = buildSpendingInsightSummary([
+    transaction({
+      amount: -400,
+      category: "Travel",
+      categoryId: "category-travel",
+      date: "2026-05-06",
+      id: "tx-flight",
+      merchant: "Delta"
+    }),
+    transaction({
+      amount: -80,
+      category: "Groceries",
+      categoryId: "category-groceries",
+      date: "2026-05-05",
+      id: "tx-groceries",
+      merchant: "Whole Foods"
+    }),
+    transaction({
+      amount: 3000,
+      category: "Income",
+      categoryId: "category-income",
+      date: "2026-05-03",
+      id: "tx-payroll",
+      merchant: "Payroll"
+    }),
+    transaction({
+      amount: -60,
+      category: "Groceries",
+      categoryId: "category-groceries",
+      date: "2026-04-29",
+      id: "tx-last-week",
+      merchant: "Whole Foods"
+    }),
+    transaction({
+      amount: -220,
+      category: "Travel",
+      categoryId: "category-travel",
+      date: "2026-04-12",
+      id: "tx-last-month",
+      merchant: "Delta"
+    }),
+    transaction({
+      amount: -42,
+      category: "Uncategorized",
+      categoryId: null,
+      confidence: 0.44,
+      date: "2026-05-02",
+      id: "tx-review",
+      merchant: "Venmo",
+      reviewStatus: "open"
+    }),
+    transaction({
+      amount: -999,
+      category: "Transfer",
+      categoryId: "category-transfer",
+      date: "2026-05-01",
+      id: "tx-transfer",
+      intent: "transfer",
+      merchant: "Card Payment"
+    })
+  ], { asOfDate: "2026-05-06" });
+
+  if (summary.currentWeek.spending !== 522 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2478) {
+    throw new Error("Expected current week cashflow to count spend, income, and transfer exclusions deterministically.");
+  }
+
+  if (summary.previousWeek.spending !== 60 || summary.currentMonth.topCategories[0]?.label !== "Travel") {
+    throw new Error("Expected previous week and top category spending summaries.");
+  }
+
+  if (summary.previousMonth.spending !== 280 || summary.currentMonth.topMerchants[0]?.label !== "Delta") {
+    throw new Error("Expected previous month and top merchant spending summaries.");
+  }
+
+  if (summary.unusualSpend?.transactionId !== "tx-flight" || summary.unusualSpend.baselineAmount !== 220) {
+    throw new Error("Expected large current-week spend to be compared against merchant history.");
+  }
+
+  if (summary.confidence.openReviewCount !== 1 || summary.confidence.lowConfidenceCount !== 1 || summary.confidence.uncategorizedCount !== 1) {
+    throw new Error("Expected confidence caveats to stay separate from raw transaction facts.");
   }
 
   return true;

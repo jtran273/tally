@@ -59,10 +59,27 @@ export const reviewHeuristicPeerToPeerFixture = reasonsFor(transaction({
   merchant_name: "Venmo Rachel"
 }));
 
+// confidence 0.35 is below VERY_LOW_CONFIDENCE_THRESHOLD (0.4) — flags regardless of category
 export const reviewHeuristicLowConfidenceFixture = reasonsFor(transaction({
-  confidence: 0.5,
+  confidence: 0.35,
   id: "tx-low-confidence",
   merchant_name: "Corner Store"
+}));
+
+// confidence 0.55 is between VERY_LOW (0.4) and LOW (0.65) with a clear category — should NOT flag
+export const reviewHeuristicModerateConfidenceGoodCategoryFixture = reasonsFor(transaction({
+  confidence: 0.55,
+  id: "tx-moderate-confidence",
+  merchant_name: "Trader Joe's"
+}));
+
+// confidence 0.55 with Uncategorized — should flag because category is unclear
+export const reviewHeuristicModerateConfidenceUncategorizedFixture = reasonsFor(transaction({
+  category_id: null,
+  category_name: "Uncategorized",
+  confidence: 0.55,
+  id: "tx-moderate-uncategorized",
+  merchant_name: "Unknown Vendor"
 }));
 
 export const reviewHeuristicLargeTransferFixture = reasonsFor(transaction({
@@ -72,6 +89,14 @@ export const reviewHeuristicLargeTransferFixture = reasonsFor(transaction({
   id: "tx-transfer",
   intent: "transfer",
   merchant_name: "Online Transfer"
+}));
+
+// is_recurring + large amount — should NOT flag as large (expected recurring charge)
+export const reviewHeuristicRecurringLargeFixture = reasonsFor(transaction({
+  amount: -600,
+  id: "tx-recurring-large",
+  is_recurring: true,
+  merchant_name: "Equinox"
 }));
 
 export const reviewHeuristicStaticAssertions = assertReviewHeuristicFixtures();
@@ -93,11 +118,23 @@ function assertReviewHeuristicFixtures(): true {
   }
 
   if (!reviewHeuristicLowConfidenceFixture.includes("low-confidence")) {
-    throw new Error("Expected low-confidence Plaid categories to stay in review.");
+    throw new Error("Expected very-low-confidence Plaid categories to stay in review.");
+  }
+
+  if (reviewHeuristicModerateConfidenceGoodCategoryFixture.includes("low-confidence")) {
+    throw new Error("Expected moderate-confidence transactions with a clear category to skip low-confidence review.");
+  }
+
+  if (!reviewHeuristicModerateConfidenceUncategorizedFixture.includes("low-confidence")) {
+    throw new Error("Expected moderate-confidence transactions with no category to remain in low-confidence review.");
   }
 
   if (reviewHeuristicLargeTransferFixture.includes("large")) {
     throw new Error("Expected large transfer rows not to be reviewed as ordinary spending.");
+  }
+
+  if (reviewHeuristicRecurringLargeFixture.includes("large")) {
+    throw new Error("Expected recurring large charges not to be flagged — they are expected.");
   }
 
   return true;

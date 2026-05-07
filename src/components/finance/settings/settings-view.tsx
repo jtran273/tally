@@ -6,7 +6,10 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { AiProviderStatus } from "@/lib/ai/server";
-import { BrainCircuit, Database, LogOut, Repeat, ShieldCheck, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
+import type { PlaidConnectionSummary } from "@/lib/plaid/service";
+import { buildFirstRunChecklist, type FirstRunChecklistItem } from "@/lib/settings/first-run-checklist";
+import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, LogOut, Repeat, ShieldCheck, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
+import Link from "next/link";
 import styles from "./settings.module.css";
 
 interface SettingsViewProps {
@@ -14,7 +17,9 @@ interface SettingsViewProps {
   aiProviderStatus: AiProviderStatus;
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
+  plaidConnections: PlaidConnectionSummary[];
   recurringExpenses: RecurringExpenseRecord[];
   reviewItems: ReviewQueueItem[];
   transactions: TransactionRecord[];
@@ -54,18 +59,79 @@ function SettingToggle({ checked, detail, label }: { checked: boolean; detail: s
   );
 }
 
+function checklistStatusIcon(item: FirstRunChecklistItem) {
+  if (item.status === "complete") return CheckCircle2;
+  if (item.status === "blocked") return Circle;
+  return Clock3;
+}
+
+function SetupChecklist({ checklist }: { checklist: ReturnType<typeof buildFirstRunChecklist> }) {
+  const progressLabel = `${checklist.completedFinanceItems} of ${checklist.financeItems} finance steps complete`;
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <div className={styles.eyebrow}>First run</div>
+          <h2>Setup checklist</h2>
+        </div>
+        <span className={styles.progressPill}>{progressLabel}</span>
+      </div>
+      <div className={styles.checklist}>
+        {checklist.items.map((item) => {
+          const Icon = checklistStatusIcon(item);
+          return (
+            <div className={styles.checklistItem} key={item.id}>
+              <span className={`${styles.checkIcon} ${styles[`checkIcon${item.status}`]}`}>
+                <Icon size={15} aria-hidden />
+              </span>
+              <div className={styles.checkCopy}>
+                <div className={styles.checkTitleRow}>
+                  <span className={styles.settingTitle}>{item.title}</span>
+                  <span className={`${styles.checkBadge} ${styles[`checkBadge${item.status}`]}`}>
+                    {item.group === "optional" ? "Optional" : item.status}
+                  </span>
+                </div>
+                <div className={styles.settingSub}>{item.detail}</div>
+              </div>
+              <Link className={styles.checkAction} href={item.actionHref}>
+                {item.actionLabel}
+                <ArrowRight size={13} aria-hidden />
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsView({
   accounts,
   aiProviderStatus,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
+  plaidConnections,
   recurringExpenses,
   reviewItems,
   transactions
 }: SettingsViewProps) {
   const spendingTransactions = transactions.filter((transaction) => transaction.amount < 0 && transaction.intent !== "transfer").length;
   const activeRecurring = recurringExpenses.filter((expense) => expense.status === "active" || expense.status === "pending").length;
+  const checklist = buildFirstRunChecklist({
+    accounts,
+    aiProviderStatus,
+    dataError,
+    isConfigured,
+    isDemo,
+    isSignedIn,
+    plaidConnections,
+    recurringExpenses,
+    reviewItems,
+    transactions
+  });
 
   return (
     <div className={styles.shell}>
@@ -86,6 +152,8 @@ export function SettingsView({
           {dataError}
         </div>
       ) : null}
+
+      <SetupChecklist checklist={checklist} />
 
       <section className={styles.panel}>
         <div className={styles.panelHead}>
