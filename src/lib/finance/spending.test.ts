@@ -226,8 +226,8 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected confidence coverage to quantify category cleanup scope.");
   }
 
-  if (summary.confidence.topCleanupActions[0]?.label !== "Uncategorized" || summary.confidence.topCleanupActions[0]?.reasons.join(",") !== "low-confidence,open-review,uncategorized") {
-    throw new Error("Expected cleanup actions to prioritize categories where AI review improves spending clarity.");
+  if (summary.confidence.topCleanupActions[0]?.label !== "Uncategorized: Venmo" || summary.confidence.topCleanupActions[0]?.reasons.join(",") !== "low-confidence,open-review,uncategorized") {
+    throw new Error("Expected cleanup actions to prioritize uncategorized merchants where AI review improves spending clarity.");
   }
 
   return true;

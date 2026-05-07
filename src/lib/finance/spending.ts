@@ -275,12 +275,15 @@ function summarizeConfidence(transactions: readonly TransactionRecord[]): Spendi
     cleanupCandidateAmount = roundMoney(cleanupCandidateAmount + spendingAmount);
     cleanupCandidateCount += 1;
 
-    const key = transaction.categoryId ?? transaction.category;
-    const group = cleanupGroups.get(key) ?? {
+    const groupKey = uncategorized
+      ? `uncategorized:${transaction.merchant.toLowerCase()}`
+      : transaction.categoryId ?? transaction.category;
+    const groupLabel = uncategorized ? `Uncategorized: ${transaction.merchant}` : transaction.category;
+    const group = cleanupGroups.get(groupKey) ?? {
       amount: 0,
       count: 0,
       id: transaction.categoryId,
-      label: transaction.category,
+      label: groupLabel,
       lowConfidenceCount: 0,
       openReviewCount: 0,
       reasons: [],
@@ -295,7 +298,7 @@ function summarizeConfidence(transactions: readonly TransactionRecord[]): Spendi
     group.uncategorizedCount += uncategorized ? 1 : 0;
     group.transactionIds.push(transaction.id);
     group.reasons = [...new Set([...group.reasons, ...reasons])];
-    cleanupGroups.set(key, group);
+    cleanupGroups.set(groupKey, group);
   });
 
   const categoryCoveragePercent = spendingTransactionCount === 0
