@@ -1,6 +1,7 @@
 import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
 import type {
   AccountRecord,
+  CategoryRecord,
   MerchantRuleRow,
   RecurringExpenseRecord,
   ReviewQueueItem,
@@ -10,7 +11,7 @@ import type { AiProviderStatus } from "@/lib/ai/server";
 import type { PlaidConnectionSummary, PlaidPersistedSyncRunSummary } from "@/lib/plaid/service";
 import { buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildFirstRunChecklist, type FirstRunChecklistItem } from "@/lib/settings/first-run-checklist";
-import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, LogOut, Repeat, ShieldCheck, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
+import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, GitBranch, LogOut, Repeat, ShieldCheck, SlidersHorizontal, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import styles from "./settings.module.css";
 
@@ -24,6 +25,7 @@ const moneyFormatter = new Intl.NumberFormat("en-US", {
 interface SettingsViewProps {
   accounts: AccountRecord[];
   aiProviderStatus: AiProviderStatus;
+  categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
   isDemo: boolean;
@@ -161,6 +163,85 @@ function SyncObservabilityPanel({
   );
 }
 
+
+function formatRuleIntent(intent: MerchantRuleRow["intent"]) {
+  return intent ? intent[0].toUpperCase() + intent.slice(1) : "Any intent";
+}
+
+function formatRuleAmount(rule: MerchantRuleRow) {
+  if (rule.min_amount === null && rule.max_amount === null) return "Any amount";
+  if (rule.min_amount !== null && rule.max_amount !== null) {
+    return `${moneyFormatter.format(rule.min_amount)} - ${moneyFormatter.format(rule.max_amount)}`;
+  }
+  if (rule.min_amount !== null) return `Min ${moneyFormatter.format(rule.min_amount)}`;
+  return `Max ${moneyFormatter.format(rule.max_amount ?? 0)}`;
+}
+
+function MerchantRulesPanel({
+  categories,
+  merchantRules
+}: {
+  categories: CategoryRecord[];
+  merchantRules: MerchantRuleRow[];
+}) {
+  const categoryById = new Map(categories.map((category) => [category.id, category.name]));
+  const activeRules = merchantRules.filter((rule) => rule.enabled);
+  const recentRules = [...activeRules]
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+    .slice(0, 6);
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <div className={styles.eyebrow}>Merchant rules</div>
+          <h2>Saved category automation</h2>
+        </div>
+        <span className={`${styles.statusPill} ${activeRules.length > 0 ? styles.statusReady : styles.statusFallback}`}>
+          <GitBranch size={13} aria-hidden />
+          {activeRules.length.toLocaleString("en-US")} active
+        </span>
+      </div>
+      <div className={styles.settingList}>
+        {recentRules.length === 0 ? (
+          <div className={styles.settingRow}>
+            <div>
+              <div className={styles.settingTitle}>No active merchant rules yet</div>
+              <div className={styles.settingSub}>Accept AI cleanup suggestions from Review to save reusable merchant/category rules for future Plaid imports.</div>
+            </div>
+            <Link className={styles.checkAction} href="/review">
+              Open review
+              <ArrowRight size={13} aria-hidden />
+            </Link>
+          </div>
+        ) : (
+          recentRules.map((rule) => {
+            const categoryName = rule.category_id ? categoryById.get(rule.category_id) ?? "Unknown category" : "Any category";
+            const merchantLabel = rule.normalized_merchant_name ?? rule.merchant_pattern;
+
+            return (
+              <div className={styles.ruleRow} key={rule.id}>
+                <span className={styles.ruleIcon}>
+                  <SlidersHorizontal size={14} aria-hidden />
+                </span>
+                <div className={styles.ruleCopy}>
+                  <div className={styles.settingTitle}>{merchantLabel}</div>
+                  <div className={styles.settingSub}>
+                    Matches <strong>{rule.merchant_pattern}</strong> → {categoryName} / {formatRuleIntent(rule.intent)}
+                    {rule.is_recurring !== null ? ` / ${rule.is_recurring ? "recurring" : "not recurring"}` : ""}
+                  </div>
+                  {rule.notes ? <div className={styles.ruleNote}>{rule.notes}</div> : null}
+                </div>
+                <span className={styles.providerMeta}>{formatRuleAmount(rule)}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
+
 function checklistStatusIcon(item: FirstRunChecklistItem) {
   if (item.status === "complete") return CheckCircle2;
   if (item.status === "blocked") return Circle;
@@ -211,6 +292,7 @@ function SetupChecklist({ checklist }: { checklist: ReturnType<typeof buildFirst
 export function SettingsView({
   accounts,
   aiProviderStatus,
+  categories,
   dataError,
   isConfigured,
   isDemo,
@@ -281,6 +363,8 @@ export function SettingsView({
       <PlaidConnectionPanel />
 
       <SyncObservabilityPanel connections={plaidConnections} latestRun={latestPlaidSyncRun} />
+
+      <MerchantRulesPanel categories={categories} merchantRules={merchantRules} />
 
       <section className={styles.panel}>
         <div className={styles.panelHead}>

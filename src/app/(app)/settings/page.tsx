@@ -1,11 +1,13 @@
 import { SettingsView } from "@/components/finance/settings/settings-view";
 import {
   listAccounts,
+  listCategories,
   listMerchantRules,
   listRecurringExpenses,
   listReviewItems,
   listTransactions,
   type AccountRecord,
+  type CategoryRecord,
   type RecurringExpenseRecord,
   type MerchantRuleRow,
   type ReviewQueueItem,
@@ -28,6 +30,7 @@ export default async function SettingsPage() {
   let isConfigured = false;
   let isSignedIn = false;
   let isDemo = false;
+  let categories: CategoryRecord[] = [];
   let plaidConnections: PlaidConnectionSummary[] = [];
   let latestPlaidSyncRun: PlaidPersistedSyncRunSummary | null = null;
   let merchantRules: MerchantRuleRow[] = [];
@@ -43,8 +46,9 @@ export default async function SettingsPage() {
 
   if (context.client && context.userId) {
     try {
-      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections, latestPlaidSyncRun, merchantRules] = await Promise.all([
+      [accounts, categories, recurringExpenses, reviewItems, transactions, plaidConnections, latestPlaidSyncRun, merchantRules] = await Promise.all([
         listAccounts(context.client, context.userId),
+        listCategories(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open"),
         listTransactions(context.client, context.userId, { limit: 5000 }),
@@ -65,6 +69,7 @@ export default async function SettingsPage() {
     <SettingsView
       accounts={accounts}
       aiProviderStatus={getAiProviderStatus()}
+      categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
       isDemo={isDemo}

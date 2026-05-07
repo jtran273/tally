@@ -368,3 +368,56 @@
     width: 100%;
   }
 }
+
+.ruleRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.ruleIcon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 7%, var(--surface));
+  color: var(--accent);
+}
+
+.ruleCopy {
+  min-width: 0;
+}
+
+.ruleCopy .settingSub strong {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+.ruleNote {
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 620px) {
+  .ruleRow {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
