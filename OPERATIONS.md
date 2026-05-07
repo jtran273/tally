@@ -122,6 +122,7 @@ Expected healthy state:
 - Accounts import with balances.
 - Transactions import without duplicates.
 - Revoked items remain visible as revoked and do not sync again.
+- Repairable item errors show safe user copy and a Repair action. Repair opens Plaid Link update mode for the selected item, then syncs only that item.
 
 ## Plaid Sync Troubleshooting
 
@@ -155,6 +156,37 @@ Check:
 - transaction window contains posted transactions,
 - `transaction_cursor` is not corrupt,
 - Vercel logs for safe Plaid error code.
+
+### Connection needs repair
+
+Common repairable item errors include `ITEM_LOGIN_REQUIRED`, `INVALID_CREDENTIALS`, `ITEM_LOCKED`, and `USER_PERMISSION_REVOKED`.
+
+Use `/settings`:
+
+1. Confirm the connection shows a safe "Repair required" message.
+2. Click Repair and complete Plaid Link update mode.
+3. Confirm the app runs a one-item sync after Link succeeds.
+4. Confirm the item returns to active status and `last_successful_sync_at` advances.
+
+If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the institution. Historical transactions should remain preserved in Ledger, but future imports require a new active Plaid item.
+
+### Scheduled sync wiring
+
+Scheduled sync should call the same server-only path as manual sync:
+
+```text
+POST /api/plaid/sync
+```
+
+Recommended production wiring is a Vercel Cron or another trusted scheduler that sends a same-origin request with the app session or a future dedicated server-to-server auth layer. Keep scheduled jobs server-only: never expose Plaid access tokens, service-role keys, transaction cursors, auth headers, or raw provider payloads to the browser or job logs.
+
+For a first scheduled-sync implementation:
+
+1. Reuse `syncPlaidConnections` for all syncable items.
+2. Reuse `syncPlaidItem` for targeted retries or repair follow-up.
+3. Persist only safe item state already supported by `plaid_items`: `status`, `error_code`, generic `error_message`, `last_successful_sync_at`, and `transaction_cursor`.
+4. Log only safe Plaid metadata from `getSafePlaidError`.
+5. Add alerting on failed item count, not provider-sensitive identifiers.
 
 ### Duplicate transactions appear
 
