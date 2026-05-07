@@ -31,6 +31,7 @@ import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchan
 import { getPlaidConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
+import { getPlaidConnectionIssue, type PlaidConnectionIssue } from "./status";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
 
 type InstitutionInsert = Database["public"]["Tables"]["institutions"]["Insert"];
@@ -197,6 +198,7 @@ export interface PlaidConnectionSummary {
   id: string;
   institutionId: string;
   institutionName: string;
+  issue: PlaidConnectionIssue | null;
   lastSuccessfulSyncAt: string | null;
   plaidInstitutionId: string | null;
   plaidItemId: string;
@@ -240,16 +242,23 @@ export interface PlaidLinkTokenResult {
 }
 
 function toConnectionSummary(item: PlaidItemPublicRow, institution?: InstitutionRow): PlaidConnectionSummary {
+  const issue = getPlaidConnectionIssue({
+    errorCode: item.error_code,
+    lastSuccessfulSyncAt: item.last_successful_sync_at,
+    status: item.status
+  });
+
   return {
     availableProducts: item.available_products,
     billedProducts: item.billed_products,
     consentExpiresAt: item.consent_expires_at,
     createdAt: item.created_at,
     errorCode: item.error_code,
-    errorMessage: item.error_message,
+    errorMessage: issue?.detail ?? null,
     id: item.id,
     institutionId: item.institution_id,
     institutionName: institution?.name ?? "Unknown institution",
+    issue,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
     plaidInstitutionId: institution?.plaid_institution_id ?? null,
     plaidItemId: item.plaid_item_id,
@@ -1555,19 +1564,30 @@ async function syncLoadedPlaidItem(
 }
 
 export async function createPlaidLinkToken({
+  client,
+  itemId,
   userEmail,
   userId
 }: {
+  client?: FinanceSupabaseClient;
+  itemId?: string;
   userEmail: string | null;
   userId: string;
 }): Promise<PlaidLinkTokenResult> {
   const config = getPlaidConfig();
   const plaid = getPlaidClient();
+  if (itemId && !client) {
+    throw new Error("Plaid update mode requires a write client.");
+  }
+
+  const item = itemId && client ? await loadPlaidItemForSync(client, userId, itemId) : null;
   const response = await plaid.linkTokenCreate({
+    ...(item
+      ? { access_token: decryptPlaidAccessToken(item.access_token_ciphertext) }
+      : { products: [Products.Transactions] }),
     client_name: "Ledger",
     country_codes: [CountryCode.Us],
     language: "en",
-    products: [Products.Transactions],
     redirect_uri: config.redirectUri ?? undefined,
     user: {
       client_user_id: userId,
@@ -1648,7 +1668,7 @@ export async function syncPlaidItem({
   }
 }
 
-function summarizeSyncRun(items: PlaidSyncItemSummary[]): PlaidSyncRunSummary {
+export function summarizeSyncRun(items: PlaidSyncItemSummary[]): PlaidSyncRunSummary {
   return items.reduce<PlaidSyncRunSummary>(
     (summary, item) => {
       summary.accountsUpserted += item.accountsUpserted;

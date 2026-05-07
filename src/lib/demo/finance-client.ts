@@ -18,6 +18,7 @@ import type {
   ReviewItemRow,
   TransactionSplitRow
 } from "@/lib/db";
+import { getPlaidConnectionIssue } from "@/lib/plaid/status";
 
 export const DEMO_USER_ID = "demo-user";
 
@@ -410,6 +411,11 @@ export function createDemoFinanceClient(): FinanceSupabaseClient {
 export function listDemoPlaidConnections() {
   return plaidItems.map((item) => {
     const institution = institutions.find((row) => row.id === item.institution_id);
+    const issue = getPlaidConnectionIssue({
+      errorCode: item.error_code,
+      lastSuccessfulSyncAt: item.last_successful_sync_at,
+      status: item.status
+    });
 
     return {
       availableProducts: item.available_products,
@@ -417,10 +423,11 @@ export function listDemoPlaidConnections() {
       consentExpiresAt: item.consent_expires_at,
       createdAt: item.created_at,
       errorCode: item.error_code,
-      errorMessage: item.error_message,
+      errorMessage: issue?.detail ?? null,
       id: item.id,
       institutionId: item.institution_id,
       institutionName: institution?.name ?? "Demo institution",
+      issue,
       lastSuccessfulSyncAt: item.last_successful_sync_at,
       plaidInstitutionId: institution?.plaid_institution_id ?? null,
       plaidItemId: item.plaid_item_id,

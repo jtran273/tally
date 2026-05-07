@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench } from "lucide-react";
+import { buildPlaidConnectionsStatusSummary, type PlaidConnectionIssue } from "@/lib/plaid/status";
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,6 +16,7 @@ interface PlaidConnectionSummary {
   errorMessage: string | null;
   id: string;
   institutionName: string;
+  issue: PlaidConnectionIssue | null;
   lastSuccessfulSyncAt: string | null;
   plaidInstitutionId: string | null;
   status: "active" | "error" | "revoked";
@@ -123,6 +125,7 @@ export function PlaidConnectionPanel() {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const openedTokenRef = useRef<string | null>(null);
   const [openRequested, setOpenRequested] = useState(false);
+  const [repairConnectionId, setRepairConnectionId] = useState<string | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("loading");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -143,6 +146,7 @@ export function PlaidConnectionPanel() {
       ? values.sort((a, b) => Date.parse(b) - Date.parse(a))[0]
       : null;
   }, [connections]);
+  const statusSummary = useMemo(() => buildPlaidConnectionsStatusSummary(connections), [connections]);
 
   useEffect(() => {
     let ignore = false;
@@ -169,6 +173,35 @@ export function PlaidConnectionPanel() {
     return () => {
       ignore = true;
     };
+  }, []);
+
+  const syncConnections = useCallback(async (connectionId?: string) => {
+    setRequestState("syncing");
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const data = await fetch("/api/plaid/sync", {
+        body: connectionId ? JSON.stringify({ connectionId }) : undefined,
+        headers: connectionId ? { "Content-Type": "application/json" } : undefined,
+        method: "POST"
+      }).then((response) =>
+        readJson<SyncResponse>(response)
+      );
+
+      setConnections(data.connections);
+      setEnvironment(data.environment);
+      const message = formatSyncRunMessage(data.sync);
+      if (data.sync.failed > 0) {
+        setError(`Sync incomplete. ${message}`);
+      } else {
+        setSuccessMessage(message);
+      }
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.");
+    } finally {
+      setRequestState("idle");
+    }
   }, []);
 
   const exchangePublicToken = useCallback(async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
@@ -212,12 +245,21 @@ export function PlaidConnectionPanel() {
   const { open, ready } = usePlaidLink({
     onExit: (linkError) => {
       setOpenRequested(false);
+      setRepairConnectionId(null);
       if (linkError) {
         setError("Plaid Link closed before the institution was connected.");
       }
     },
     onSuccess: (publicToken, metadata) => {
       setOpenRequested(false);
+      if (repairConnectionId) {
+        const itemId = repairConnectionId;
+        setRepairConnectionId(null);
+        setSuccessMessage("Plaid repair completed. Syncing the refreshed connection.");
+        void syncConnections(itemId);
+        return;
+      }
+
       void exchangePublicToken(publicToken, metadata);
     },
     token: linkToken
@@ -230,11 +272,11 @@ export function PlaidConnectionPanel() {
     open();
   }, [linkToken, open, openRequested, ready]);
 
-  const startPlaidLink = async () => {
+  const startPlaidLink = async (connection?: PlaidConnectionSummary) => {
     setError(null);
     setSuccessMessage(null);
 
-    if (linkToken && ready) {
+    if (!connection && linkToken && ready) {
       open();
       return;
     }
@@ -242,39 +284,20 @@ export function PlaidConnectionPanel() {
     setRequestState("loading");
 
     try {
-      const data = await fetch("/api/plaid/link-token", { method: "POST" }).then((response) =>
+      const data = await fetch("/api/plaid/link-token", {
+        body: connection ? JSON.stringify({ connectionId: connection.id }) : undefined,
+        headers: connection ? { "Content-Type": "application/json" } : undefined,
+        method: "POST"
+      }).then((response) =>
         readJson<LinkTokenResponse>(response)
       );
       openedTokenRef.current = null;
+      setRepairConnectionId(connection?.id ?? null);
       setLinkToken(data.linkToken);
       setOpenRequested(true);
     } catch (tokenError) {
+      setRepairConnectionId(null);
       setError(tokenError instanceof Error ? tokenError.message : "Unable to create a Plaid Link token.");
-    } finally {
-      setRequestState("idle");
-    }
-  };
-
-  const syncConnections = async () => {
-    setRequestState("syncing");
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const data = await fetch("/api/plaid/sync", { method: "POST" }).then((response) =>
-        readJson<SyncResponse>(response)
-      );
-
-      setConnections(data.connections);
-      setEnvironment(data.environment);
-      const message = formatSyncRunMessage(data.sync);
-      if (data.sync.failed > 0) {
-        setError(`Sync incomplete. ${message}`);
-      } else {
-        setSuccessMessage(message);
-      }
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.");
     } finally {
       setRequestState("idle");
     }
@@ -323,13 +346,13 @@ export function PlaidConnectionPanel() {
           <button
             className="btn"
             disabled={isBusy || isSyncing || syncableConnectionCount === 0}
-            onClick={syncConnections}
+            onClick={() => void syncConnections()}
             type="button"
           >
             <RefreshCw size={14} />
             {isSyncing ? "Syncing" : "Sync"}
           </button>
-          <button className="btn btn-primary" disabled={isBusy || isSyncing} onClick={startPlaidLink} type="button">
+          <button className="btn btn-primary" disabled={isBusy || isSyncing} onClick={() => void startPlaidLink()} type="button">
             {requestState === "exchanging" ? <RefreshCw size={14} /> : <Plus size={14} />}
             {requestState === "exchanging" ? "Saving" : "Connect"}
           </button>
@@ -342,7 +365,7 @@ export function PlaidConnectionPanel() {
           <div className="settings-row-sub">Environment</div>
         </div>
         <div className="setting-metric">
-          <div className="setting-metric-value">{connections.length}</div>
+          <div className="setting-metric-value">{statusSummary.syncable}</div>
           <div className="settings-row-sub">Items</div>
         </div>
         <div className="setting-metric">
@@ -359,6 +382,16 @@ export function PlaidConnectionPanel() {
         <div className="plaid-alert warning">
           <AlertTriangle size={14} />
           <span>Production mode imports real account balances and transactions from connected institutions.</span>
+        </div>
+      ) : null}
+
+      {statusSummary.status === "needs_attention" ? (
+        <div className="plaid-alert warning">
+          <AlertTriangle size={14} />
+          <span>
+            {statusSummary.errored} connection{statusSummary.errored === 1 ? "" : "s"} need attention.
+            {statusSummary.needsRepair > 0 ? ` ${statusSummary.needsRepair} can be repaired with Plaid update mode.` : ""}
+          </span>
         </div>
       ) : null}
 
@@ -393,12 +426,26 @@ export function PlaidConnectionPanel() {
                 Connected {formatConnectedDate(connection.createdAt)}
                 {" | "}
                 Last sync {formatSyncDate(connection.lastSuccessfulSyncAt)}
-                {connection.errorCode
-                  ? ` | ${connection.errorCode}${connection.errorMessage ? `: ${connection.errorMessage}` : ""}`
-                  : ""}
               </div>
+              {connection.issue ? (
+                <div className="plaid-issue">
+                  <strong>{connection.issue.title}</strong>
+                  <span>{connection.issue.detail}</span>
+                </div>
+              ) : null}
             </div>
             <span className={`plaid-status ${connection.status}`}>{connection.status}</span>
+            {connection.issue?.action === "repair" ? (
+              <button
+                className="btn plaid-repair"
+                disabled={isBusy || isSyncing}
+                onClick={() => void startPlaidLink(connection)}
+                type="button"
+              >
+                <Wrench size={14} />
+                {repairConnectionId === connection.id ? "Opening" : "Repair"}
+              </button>
+            ) : null}
             {connection.status !== "revoked" ? (
               <button
                 className="btn btn-danger plaid-disconnect"

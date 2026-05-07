@@ -53,9 +53,9 @@ Plaid API
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/plaid/connections` | `GET` | List active/error/revoked Plaid connections for the signed-in user |
-| `/api/plaid/link-token` | `POST` | Create a Plaid Link token for the signed-in user |
+| `/api/plaid/link-token` | `POST` | Create a Plaid Link token for the signed-in user, including update mode for a selected item |
 | `/api/plaid/exchange` | `POST` | Exchange a Plaid public token, persist item metadata, then run initial sync |
-| `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections |
+| `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection |
 | `/api/plaid/connections/[connectionId]` | `DELETE` | Revoke a Plaid item and stop future sync |
 | `/api/export/transactions` | `GET` | Export filtered enriched transactions as CSV |
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
@@ -97,6 +97,8 @@ Every finance table includes `user_id`. RLS policies enforce user ownership.
 7. The app stores the encrypted token in `plaid_items.access_token_ciphertext`.
 8. Initial sync imports accounts, balances, raw transactions, enriched transactions, and generated review items.
 9. Future manual syncs use Plaid transaction cursors for idempotency.
+
+The core sync service can run either all syncable items or a single item by database item id. Route handlers use that single-item path after Plaid Link update mode so repair and relink flows do not depend on browser-side transaction logic.
 
 The access token never leaves server code.
 
@@ -146,6 +148,7 @@ Finance pages use `dynamic = "force-dynamic"` so signed-in user data is read per
 
 - User-facing Plaid errors are generic.
 - Server logs use safe Plaid error metadata from `src/lib/plaid/errors.ts`.
+- Settings uses deterministic status helpers in `src/lib/plaid/status.ts` to translate common Plaid item errors into safe repair, retry, reconnect, or wait copy without exposing provider-sensitive ids.
 - Database query errors are wrapped in `FinanceDbError`.
 - Dashboard and table pages render configured/signed-in/error states instead of crashing where practical.
 

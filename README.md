@@ -69,6 +69,8 @@ Manual sync imports:
 
 Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
 
+Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
+
 ### Review Transactions
 
 The review queue flags transactions that need judgment, including:
