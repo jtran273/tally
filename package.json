@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && node --import tsx --test $(find src -name '*.test.ts' -print)",
+    "test": "npm run typecheck && npm run test:unit",
+    "test:unit": "node --import tsx --test $(find src -name '*.test.ts' -print)",
     "test:e2e": "PLAYWRIGHT_START_SERVER=1 playwright test"
   },
   "dependencies": {

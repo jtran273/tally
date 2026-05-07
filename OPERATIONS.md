@@ -9,13 +9,15 @@ Run these before opening a PR or deploying:
 ```bash
 npm run lint
 npm run typecheck
+npm run test:unit
 npm test
+npm run test:e2e
 npm run build
 npm audit --omit=dev
 git diff --check
 ```
 
-`npm test` runs TypeScript typecheck first, then Node tests under `src/**/*.test.ts`.
+`npm run test:unit` runs Node tests under `src/**/*.test.ts`. `npm test` runs TypeScript typecheck first, then the unit tests. `npm run test:e2e` starts the Next.js dev server through Playwright and uses the seeded demo workspace. Set `PLAYWRIGHT_BASE_URL` to choose the loopback host or port for the Playwright-managed dev server.
 
 ## Start The App Locally
 
@@ -31,6 +33,48 @@ http://localhost:3000
 ```
 
 Local demo mode is available by default unless `ENABLE_DEMO_MODE=false`.
+
+To make demo behavior explicit for automated checks:
+
+```bash
+ENABLE_DEMO_MODE=true npm run test:e2e
+```
+
+To test the real Supabase login path locally:
+
+```bash
+ENABLE_DEMO_MODE=false npm run dev
+```
+
+## CI Workflow
+
+GitHub Actions runs on pushes to `main`, PRs targeting `main`, and manual dispatch.
+
+The CI job performs:
+
+1. `npm ci`
+2. `npm run lint`
+3. `npm run typecheck`
+4. `npm run test:unit`
+5. `npm run build`
+6. `npx playwright install --with-deps chromium`
+7. `npm run test:e2e`
+8. `npm audit --omit=dev`
+9. `git diff --check`
+
+CI sets `ENABLE_DEMO_MODE=true` so Playwright can smoke-test the app without Supabase, Plaid, or OpenAI credentials. If a future test needs real provider access, keep it out of the default CI path unless it uses isolated preview credentials and documents the risk.
+
+## PR Review Workflow
+
+Before requesting review:
+
+1. Check `git status --short --branch` and confirm the diff contains only intended files.
+2. Fill out `.github/pull_request_template.md`.
+3. Include user impact, security/data-safety notes, docs updates, and verification commands.
+4. Call out skipped checks, missing environment variables, or known follow-ups.
+5. For agent-created PRs, include enough handoff context that another agent or reviewer can continue safely.
+
+Reviewers should focus first on secret exposure, user-owned data scoping, RLS/auth behavior, Plaid token handling, route-handler origin checks, and whether unresolved finance data could be treated as trusted budget data.
 
 ## Verify Repository Privacy
 
