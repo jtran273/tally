@@ -6,7 +6,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { AiProviderStatus } from "@/lib/ai/server";
-import type { PlaidConnectionSummary } from "@/lib/plaid/service";
+import type { PlaidConnectionSummary, PlaidPersistedSyncRunSummary } from "@/lib/plaid/service";
 import { buildFirstRunChecklist, type FirstRunChecklistItem } from "@/lib/settings/first-run-checklist";
 import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, LogOut, Repeat, ShieldCheck, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
 import Link from "next/link";
@@ -19,6 +19,7 @@ interface SettingsViewProps {
   isConfigured: boolean;
   isDemo: boolean;
   isSignedIn: boolean;
+  latestPlaidSyncRun: PlaidPersistedSyncRunSummary | null;
   plaidConnections: PlaidConnectionSummary[];
   recurringExpenses: RecurringExpenseRecord[];
   reviewItems: ReviewQueueItem[];
@@ -56,6 +57,97 @@ function SettingToggle({ checked, detail, label }: { checked: boolean; detail: s
         <span />
       </span>
     </div>
+  );
+}
+
+function formatSyncDate(value: string | null) {
+  if (!value) return "Never";
+  return new Date(value).toLocaleString("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short"
+  });
+}
+
+function formatSource(source: PlaidPersistedSyncRunSummary["source"]) {
+  if (source === "initial") return "Initial";
+  if (source === "scheduled") return "Scheduled";
+  return "Manual";
+}
+
+function SyncObservabilityPanel({
+  connections,
+  latestRun
+}: {
+  connections: PlaidConnectionSummary[];
+  latestRun: PlaidPersistedSyncRunSummary | null;
+}) {
+  const connectionById = new Map(connections.map((connection) => [connection.id, connection]));
+  const latestRunStatus = latestRun ? latestRun.status : "never";
+  const latestRunTone = latestRun?.status === "succeeded" ? styles.statusReady : styles.statusFallback;
+  const totalChangedRows = latestRun
+    ? latestRun.rawTransactionsUpserted + latestRun.enrichedTransactionsInserted + latestRun.enrichedTransactionsUpdated + latestRun.transactionsRemoved
+    : 0;
+
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <div className={styles.eyebrow}>Sync observability</div>
+          <h2>Latest Plaid run</h2>
+        </div>
+        <span className={`${styles.statusPill} ${latestRunTone}`}>
+          <Clock3 size={13} aria-hidden />
+          {latestRun ? latestRunStatus : "No run"}
+        </span>
+      </div>
+      <div className={styles.metricGrid}>
+        <SettingMetric icon={Clock3} label="Completed" value={formatSyncDate(latestRun?.completedAt ?? null)} />
+        <SettingMetric icon={Database} label="Changed rows" value={totalChangedRows.toLocaleString("en-US")} />
+        <SettingMetric icon={CheckCircle2} label="Succeeded items" value={(latestRun?.succeeded ?? 0).toLocaleString("en-US")} />
+        <SettingMetric icon={TriangleAlert} label="Failed items" value={(latestRun?.failed ?? 0).toLocaleString("en-US")} />
+      </div>
+      {latestRun ? (
+        <div className={styles.settingList}>
+          <div className={styles.settingRow}>
+            <div>
+              <div className={styles.settingTitle}>{formatSource(latestRun.source)} sync run</div>
+              <div className={styles.settingSub}>
+                {latestRun.totalItems.toLocaleString("en-US")} items, {latestRun.rawTransactionsUpserted.toLocaleString("en-US")} raw upserts, {latestRun.rawTransactionsSkipped.toLocaleString("en-US")} skipped raw rows.
+              </div>
+            </div>
+            <span className={styles.providerMeta}>{latestRun.errorCode ?? "No safe error"}</span>
+          </div>
+          {latestRun.items.map((item) => {
+            const connection = connectionById.get(item.id);
+            return (
+              <div className={styles.settingRow} key={item.id}>
+                <div>
+                  <div className={styles.settingTitle}>{connection?.institutionName ?? "Plaid item"}</div>
+                  <div className={styles.settingSub}>
+                    {item.rawTransactionsUpserted.toLocaleString("en-US")} raw, {(item.enrichedTransactionsInserted + item.enrichedTransactionsUpdated).toLocaleString("en-US")} enriched, {item.transactionsRemoved.toLocaleString("en-US")} removed
+                    {item.errorCode ? ` | ${item.errorCode}` : ""}
+                  </div>
+                </div>
+                <span className={`${styles.statusPill} ${item.status === "succeeded" ? styles.statusReady : styles.statusFallback}`}>
+                  {item.status}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={styles.settingList}>
+          <div className={styles.settingRow}>
+            <div>
+              <div className={styles.settingTitle}>No persisted sync run yet</div>
+              <div className={styles.settingSub}>Manual, initial, and scheduled Plaid syncs will write safe per-run summaries here.</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -113,6 +205,7 @@ export function SettingsView({
   isConfigured,
   isDemo,
   isSignedIn,
+  latestPlaidSyncRun,
   plaidConnections,
   recurringExpenses,
   reviewItems,
@@ -172,6 +265,8 @@ export function SettingsView({
       </section>
 
       <PlaidConnectionPanel />
+
+      <SyncObservabilityPanel connections={plaidConnections} latestRun={latestPlaidSyncRun} />
 
       <section className={styles.panel}>
         <div className={styles.panelHead}>

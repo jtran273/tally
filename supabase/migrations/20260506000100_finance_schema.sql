@@ -13,6 +13,19 @@ create type public.plaid_item_status as enum (
   'revoked'
 );
 
+create type public.plaid_sync_run_source as enum (
+  'initial',
+  'manual',
+  'scheduled'
+);
+
+create type public.plaid_sync_run_status as enum (
+  'running',
+  'succeeded',
+  'partial',
+  'failed'
+);
+
 create type public.transaction_status as enum (
   'pending',
   'posted'
@@ -139,6 +152,79 @@ create table public.accounts (
   constraint accounts_name_not_blank check (length(btrim(name)) > 0),
   constraint accounts_credit_limit_non_negative check (credit_limit is null or credit_limit >= 0),
   constraint accounts_currency_format check (iso_currency_code ~ '^[A-Z]{3}$')
+);
+
+create table public.plaid_sync_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  source public.plaid_sync_run_source not null,
+  status public.plaid_sync_run_status not null default 'running',
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  total_items integer not null default 0,
+  succeeded_items integer not null default 0,
+  failed_items integer not null default 0,
+  accounts_upserted integer not null default 0,
+  balance_snapshots_upserted integer not null default 0,
+  raw_transactions_upserted integer not null default 0,
+  raw_transactions_skipped integer not null default 0,
+  enriched_transactions_inserted integer not null default 0,
+  enriched_transactions_updated integer not null default 0,
+  transactions_removed integer not null default 0,
+  safe_error_code text,
+  safe_error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint plaid_sync_runs_id_user_id_unique unique (id, user_id),
+  constraint plaid_sync_runs_item_counts_non_negative check (
+    total_items >= 0 and succeeded_items >= 0 and failed_items >= 0
+  ),
+  constraint plaid_sync_runs_count_totals_match check (succeeded_items + failed_items <= total_items),
+  constraint plaid_sync_runs_row_counts_non_negative check (
+    accounts_upserted >= 0
+    and balance_snapshots_upserted >= 0
+    and raw_transactions_upserted >= 0
+    and raw_transactions_skipped >= 0
+    and enriched_transactions_inserted >= 0
+    and enriched_transactions_updated >= 0
+    and transactions_removed >= 0
+  )
+);
+
+create table public.plaid_sync_run_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  sync_run_id uuid not null,
+  plaid_item_id uuid not null,
+  status public.plaid_sync_run_status not null,
+  started_at timestamptz not null,
+  completed_at timestamptz not null,
+  accounts_upserted integer not null default 0,
+  balance_snapshots_upserted integer not null default 0,
+  raw_transactions_upserted integer not null default 0,
+  raw_transactions_skipped integer not null default 0,
+  enriched_transactions_inserted integer not null default 0,
+  enriched_transactions_updated integer not null default 0,
+  transactions_removed integer not null default 0,
+  safe_error_code text,
+  safe_error_message text,
+  last_successful_sync_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint plaid_sync_run_items_run_user_fk foreign key (sync_run_id, user_id)
+    references public.plaid_sync_runs (id, user_id) on delete cascade,
+  constraint plaid_sync_run_items_plaid_item_user_fk foreign key (plaid_item_id, user_id)
+    references public.plaid_items (id, user_id) on delete cascade,
+  constraint plaid_sync_run_items_one_per_item unique (sync_run_id, plaid_item_id),
+  constraint plaid_sync_run_items_final_status check (status in ('succeeded', 'failed')),
+  constraint plaid_sync_run_items_row_counts_non_negative check (
+    accounts_upserted >= 0
+    and balance_snapshots_upserted >= 0
+    and raw_transactions_upserted >= 0
+    and raw_transactions_skipped >= 0
+    and enriched_transactions_inserted >= 0
+    and enriched_transactions_updated >= 0
+    and transactions_removed >= 0
+  )
 );
 
 create table public.balance_snapshots (
@@ -418,6 +504,9 @@ create unique index reimbursement_records_user_split_unique
 
 create index institutions_user_idx on public.institutions (user_id);
 create index plaid_items_user_status_idx on public.plaid_items (user_id, status);
+create index plaid_sync_runs_user_started_idx on public.plaid_sync_runs (user_id, started_at desc);
+create index plaid_sync_run_items_user_run_idx on public.plaid_sync_run_items (user_id, sync_run_id);
+create index plaid_sync_run_items_user_item_completed_idx on public.plaid_sync_run_items (user_id, plaid_item_id, completed_at desc);
 create index accounts_user_type_idx on public.accounts (user_id, type);
 create index accounts_user_institution_idx on public.accounts (user_id, institution_id);
 create index balance_snapshots_user_date_idx on public.balance_snapshots (user_id, snapshot_date desc);
@@ -459,6 +548,8 @@ begin
   foreach table_name in array array[
     'institutions',
     'plaid_items',
+    'plaid_sync_runs',
+    'plaid_sync_run_items',
     'accounts',
     'categories',
     'raw_transactions',
@@ -486,6 +577,8 @@ begin
   foreach table_name in array array[
     'institutions',
     'plaid_items',
+    'plaid_sync_runs',
+    'plaid_sync_run_items',
     'accounts',
     'balance_snapshots',
     'categories',
@@ -511,6 +604,7 @@ begin
   foreach table_name in array array[
     'institutions',
     'plaid_items',
+    'plaid_sync_runs',
     'accounts',
     'balance_snapshots',
     'categories',

@@ -12,7 +12,7 @@ import {
 import { listDemoPlaidConnections } from "@/lib/demo/finance-client";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { getAiProviderStatus } from "@/lib/ai/server";
-import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
+import { getLatestPlaidSyncRun, listPlaidConnections, type PlaidConnectionSummary, type PlaidPersistedSyncRunSummary } from "@/lib/plaid/service";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,7 @@ export default async function SettingsPage() {
   let isSignedIn = false;
   let isDemo = false;
   let plaidConnections: PlaidConnectionSummary[] = [];
+  let latestPlaidSyncRun: PlaidPersistedSyncRunSummary | null = null;
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
@@ -39,14 +40,17 @@ export default async function SettingsPage() {
 
   if (context.client && context.userId) {
     try {
-      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections] = await Promise.all([
+      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections, latestPlaidSyncRun] = await Promise.all([
         listAccounts(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open"),
         listTransactions(context.client, context.userId, { limit: 5000 }),
         context.isDemo
           ? Promise.resolve(listDemoPlaidConnections())
-          : listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId)
+          : listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId),
+        context.isDemo
+          ? Promise.resolve(null)
+          : getLatestPlaidSyncRun(context.client as unknown as Parameters<typeof getLatestPlaidSyncRun>[0], context.userId)
       ]);
     } catch (loadError) {
       dataError = errorMessage(loadError);
@@ -61,6 +65,7 @@ export default async function SettingsPage() {
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
+      latestPlaidSyncRun={latestPlaidSyncRun}
       plaidConnections={plaidConnections}
       recurringExpenses={recurringExpenses}
       reviewItems={reviewItems}

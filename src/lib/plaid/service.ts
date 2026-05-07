@@ -21,6 +21,10 @@ import type {
   Json,
   MerchantRuleRow,
   PlaidItemRow,
+  PlaidSyncRunItemRow,
+  PlaidSyncRunRow,
+  PlaidSyncRunSource,
+  PlaidSyncRunStatus,
   RawTransactionRow,
   TransactionIntent
 } from "../db/types";
@@ -38,6 +42,9 @@ type InstitutionInsert = Database["public"]["Tables"]["institutions"]["Insert"];
 type InstitutionUpdate = Database["public"]["Tables"]["institutions"]["Update"];
 type PlaidItemInsert = Database["public"]["Tables"]["plaid_items"]["Insert"];
 type PlaidItemUpdate = Database["public"]["Tables"]["plaid_items"]["Update"];
+type PlaidSyncRunInsert = Database["public"]["Tables"]["plaid_sync_runs"]["Insert"];
+type PlaidSyncRunUpdate = Database["public"]["Tables"]["plaid_sync_runs"]["Update"];
+type PlaidSyncRunItemInsert = Database["public"]["Tables"]["plaid_sync_run_items"]["Insert"];
 type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
 type AccountUpdate = Database["public"]["Tables"]["accounts"]["Update"];
 type BalanceSnapshotInsert = Database["public"]["Tables"]["balance_snapshots"]["Insert"];
@@ -78,6 +85,48 @@ const PLAID_ITEM_SYNC_COLUMNS = [
   "transaction_cursor",
   "created_at",
   "updated_at"
+].join(",");
+const PLAID_SYNC_RUN_COLUMNS = [
+  "id",
+  "user_id",
+  "source",
+  "status",
+  "started_at",
+  "completed_at",
+  "total_items",
+  "succeeded_items",
+  "failed_items",
+  "accounts_upserted",
+  "balance_snapshots_upserted",
+  "raw_transactions_upserted",
+  "raw_transactions_skipped",
+  "enriched_transactions_inserted",
+  "enriched_transactions_updated",
+  "transactions_removed",
+  "safe_error_code",
+  "safe_error_message",
+  "created_at",
+  "updated_at"
+].join(",");
+const PLAID_SYNC_RUN_ITEM_COLUMNS = [
+  "id",
+  "user_id",
+  "sync_run_id",
+  "plaid_item_id",
+  "status",
+  "started_at",
+  "completed_at",
+  "accounts_upserted",
+  "balance_snapshots_upserted",
+  "raw_transactions_upserted",
+  "raw_transactions_skipped",
+  "enriched_transactions_inserted",
+  "enriched_transactions_updated",
+  "transactions_removed",
+  "safe_error_code",
+  "safe_error_message",
+  "last_successful_sync_at",
+  "created_at"
 ].join(",");
 const ACCOUNT_COLUMNS = [
   "id",
@@ -200,8 +249,6 @@ export interface PlaidConnectionSummary {
   institutionName: string;
   issue: PlaidConnectionIssue | null;
   lastSuccessfulSyncAt: string | null;
-  plaidInstitutionId: string | null;
-  plaidItemId: string;
   status: PlaidItemRow["status"];
   updatedAt: string;
 }
@@ -212,12 +259,11 @@ export interface PlaidSyncItemSummary {
   enrichedTransactionsInserted: number;
   enrichedTransactionsUpdated: number;
   errorCode?: string;
+  errorMessage?: string;
   id: string;
   lastSuccessfulSyncAt: string | null;
-  plaidItemId: string;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
-  transactionCursor: string | null;
   transactionsRemoved: number;
 }
 
@@ -230,9 +276,32 @@ export interface PlaidSyncRunSummary {
   items: PlaidSyncItemSummary[];
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
+  runId: string | null;
+  source: PlaidSyncRunSource;
+  startedAt: string;
+  status: Exclude<PlaidSyncRunStatus, "running">;
   succeeded: number;
   totalItems: number;
   transactionsRemoved: number;
+}
+
+export interface PlaidSyncRunItemStatusSummary extends PlaidSyncItemSummary {
+  completedAt: string;
+  status: Exclude<PlaidSyncRunStatus, "running" | "partial">;
+}
+
+export interface PlaidPersistedSyncRunSummary extends Omit<PlaidSyncRunSummary, "items"> {
+  completedAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  items: PlaidSyncRunItemStatusSummary[];
+}
+
+export interface PlaidScheduledSyncSummary {
+  failedUsers: number;
+  runs: PlaidSyncRunSummary[];
+  succeededUsers: number;
+  totalUsers: number;
 }
 
 export interface PlaidLinkTokenResult {
@@ -260,8 +329,6 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
     institutionName: institution?.name ?? "Unknown institution",
     issue,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
-    plaidInstitutionId: institution?.plaid_institution_id ?? null,
-    plaidItemId: item.plaid_item_id,
     status: item.status,
     updatedAt: item.updated_at
   };
@@ -1507,6 +1574,119 @@ async function updatePlaidItemSyncError(
   }
 }
 
+function itemSummaryCounts(item: PlaidSyncItemSummary) {
+  return {
+    accounts_upserted: item.accountsUpserted,
+    balance_snapshots_upserted: item.balanceSnapshotsUpserted,
+    enriched_transactions_inserted: item.enrichedTransactionsInserted,
+    enriched_transactions_updated: item.enrichedTransactionsUpdated,
+    raw_transactions_skipped: item.rawTransactionsSkipped,
+    raw_transactions_upserted: item.rawTransactionsUpserted,
+    transactions_removed: item.transactionsRemoved
+  };
+}
+
+function toRunStatus(summary: Pick<PlaidSyncRunSummary, "failed" | "succeeded" | "totalItems">): Exclude<PlaidSyncRunStatus, "running"> {
+  if (summary.failed === 0) return "succeeded";
+  if (summary.succeeded > 0) return "partial";
+  return summary.totalItems > 0 ? "failed" : "succeeded";
+}
+
+function safeSyncRunMessage(summary: Pick<PlaidSyncRunSummary, "failed" | "succeeded" | "totalItems">) {
+  if (summary.failed === 0) return null;
+  return `${summary.failed} of ${summary.totalItems} Plaid items failed during sync.`;
+}
+
+async function createPlaidSyncRun(
+  client: FinanceSupabaseClient,
+  userId: string,
+  source: PlaidSyncRunSource,
+  totalItems: number
+) {
+  const startedAt = new Date().toISOString();
+  const insert: PlaidSyncRunInsert = {
+    source,
+    started_at: startedAt,
+    status: "running",
+    total_items: totalItems,
+    user_id: userId
+  };
+  const result = await client
+    .from("plaid_sync_runs")
+    .insert(insert)
+    .select(PLAID_SYNC_RUN_COLUMNS)
+    .single();
+
+  return expectData(result, "Create Plaid sync run") as unknown as PlaidSyncRunRow;
+}
+
+async function persistPlaidSyncRunItem({
+  client,
+  item,
+  run,
+  startedAt,
+  summary,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  item: PlaidItemRow;
+  run: PlaidSyncRunRow;
+  startedAt: string;
+  summary: PlaidSyncItemSummary;
+  userId: string;
+}) {
+  const insert: PlaidSyncRunItemInsert = {
+    ...itemSummaryCounts(summary),
+    completed_at: new Date().toISOString(),
+    last_successful_sync_at: summary.lastSuccessfulSyncAt,
+    plaid_item_id: item.id,
+    safe_error_code: summary.errorCode ?? null,
+    safe_error_message: summary.errorMessage ?? null,
+    started_at: startedAt,
+    status: summary.errorCode ? "failed" : "succeeded",
+    sync_run_id: run.id,
+    user_id: userId
+  };
+  const result = await client
+    .from("plaid_sync_run_items")
+    .insert(insert)
+    .select(PLAID_SYNC_RUN_ITEM_COLUMNS)
+    .single();
+
+  if (result.error) throw new Error(`Persist Plaid sync run item: ${result.error.message}`);
+}
+
+async function finalizePlaidSyncRun(
+  client: FinanceSupabaseClient,
+  run: PlaidSyncRunRow,
+  summary: PlaidSyncRunSummary
+) {
+  const update: PlaidSyncRunUpdate = {
+    accounts_upserted: summary.accountsUpserted,
+    balance_snapshots_upserted: summary.balanceSnapshotsUpserted,
+    completed_at: new Date().toISOString(),
+    enriched_transactions_inserted: summary.enrichedTransactionsInserted,
+    enriched_transactions_updated: summary.enrichedTransactionsUpdated,
+    failed_items: summary.failed,
+    raw_transactions_skipped: summary.rawTransactionsSkipped,
+    raw_transactions_upserted: summary.rawTransactionsUpserted,
+    safe_error_code: summary.failed > 0 ? "PLAID_SYNC_PARTIAL_FAILURE" : null,
+    safe_error_message: safeSyncRunMessage(summary),
+    status: summary.status,
+    succeeded_items: summary.succeeded,
+    transactions_removed: summary.transactionsRemoved
+  };
+  const result = await client
+    .from("plaid_sync_runs")
+    .update(update)
+    .eq("user_id", run.user_id)
+    .eq("id", run.id)
+    .select(PLAID_SYNC_RUN_COLUMNS)
+    .single();
+
+  return expectData(result, "Finalize Plaid sync run") as unknown as PlaidSyncRunRow;
+}
+
 async function syncLoadedPlaidItem(
   client: FinanceSupabaseClient,
   userId: string,
@@ -1555,10 +1735,8 @@ async function syncLoadedPlaidItem(
     enrichedTransactionsUpdated: transactionResult.enrichedTransactionsUpdated,
     id: item.id,
     lastSuccessfulSyncAt: syncedItem.last_successful_sync_at,
-    plaidItemId: item.plaid_item_id,
     rawTransactionsSkipped: transactionResult.rawTransactionsSkipped,
     rawTransactionsUpserted: transactionResult.rawTransactionsUpserted,
-    transactionCursor: syncedItem.transaction_cursor,
     transactionsRemoved: transactionResult.transactionsRemoved
   };
 }
@@ -1652,24 +1830,59 @@ export async function exchangePlaidPublicToken({
 export async function syncPlaidItem({
   client,
   itemId,
+  source = "manual",
   userId
 }: {
   client: FinanceSupabaseClient;
   itemId: string;
+  source?: PlaidSyncRunSource;
   userId: string;
 }): Promise<PlaidSyncItemSummary> {
   const item = await loadPlaidItemForSync(client, userId, itemId);
+  const run = await createPlaidSyncRun(client, userId, source, 1);
+  const startedAt = new Date().toISOString();
+
+  let summary: PlaidSyncItemSummary;
+  let syncError: unknown;
 
   try {
-    return await syncLoadedPlaidItem(client, userId, item);
+    summary = await syncLoadedPlaidItem(client, userId, item);
   } catch (error) {
+    syncError = error;
     await updatePlaidItemSyncError(client, userId, item.id, error);
-    throw error;
+    const persistedError = persistedSyncError(error);
+    summary = {
+      accountsUpserted: 0,
+      balanceSnapshotsUpserted: 0,
+      enrichedTransactionsInserted: 0,
+      enrichedTransactionsUpdated: 0,
+      errorCode: persistedError.error_code,
+      errorMessage: persistedError.error_message,
+      id: item.id,
+      lastSuccessfulSyncAt: item.last_successful_sync_at,
+      rawTransactionsSkipped: 0,
+      rawTransactionsUpserted: 0,
+      transactionsRemoved: 0
+    };
   }
+
+  const runSummary = summarizeSyncRun([summary], {
+    runId: run.id,
+    source,
+    startedAt: run.started_at
+  });
+  await persistPlaidSyncRunItem({ client, item, run, startedAt, summary, userId });
+  await finalizePlaidSyncRun(client, run, runSummary);
+
+  if (syncError) throw syncError;
+  return summary;
 }
 
-export function summarizeSyncRun(items: PlaidSyncItemSummary[]): PlaidSyncRunSummary {
-  return items.reduce<PlaidSyncRunSummary>(
+export function summarizeSyncRun(
+  items: PlaidSyncItemSummary[],
+  run: { runId?: string | null; source?: PlaidSyncRunSource; startedAt?: string } = {}
+): PlaidSyncRunSummary {
+  const summary = items.reduce<Omit<PlaidSyncRunSummary, "runId" | "source" | "startedAt" | "status">>(
     (summary, item) => {
       summary.accountsUpserted += item.accountsUpserted;
       summary.balanceSnapshotsUpserted += item.balanceSnapshotsUpserted;
@@ -1696,35 +1909,162 @@ export function summarizeSyncRun(items: PlaidSyncItemSummary[]): PlaidSyncRunSum
       transactionsRemoved: 0
     }
   );
+
+  return {
+    ...summary,
+    runId: run.runId ?? null,
+    source: run.source ?? "manual",
+    startedAt: run.startedAt ?? new Date().toISOString(),
+    status: toRunStatus(summary)
+  };
 }
 
-export async function syncPlaidConnections(client: FinanceSupabaseClient, userId: string): Promise<PlaidSyncRunSummary> {
+export async function syncPlaidConnections(
+  client: FinanceSupabaseClient,
+  userId: string,
+  source: PlaidSyncRunSource = "manual"
+): Promise<PlaidSyncRunSummary> {
   const items = await listPlaidItemsForSync(client, userId);
+  const run = await createPlaidSyncRun(client, userId, source, items.length);
   const results: PlaidSyncItemSummary[] = [];
 
   for (const item of items) {
+    const startedAt = new Date().toISOString();
+    let summary: PlaidSyncItemSummary;
+
     try {
-      results.push(await syncLoadedPlaidItem(client, userId, item));
+      summary = await syncLoadedPlaidItem(client, userId, item);
     } catch (error) {
       await updatePlaidItemSyncError(client, userId, item.id, error);
-      results.push({
+      const safeError = persistedSyncError(error);
+      summary = {
         accountsUpserted: 0,
         balanceSnapshotsUpserted: 0,
         enrichedTransactionsInserted: 0,
         enrichedTransactionsUpdated: 0,
-        errorCode: persistedSyncError(error).error_code,
+        errorCode: safeError.error_code,
+        errorMessage: safeError.error_message,
         id: item.id,
         lastSuccessfulSyncAt: item.last_successful_sync_at,
-        plaidItemId: item.plaid_item_id,
         rawTransactionsSkipped: 0,
         rawTransactionsUpserted: 0,
-        transactionCursor: item.transaction_cursor,
         transactionsRemoved: 0
-      });
+      };
+    }
+
+    results.push(summary);
+    await persistPlaidSyncRunItem({ client, item, run, startedAt, summary, userId });
+  }
+
+  const summary = summarizeSyncRun(results, {
+    runId: run.id,
+    source,
+    startedAt: run.started_at
+  });
+  await finalizePlaidSyncRun(client, run, summary);
+  return summary;
+}
+
+function toPersistedSyncRunItemSummary(row: PlaidSyncRunItemRow): PlaidSyncRunItemStatusSummary {
+  return {
+    accountsUpserted: row.accounts_upserted,
+    balanceSnapshotsUpserted: row.balance_snapshots_upserted,
+    completedAt: row.completed_at,
+    enrichedTransactionsInserted: row.enriched_transactions_inserted,
+    enrichedTransactionsUpdated: row.enriched_transactions_updated,
+    errorCode: row.safe_error_code ?? undefined,
+    errorMessage: row.safe_error_message ?? undefined,
+    id: row.plaid_item_id,
+    lastSuccessfulSyncAt: row.last_successful_sync_at,
+    rawTransactionsSkipped: row.raw_transactions_skipped,
+    rawTransactionsUpserted: row.raw_transactions_upserted,
+    status: row.status,
+    transactionsRemoved: row.transactions_removed
+  };
+}
+
+function toPersistedSyncRunSummary(
+  run: PlaidSyncRunRow,
+  items: PlaidSyncRunItemRow[]
+): PlaidPersistedSyncRunSummary {
+  return {
+    accountsUpserted: run.accounts_upserted,
+    balanceSnapshotsUpserted: run.balance_snapshots_upserted,
+    completedAt: run.completed_at,
+    enrichedTransactionsInserted: run.enriched_transactions_inserted,
+    enrichedTransactionsUpdated: run.enriched_transactions_updated,
+    errorCode: run.safe_error_code,
+    errorMessage: run.safe_error_message,
+    failed: run.failed_items,
+    items: items.map(toPersistedSyncRunItemSummary),
+    rawTransactionsSkipped: run.raw_transactions_skipped,
+    rawTransactionsUpserted: run.raw_transactions_upserted,
+    runId: run.id,
+    source: run.source,
+    startedAt: run.started_at,
+    status: run.status === "running" ? "failed" : run.status,
+    succeeded: run.succeeded_items,
+    totalItems: run.total_items,
+    transactionsRemoved: run.transactions_removed
+  };
+}
+
+export async function getLatestPlaidSyncRun(
+  client: FinanceSupabaseClient,
+  userId: string
+): Promise<PlaidPersistedSyncRunSummary | null> {
+  const runResult = await client
+    .from("plaid_sync_runs")
+    .select(PLAID_SYNC_RUN_COLUMNS)
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (runResult.error) throw new Error(`Load latest Plaid sync run: ${runResult.error.message}`);
+  if (!runResult.data) return null;
+
+  const run = runResult.data as unknown as PlaidSyncRunRow;
+  const itemResult = await client
+    .from("plaid_sync_run_items")
+    .select(PLAID_SYNC_RUN_ITEM_COLUMNS)
+    .eq("user_id", userId)
+    .eq("sync_run_id", run.id)
+    .order("completed_at", { ascending: false });
+
+  const items = expectData(itemResult, "Load latest Plaid sync run items") as unknown as PlaidSyncRunItemRow[];
+  return toPersistedSyncRunSummary(run, items);
+}
+
+async function listUsersWithSyncablePlaidItems(client: FinanceSupabaseClient) {
+  const result = await client
+    .from("plaid_items")
+    .select("user_id")
+    .neq("status", "revoked");
+  const rows = expectData(result, "List users with syncable Plaid items") as unknown as Array<{ user_id: string }>;
+  return [...new Set(rows.map((row) => row.user_id))];
+}
+
+export async function syncScheduledPlaidConnections(client: FinanceSupabaseClient): Promise<PlaidScheduledSyncSummary> {
+  const userIds = await listUsersWithSyncablePlaidItems(client);
+  const runs: PlaidSyncRunSummary[] = [];
+  let failedUsers = 0;
+
+  for (const userId of userIds) {
+    try {
+      runs.push(await syncPlaidConnections(client, userId, "scheduled"));
+    } catch (error) {
+      failedUsers += 1;
+      console.error("scheduled_plaid_sync_user_failed", getSafePlaidError(error));
     }
   }
 
-  return summarizeSyncRun(results);
+  return {
+    failedUsers,
+    runs,
+    succeededUsers: runs.length,
+    totalUsers: userIds.length
+  };
 }
 
 async function loadPlaidItemForRevoke(
