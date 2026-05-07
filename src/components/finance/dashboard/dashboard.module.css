@@ -250,7 +250,8 @@
   display: block;
   width: 100%;
   height: clamp(200px, 20vw, 320px);
-  overflow: visible;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
   border-radius: 8px;
   background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 62%, transparent), transparent 72%);
 }
@@ -806,8 +807,12 @@
     grid-template-columns: 1fr;
   }
 
+  .trend {
+    margin-inline: -4px;
+  }
+
   .trend svg {
-    height: 210px;
+    height: 176px;
   }
 
   .trendScaleLabel,

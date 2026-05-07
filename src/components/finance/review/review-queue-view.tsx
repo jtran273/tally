@@ -437,6 +437,12 @@ export function ReviewQueueView({
     reviewItems: allReviewItems
   });
   const aiPreview = buildAiBulkPreviewMetrics(reviewItems, categories);
+  const aiPanelTitle = reviewItems.length === 0
+    ? "No open review items to clean up"
+    : `${aiPreview.acceptReady.toLocaleString("en-US")} accept-ready suggestions`;
+  const aiPanelBody = reviewItems.length === 0
+    ? "AI cleanup runs on open review items. Once Plaid sync creates review work, this panel will stay visible and show exactly what can be generated or bulk-accepted."
+    : `${aiPreview.eligible.toLocaleString("en-US")} review items can receive merchant, category, intent, and recurring suggestions from the configured provider.${aiPreview.skipped["peer-to-peer"] > 0 ? ` ${aiPreview.skipped["peer-to-peer"].toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}${aiProviderKind !== "openai" ? " Suggestions are deterministic (OPENAI_API_KEY is not configured on this deployment)." : ""}`;
 
   return (
     <div className={styles.shell}>
@@ -485,22 +491,17 @@ export function ReviewQueueView({
         </div>
       ) : null}
 
-      {canShowQueue && reviewItems.length > 0 ? (
+      {canShowQueue ? (
         <section className={styles.aiCleanupPanel} aria-label="AI review cleanup">
           <div>
             <div className={styles.eyebrow}>
               AI cleanup
               <span className={styles.providerBadge} title={aiProviderKind === "openai" ? "OpenAI is configured" : "Using deterministic fallback — set OPENAI_API_KEY to enable AI suggestions"}>
-                {aiProviderKind === "openai" ? "OpenAI" : "Mock"}
+                {aiProviderKind === "openai" ? "OpenAI" : "Mock fallback"}
               </span>
             </div>
-            <h2>{aiPreview.acceptReady.toLocaleString("en-US")} accept-ready suggestions</h2>
-            <p>
-              {aiPreview.eligible.toLocaleString("en-US")} review items can receive merchant,
-              category, intent, and recurring suggestions from the configured provider.
-              {aiPreview.skipped["peer-to-peer"] > 0 ? ` ${aiPreview.skipped["peer-to-peer"].toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}
-              {aiProviderKind !== "openai" ? " Suggestions are deterministic (no OPENAI_API_KEY configured)." : ""}
-            </p>
+            <h2>{aiPanelTitle}</h2>
+            <p>{aiPanelBody}</p>
           </div>
           <div className={styles.aiCleanupActions}>
             <ReviewAiActions disabled={aiPreview.eligible === 0} />

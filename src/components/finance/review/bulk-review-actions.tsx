@@ -57,6 +57,9 @@ export function BulkReviewActions({ plan }: { plan: BulkReviewPlan }) {
       ))}
 
       <div className={styles.bulkPreviewList} aria-label="Bulk review item preview">
+        {previewItems.length === 0 ? (
+          <div className={styles.emptySuggestion}>No open review items are available for bulk preview yet.</div>
+        ) : null}
         {previewItems.map((item) => (
           <div className={styles.bulkPreviewRow} key={item.reviewItemId}>
             <div>

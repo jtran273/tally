@@ -252,9 +252,12 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const width = containerWidth;
-  const height = 220;
-  const padding = { bottom: 34, left: 64, right: 22, top: 18 };
+  const compactChart = containerWidth < 520;
+  const width = Math.max(compactChart ? 320 : 520, containerWidth);
+  const height = compactChart ? 176 : 220;
+  const padding = compactChart
+    ? { bottom: 26, left: 14, right: 14, top: 16 }
+    : { bottom: 34, left: 64, right: 22, top: 18 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const points = selectedTrend.map((point, index) => {
