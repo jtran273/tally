@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   getReviewQueueItemById,
+  listReviewItems,
   listCategories,
   listMerchantRules,
   recordAuditEvent,
@@ -26,6 +27,7 @@ import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
 import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
 import { isSpendingIntent } from "@/lib/finance/spending";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
+import { buildBulkReviewPlan } from "@/lib/review/bulk-actions";
 import {
   buildAcceptedReviewSuggestionPatch,
   hasReviewSuggestionValue,
@@ -249,6 +251,94 @@ function transactionAuditData(item: ReviewQueueItem): Record<string, Json> {
   };
 }
 
+async function applyAcceptedReviewSuggestion(
+  client: FinanceSupabaseClient,
+  userId: string,
+  item: ReviewQueueItem,
+  categories: CategoryRecord[],
+  options: { reviewedAt: string; source: "bulk" | "single" }
+) {
+  const { patch, suggestion } = buildAcceptedReviewSuggestionPatch(item.aiSuggestion, categories, {
+    reviewedAt: options.reviewedAt
+  });
+
+  if (!hasReviewSuggestionValue(suggestion)) {
+    throw new Error("This review item does not include an accept-ready suggestion.");
+  }
+
+  const rawTransaction = await getRawTransactionForReviewItem(client, userId, item);
+  const ruleCandidate = buildAcceptedAiMerchantRuleCandidate({
+    categories,
+    rawTransaction,
+    suggestion,
+    transaction: {
+      amount: item.transaction.amount,
+      merchant_name: item.transaction.merchant
+    }
+  });
+
+  await updateTransactionEnrichment(client, userId, item.transaction.id, patch);
+  const merchantRule = ruleCandidate
+    ? await upsertMerchantRule(client, userId, {
+      categoryId: ruleCandidate.categoryId,
+      intent: ruleCandidate.intent,
+      isRecurring: ruleCandidate.isRecurring,
+      merchantPattern: ruleCandidate.merchantPattern,
+      normalizedMerchantName: ruleCandidate.normalizedMerchantName,
+      notes: ruleCandidate.notes,
+      priority: ruleCandidate.priority
+    })
+    : null;
+  const resolved = await resolveReviewItem(
+    client,
+    userId,
+    item.id,
+    "resolved",
+    `Accepted suggestion fields: ${suggestionFieldSummary(suggestion).join(", ")}.`
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "review.suggestion_accepted",
+    actorId: userId,
+    afterData: {
+      ...reviewItemAuditData(item),
+      appliedPatch: patch as Record<string, Json | undefined>,
+      resolvedAt: resolved.resolvedAt,
+      status: resolved.status
+    },
+    beforeData: reviewItemAuditData(item),
+    entityId: item.id,
+    entityTable: "review_items",
+    metadata: {
+      bulkAction: options.source === "bulk",
+      merchantRuleId: merchantRule?.id ?? null,
+      reason: item.reason,
+      transactionId: item.transaction.id
+    }
+  });
+
+  if (merchantRule) {
+    await recordAuditEvent(client, userId, {
+      action: "merchant_rule.ai_accepted_upserted",
+      actorId: userId,
+      afterData: merchantRule as unknown as Record<string, Json | undefined>,
+      beforeData: null,
+      entityId: merchantRule.id,
+      entityTable: "merchant_rules",
+      metadata: {
+        bulkAction: options.source === "bulk",
+        reviewItemId: item.id,
+        transactionId: item.transaction.id
+      }
+    });
+  }
+
+  return {
+    merchantRuleId: merchantRule?.id ?? null,
+    transactionId: item.transaction.id
+  };
+}
+
 async function getRawTransactionForReviewItem(
   client: FinanceSupabaseClient,
   userId: string,
@@ -369,79 +459,75 @@ export async function acceptReviewSuggestionAction(
 
     const reviewedAt = new Date().toISOString();
     const categories = await listCategories(client, userId);
-    const { patch, suggestion } = buildAcceptedReviewSuggestionPatch(item.aiSuggestion, categories, { reviewedAt });
+    const { suggestion } = buildAcceptedReviewSuggestionPatch(item.aiSuggestion, categories, { reviewedAt });
 
     if (!hasReviewSuggestionValue(suggestion)) {
       return { error: "This review item does not include an accept-ready suggestion." };
     }
 
-    const rawTransaction = await getRawTransactionForReviewItem(client, userId, item);
-    const ruleCandidate = buildAcceptedAiMerchantRuleCandidate({
-      categories,
-      rawTransaction,
-      suggestion,
-      transaction: {
-        amount: item.transaction.amount,
-        merchant_name: item.transaction.merchant
-      }
-    });
-
-    await updateTransactionEnrichment(client, userId, item.transaction.id, patch);
-    const merchantRule = ruleCandidate
-      ? await upsertMerchantRule(client, userId, {
-        categoryId: ruleCandidate.categoryId,
-        intent: ruleCandidate.intent,
-        isRecurring: ruleCandidate.isRecurring,
-        merchantPattern: ruleCandidate.merchantPattern,
-        normalizedMerchantName: ruleCandidate.normalizedMerchantName,
-        notes: ruleCandidate.notes,
-        priority: ruleCandidate.priority
-      })
-      : null;
-    const resolved = await resolveReviewItem(
-      client,
-      userId,
-      item.id,
-      "resolved",
-      `Accepted suggestion fields: ${suggestionFieldSummary(suggestion).join(", ")}.`
-    );
-
-    await recordAuditEvent(client, userId, {
-      action: "review.suggestion_accepted",
-      actorId: userId,
-      afterData: {
-        ...reviewItemAuditData(item),
-        appliedPatch: patch as Record<string, Json | undefined>,
-        resolvedAt: resolved.resolvedAt,
-        status: resolved.status
-      },
-      beforeData: reviewItemAuditData(item),
-      entityId: item.id,
-      entityTable: "review_items",
-      metadata: {
-        merchantRuleId: merchantRule?.id ?? null,
-        reason: item.reason,
-        transactionId: item.transaction.id
-      }
-    });
-
-    if (merchantRule) {
-      await recordAuditEvent(client, userId, {
-        action: "merchant_rule.ai_accepted_upserted",
-        actorId: userId,
-        afterData: merchantRule as unknown as Record<string, Json | undefined>,
-        beforeData: null,
-        entityId: merchantRule.id,
-        entityTable: "merchant_rules",
-        metadata: {
-          reviewItemId: item.id,
-          transactionId: item.transaction.id
-        }
-      });
-    }
+    await applyAcceptedReviewSuggestion(client, userId, item, categories, { reviewedAt, source: "single" });
 
     revalidateReviewPaths(item.transaction.id);
     return { message: "Suggestion accepted." };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
+export async function bulkAcceptReviewSuggestionsAction(
+  _state: ReviewActionState,
+  formData: FormData
+): Promise<ReviewActionState> {
+  try {
+    const requestedIds = formData
+      .getAll("reviewItemId")
+      .map((value) => cleanString(value, 80))
+      .filter((value) => uuidPattern.test(value))
+      .slice(0, 40);
+
+    if (requestedIds.length === 0) return { error: "No accept-ready review items were selected." };
+
+    const { client, userId } = await getFinanceContext();
+    const requestedIdSet = new Set(requestedIds);
+    const [categories, openItems] = await Promise.all([
+      listCategories(client, userId),
+      listReviewItems(client, userId, "open")
+    ]);
+    const targets = openItems.filter((item) => requestedIdSet.has(item.id));
+    const plan = buildBulkReviewPlan(targets, { limit: 40 });
+
+    let acceptedCount = 0;
+    const touchedTransactionIds = new Set<string>();
+    const reviewedAt = new Date().toISOString();
+
+    for (const item of plan.acceptReady) {
+      const target = targets.find((candidate) => candidate.id === item.reviewItemId);
+      if (!target) continue;
+
+      await applyAcceptedReviewSuggestion(client, userId, target, categories, {
+        reviewedAt,
+        source: "bulk"
+      });
+      acceptedCount += 1;
+      touchedTransactionIds.add(target.transaction.id);
+    }
+
+    for (const transactionId of touchedTransactionIds) {
+      revalidateReviewPaths(transactionId);
+    }
+    revalidateReviewListPaths();
+
+    const missingCount = requestedIds.length - targets.length;
+    const skippedCount = plan.skipped.length + Math.max(0, missingCount);
+    const skippedSuffix = skippedCount > 0
+      ? ` Skipped ${skippedCount.toLocaleString("en-US")} item${skippedCount === 1 ? "" : "s"} that were no longer eligible.`
+      : "";
+
+    return {
+      message: acceptedCount === 0
+        ? `No suggestions were accepted.${skippedSuffix}`
+        : `Accepted ${acceptedCount.toLocaleString("en-US")} AI suggestion${acceptedCount === 1 ? "" : "s"}.${skippedSuffix}`
+    };
   } catch (error) {
     return errorState(error);
   }

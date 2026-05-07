@@ -128,7 +128,7 @@ Review items are created for transactions that need user attention, including:
 - missing categories,
 - recurring candidates.
 
-Users can accept suggestions, dismiss review items, edit transactions, or allocate peer-to-peer splits. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
+Users can accept suggestions individually or use a bulk accept flow for accept-ready AI suggestions. The bulk flow shows per-item current-versus-suggested previews and skip reasons, and the server rechecks eligibility before writing. Peer-to-peer items remain manual-only and require structured split allocation. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
 
 ## Recurring Flow
 

@@ -7,6 +7,7 @@ import {
   isPeerToPeerReview,
   REVIEW_REASON_ORDER
 } from "@/lib/review/reasons";
+import { buildBulkReviewPlan } from "@/lib/review/bulk-actions";
 import {
   buildAiBulkPreviewMetrics,
   deriveReviewProductivityMetrics,
@@ -26,6 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ReviewAiActions } from "./review-ai-actions";
+import { BulkReviewActions } from "./bulk-review-actions";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import styles from "./review.module.css";
@@ -429,6 +431,7 @@ export function ReviewQueueView({
   const canShowQueue = isConfigured && isSignedIn && !dataError;
   const totals = calculateTotals(reviewItems, transactions);
   const groups = groupedReviewItems(reviewItems);
+  const bulkPlan = buildBulkReviewPlan(reviewItems);
   const productivityMetrics = deriveReviewProductivityMetrics({
     auditEvents,
     reviewItems: allReviewItems
@@ -499,7 +502,10 @@ export function ReviewQueueView({
               {aiProviderKind !== "openai" ? " Suggestions are deterministic (no OPENAI_API_KEY configured)." : ""}
             </p>
           </div>
-          <ReviewAiActions disabled={aiPreview.eligible === 0} />
+          <div className={styles.aiCleanupActions}>
+            <ReviewAiActions disabled={aiPreview.eligible === 0} />
+            <BulkReviewActions plan={bulkPlan} />
+          </div>
         </section>
       ) : null}
 
