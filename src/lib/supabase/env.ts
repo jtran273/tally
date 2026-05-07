@@ -7,7 +7,7 @@ function isProductionRuntime() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
 
-function assertSupabaseUrl(value: string) {
+function normalizeSupabaseUrl(value: string) {
   let url: URL;
 
   try {
@@ -19,6 +19,12 @@ function assertSupabaseUrl(value: string) {
   if (isProductionRuntime() && url.protocol !== "https:") {
     throw new Error("NEXT_PUBLIC_SUPABASE_URL must use HTTPS in production.");
   }
+
+  url.pathname = url.pathname.replace(/\/(auth|functions|rest|storage)\/v1\/?$/i, "");
+  url.search = "";
+  url.hash = "";
+
+  return url.origin;
 }
 
 export function getSupabaseConfig(): SupabaseConfig | null {
@@ -29,9 +35,7 @@ export function getSupabaseConfig(): SupabaseConfig | null {
     return null;
   }
 
-  assertSupabaseUrl(url);
-
-  return { anonKey, url };
+  return { anonKey, url: normalizeSupabaseUrl(url) };
 }
 
 export function getRequiredSupabaseConfig(): SupabaseConfig {
