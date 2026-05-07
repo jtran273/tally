@@ -412,14 +412,19 @@ export function listDemoPlaidConnections() {
     const institution = institutions.find((row) => row.id === item.institution_id);
 
     return {
+      availableProducts: item.available_products,
+      billedProducts: item.billed_products,
       consentExpiresAt: item.consent_expires_at,
       createdAt: item.created_at,
       errorCode: item.error_code,
       errorMessage: item.error_message,
       id: item.id,
+      institutionId: item.institution_id,
       institutionName: institution?.name ?? "Demo institution",
       lastSuccessfulSyncAt: item.last_successful_sync_at,
       plaidInstitutionId: institution?.plaid_institution_id ?? null,
+      plaidItemId: item.plaid_item_id,
+      updatedAt: item.updated_at,
       status: item.status
     };
   });

@@ -9,8 +9,10 @@ import {
   type ReviewQueueItem,
   type TransactionRecord
 } from "@/lib/db";
+import { listDemoPlaidConnections } from "@/lib/demo/finance-client";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { getAiProviderStatus } from "@/lib/ai/server";
+import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
 
 export const dynamic = "force-dynamic";
 
@@ -23,22 +25,28 @@ export default async function SettingsPage() {
   let dataError: string | undefined;
   let isConfigured = false;
   let isSignedIn = false;
+  let isDemo = false;
+  let plaidConnections: PlaidConnectionSummary[] = [];
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
   if (context.client && context.userId) {
     try {
-      [accounts, recurringExpenses, reviewItems, transactions] = await Promise.all([
+      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections] = await Promise.all([
         listAccounts(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open"),
-        listTransactions(context.client, context.userId, { limit: 5000 })
+        listTransactions(context.client, context.userId, { limit: 5000 }),
+        context.isDemo
+          ? Promise.resolve(listDemoPlaidConnections())
+          : listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId)
       ]);
     } catch (loadError) {
       dataError = errorMessage(loadError);
@@ -51,7 +59,9 @@ export default async function SettingsPage() {
       aiProviderStatus={getAiProviderStatus()}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
+      plaidConnections={plaidConnections}
       recurringExpenses={recurringExpenses}
       reviewItems={reviewItems}
       transactions={transactions}
