@@ -6,7 +6,7 @@ Ledger is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an o
 
 - **Local development**: `npm run dev`, Plaid Sandbox, `.env.local`, local demo mode allowed.
 - **Vercel Preview**: branch deployments for testing Supabase and Plaid Sandbox or limited real-data checks.
-- **Vercel Production**: `https://personal-finance-os-jtran273s-projects.vercel.app`, Supabase Auth, Plaid intended environment, demo mode disabled.
+- **Vercel Production**: `https://personal-finance-os-jtran273s-projects.vercel.app`, Supabase Auth, Plaid intended environment, seeded demo entry available unless disabled.
 
 Use the stable production alias above for day-to-day access. Vercel also creates per-deployment URLs such as `personal-finance-<hash>-jtran273s-projects.vercel.app`; those are immutable build artifacts, not the main app URL.
 
@@ -54,7 +54,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_REDIRECT_URI` | Server only | Production OAuth yes | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
-| `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled outside production and disabled in production. Do not enable on real production. |
+| `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled. Set `false` to hide the seeded demo entry. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
 | `CRON_SECRET` | Server only | Scheduled sync yes | Shared bearer secret for `/api/plaid/sync/scheduled`. Required before enabling Vercel Cron or another scheduler. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
 
@@ -88,7 +88,7 @@ npm run build
 ```
 
 5. Add environment variables for Preview and Production.
-6. Keep `ENABLE_DEMO_MODE` unset or `false` in Production.
+6. Keep `ENABLE_DEMO_MODE` unset to show the seeded production demo, or set it to `false` to hide demo entry.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
 9. If scheduled sync is enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
@@ -135,7 +135,7 @@ OpenAI suggestions are advisory and do not write records autonomously.
 
 1. Confirm GitHub repo is private.
 2. Confirm Vercel Production variables are present.
-3. Confirm `ENABLE_DEMO_MODE` is not enabled.
+3. Confirm the seeded demo entry appears on `/login`, unless intentionally disabled.
 4. Visit `/login`.
 5. Sign in.
 6. Confirm `/dashboard` loads.

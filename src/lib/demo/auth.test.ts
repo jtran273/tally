@@ -29,12 +29,12 @@ function resetEnv() {
 
 test.afterEach(resetEnv);
 
-test("demo mode is disabled by default in production", () => {
+test("demo mode is enabled by default in production", () => {
   mutableEnv.NODE_ENV = "production";
   delete mutableEnv.VERCEL_ENV;
   delete mutableEnv.ENABLE_DEMO_MODE;
 
-  assert.equal(isDemoModeEnabled(), false);
+  assert.equal(isDemoModeEnabled(), true);
 });
 
 test("demo mode is enabled by default on Vercel preview builds", () => {

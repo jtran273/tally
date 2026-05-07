@@ -5,11 +5,6 @@ export const DEMO_COOKIE_NAME = "ledger_demo";
 const DEMO_COOKIE_VALUE = "1";
 const DEMO_MAX_AGE_SECONDS = 60 * 60 * 24;
 
-function isProductionRuntime() {
-  if (process.env.VERCEL_ENV) return process.env.VERCEL_ENV === "production";
-  return process.env.NODE_ENV === "production";
-}
-
 export function isDemoModeEnabled() {
   const flag = process.env.ENABLE_DEMO_MODE?.trim().toLowerCase();
 
@@ -17,7 +12,7 @@ export function isDemoModeEnabled() {
     return ["1", "true", "yes", "on"].includes(flag);
   }
 
-  return !isProductionRuntime();
+  return true;
 }
 
 export function isDemoRequest(request: NextRequest) {

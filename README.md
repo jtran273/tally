@@ -36,7 +36,7 @@ Production hardening currently includes:
 - Supabase RLS policies on finance tables.
 - Server-only Plaid token exchange and sync.
 - Encrypted Plaid access token storage.
-- Production demo mode disabled by default.
+- Seeded demo mode available from production login, with no real Supabase/Plaid data exposed.
 - Same-origin checks for mutating route handlers.
 - Security headers in `next.config.ts`.
 - Ignored local secret files and generated build output.
@@ -47,7 +47,7 @@ Production hardening currently includes:
 
 Users sign in with Supabase Auth at `/login`. Protected routes redirect unauthenticated users back to login.
 
-Local demo mode can open a seeded workspace without Supabase or Plaid, but production disables demo mode unless `ENABLE_DEMO_MODE=true` is explicitly set.
+Demo mode can open a seeded workspace without Supabase or Plaid. It is separate from real Supabase/Plaid data and can be disabled with `ENABLE_DEMO_MODE=false`.
 
 ### Connect A Bank
 
@@ -120,7 +120,7 @@ The CSV export uses the current transaction filters and returns enriched finance
 
 | Route | What it does |
 | --- | --- |
-| `/login` | Supabase sign-in and optional local demo entry |
+| `/login` | Supabase sign-in and seeded demo entry |
 | `/dashboard` | Net worth, account totals, budget guardrails, spending summary, insights, recurring context, review count |
 | `/transactions` | Searchable and filterable enriched transaction table |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
@@ -214,7 +214,7 @@ Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production
 
 ## Demo Mode
 
-Demo mode is intended for local development, screenshots, smoke tests, and CI. It is enabled by default outside production and disabled by default when `NODE_ENV=production` or `VERCEL_ENV=production`.
+Demo mode is intended for local development, screenshots, smoke tests, CI, and production product walkthroughs. It uses a seeded in-memory finance workspace, not real Supabase/Plaid data.
 
 Set it explicitly when a scripted environment needs the seeded workspace:
 
@@ -222,7 +222,7 @@ Set it explicitly when a scripted environment needs the seeded workspace:
 ENABLE_DEMO_MODE=true npm run test:e2e
 ```
 
-Set `ENABLE_DEMO_MODE=false` when testing the real Supabase sign-in path locally. Do not enable demo mode on the production app that contains real financial data.
+Set `ENABLE_DEMO_MODE=false` when testing only the real Supabase sign-in path or when you want to hide the production demo entry.
 
 ## Repository Map
 
