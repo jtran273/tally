@@ -18,7 +18,6 @@ interface PlaidConnectionSummary {
   institutionName: string;
   issue: PlaidConnectionIssue | null;
   lastSuccessfulSyncAt: string | null;
-  plaidInstitutionId: string | null;
   status: "active" | "error" | "revoked";
   updatedAt: string;
 }
@@ -44,6 +43,10 @@ interface SyncItemSummary {
   balanceSnapshotsUpserted: number;
   enrichedTransactionsInserted: number;
   enrichedTransactionsUpdated: number;
+  errorCode?: string;
+  errorMessage?: string;
+  id: string;
+  lastSuccessfulSyncAt: string | null;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   transactionsRemoved: number;
@@ -55,8 +58,13 @@ interface SyncRunSummary {
   enrichedTransactionsInserted: number;
   enrichedTransactionsUpdated: number;
   failed: number;
+  items: SyncItemSummary[];
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
+  runId: string | null;
+  source: "initial" | "manual" | "scheduled";
+  startedAt: string;
+  status: "succeeded" | "partial" | "failed";
   succeeded: number;
   totalItems: number;
   transactionsRemoved: number;
@@ -130,7 +138,7 @@ export function PlaidConnectionPanel() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const connectedInstitutionCount = useMemo(
-    () => new Set(connections.map((connection) => connection.plaidInstitutionId ?? connection.institutionName)).size,
+    () => new Set(connections.map((connection) => connection.institutionName)).size,
     [connections]
   );
   const syncableConnectionCount = useMemo(

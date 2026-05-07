@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
       sync = await syncPlaidItem({
         client: writeClient,
         itemId: connection.id,
+        source: "initial",
         userId: context.user.id
       });
       const connections = await listPlaidConnections(writeClient, context.user.id);

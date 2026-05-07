@@ -8,6 +8,8 @@ export type Json =
 
 export type AccountType = "depository" | "credit" | "investment" | "retirement";
 export type PlaidItemStatus = "active" | "error" | "revoked";
+export type PlaidSyncRunSource = "initial" | "manual" | "scheduled";
+export type PlaidSyncRunStatus = "running" | "succeeded" | "partial" | "failed";
 export type TransactionStatus = "pending" | "posted";
 export type TransactionIntent = "personal" | "business" | "shared" | "reimbursable" | "transfer";
 export type ReviewReason =
@@ -84,6 +86,50 @@ export interface AccountRow {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PlaidSyncRunRow {
+  id: string;
+  user_id: string;
+  source: PlaidSyncRunSource;
+  status: PlaidSyncRunStatus;
+  started_at: string;
+  completed_at: string | null;
+  total_items: number;
+  succeeded_items: number;
+  failed_items: number;
+  accounts_upserted: number;
+  balance_snapshots_upserted: number;
+  raw_transactions_upserted: number;
+  raw_transactions_skipped: number;
+  enriched_transactions_inserted: number;
+  enriched_transactions_updated: number;
+  transactions_removed: number;
+  safe_error_code: string | null;
+  safe_error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaidSyncRunItemRow {
+  id: string;
+  user_id: string;
+  sync_run_id: string;
+  plaid_item_id: string;
+  status: Exclude<PlaidSyncRunStatus, "running" | "partial">;
+  started_at: string;
+  completed_at: string;
+  accounts_upserted: number;
+  balance_snapshots_upserted: number;
+  raw_transactions_upserted: number;
+  raw_transactions_skipped: number;
+  enriched_transactions_inserted: number;
+  enriched_transactions_updated: number;
+  transactions_removed: number;
+  safe_error_code: string | null;
+  safe_error_message: string | null;
+  last_successful_sync_at: string | null;
+  created_at: string;
 }
 
 export interface BalanceSnapshotRow {
@@ -275,6 +321,8 @@ export type Database = {
     Tables: {
       institutions: TableDefinition<InstitutionRow>;
       plaid_items: TableDefinition<PlaidItemRow>;
+      plaid_sync_runs: TableDefinition<PlaidSyncRunRow>;
+      plaid_sync_run_items: TableDefinition<PlaidSyncRunItemRow>;
       accounts: TableDefinition<AccountRow>;
       balance_snapshots: TableDefinition<BalanceSnapshotRow>;
       categories: TableDefinition<CategoryRow>;
@@ -293,6 +341,8 @@ export type Database = {
     Enums: {
       account_type: AccountType;
       plaid_item_status: PlaidItemStatus;
+      plaid_sync_run_source: PlaidSyncRunSource;
+      plaid_sync_run_status: PlaidSyncRunStatus;
       transaction_status: TransactionStatus;
       transaction_intent: TransactionIntent;
       review_reason: ReviewReason;

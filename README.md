@@ -68,6 +68,7 @@ Manual sync imports:
 - review items.
 
 Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
+Each initial, manual, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids.
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
@@ -190,6 +191,7 @@ PLAID_REDIRECT_URI=http://localhost:3000/settings
 OPENAI_API_KEY=
 OPENAI_MODEL=
 ENABLE_DEMO_MODE=true
+CRON_SECRET=
 ```
 
 Generate a production Plaid token encryption key with:

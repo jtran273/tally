@@ -53,6 +53,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled outside production and disabled in production. Do not enable on real production. |
+| `CRON_SECRET` | Server only | Scheduled sync yes | Shared bearer secret for `/api/plaid/sync/scheduled`. Required before enabling Vercel Cron or another scheduler. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
 
 Generate `PLAID_TOKEN_ENCRYPTION_KEY`:
@@ -88,7 +89,8 @@ npm run build
 6. Keep `ENABLE_DEMO_MODE` unset or `false` in Production.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
-9. Promote or deploy to Production after checks pass.
+9. If scheduled sync is enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
+10. Promote or deploy to Production after checks pass.
 
 ## Plaid Setup
 
