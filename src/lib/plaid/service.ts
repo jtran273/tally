@@ -389,15 +389,29 @@ function mapPlaidPersonalFinanceCategory(primary: string, detailed: string) {
   }
 
   if (primary === "GENERAL_MERCHANDISE") return "Shopping";
-  if (primary === "TRANSPORTATION") return "Transport / Rideshare";
+
+  if (primary === "TRANSPORTATION") {
+    if (detailed === "TRANSPORTATION_GAS_STATIONS") return "Transport / Gas";
+    if (detailed === "TRANSPORTATION_PARKING") return "Transport / Parking";
+    if (detailed === "TRANSPORTATION_PUBLIC_TRANSIT") return "Transport / Public Transit";
+    return "Transport / Rideshare";
+  }
+
   if (primary === "TRAVEL") return "Travel / Flights";
   if (primary === "RENT_AND_UTILITIES") return "Housing";
 
   if (primary === "MEDICAL") {
-    return detailed === "MEDICAL_PHARMACIES_AND_SUPPLEMENTS" ? "Health / Pharmacy" : "Health / Fitness";
+    return detailed === "MEDICAL_PHARMACIES_AND_SUPPLEMENTS" ? "Health / Pharmacy" : "Health / Medical";
   }
 
   if (primary === "PERSONAL_CARE") return "Health / Fitness";
+  if (primary === "ENTERTAINMENT") return "Entertainment";
+  if (primary === "RECREATION") return "Entertainment";
+  if (primary === "EDUCATION") return "Education";
+  if (primary === "HOME_IMPROVEMENT") return "Home / Improvement";
+  if (primary === "GENERAL_SERVICES") return "Services";
+  if (primary === "BANK_FEES") return "Bank Fees";
+  if (primary === "GOVERNMENT_AND_NON_PROFIT") return "Government / Non-Profit";
 
   return null;
 }

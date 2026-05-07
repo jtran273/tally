@@ -9,6 +9,7 @@ import type { RecurringCandidate } from "../recurring";
 type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
 const LOW_CONFIDENCE_THRESHOLD = 0.65;
+const VERY_LOW_CONFIDENCE_THRESHOLD = 0.4;
 const LARGE_SPENDING_THRESHOLD = 500;
 const PEER_TO_PEER_MERCHANT_PATTERN = /\b(apple cash|cash app|cashapp|venmo|zelle)\b/i;
 
@@ -66,7 +67,15 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
     ));
   }
 
-  if (transaction.confidence !== null && transaction.confidence < LOW_CONFIDENCE_THRESHOLD) {
+  // Flag low-confidence when Plaid is genuinely uncertain:
+  // - Below VERY_LOW threshold (≈ UNKNOWN Plaid level): flag regardless of category
+  // - Below LOW_CONFIDENCE threshold: only flag when the category is also unclear
+  const isVeryLowConfidence = transaction.confidence !== null && transaction.confidence < VERY_LOW_CONFIDENCE_THRESHOLD;
+  const isModeratelyLowWithNoCategory = transaction.confidence !== null &&
+    transaction.confidence < LOW_CONFIDENCE_THRESHOLD &&
+    (!categoryName || categoryName === "uncategorized");
+
+  if (isVeryLowConfidence || isModeratelyLowWithNoCategory) {
     items.push(baseReviewItem(
       transaction,
       "low-confidence",
@@ -83,7 +92,8 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
   if (
     transaction.amount < 0 &&
     Math.abs(transaction.amount) >= LARGE_SPENDING_THRESHOLD &&
-    transaction.intent !== "transfer"
+    transaction.intent !== "transfer" &&
+    !transaction.is_recurring
   ) {
     items.push(baseReviewItem(
       transaction,
