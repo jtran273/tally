@@ -33,6 +33,7 @@ type QueryResult<Row> = { data: Row[] | Row | null; error: QueryError | null };
 const DAY_MS = 86_400_000;
 const NOW = BASE_DATE.toISOString();
 const EMPTY_JSON: Json = {};
+const DEFAULT_CATEGORY_NAMES = ["Education"];
 
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -119,7 +120,13 @@ const accounts: AccountRow[] = ledgerData.accounts.map((account) => {
   };
 });
 
-const categories: CategoryRow[] = [...new Set(ledgerData.txns.map((transaction) => transaction.category))].map(
+const categories: CategoryRow[] = [
+  ...new Set([
+    ...ledgerData.txns.map((transaction) => transaction.category),
+    ...ledgerData.recurring.map((expense) => expense.category),
+    ...DEFAULT_CATEGORY_NAMES
+  ])
+].map(
   (name) => ({
     color: null,
     created_at: NOW,

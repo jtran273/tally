@@ -9,10 +9,11 @@ import type {
 } from "@/lib/db";
 import type { AiProviderStatus } from "@/lib/ai/server";
 import type { PlaidConnectionSummary, PlaidPersistedSyncRunSummary } from "@/lib/plaid/service";
-import { buildSpendingInsightSummary } from "@/lib/finance/spending";
+import { buildSpendingInsightSummary, transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildFirstRunChecklist, type FirstRunChecklistItem } from "@/lib/settings/first-run-checklist";
 import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, GitBranch, LogOut, Repeat, ShieldCheck, SlidersHorizontal, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
 import Link from "next/link";
+import { CategoryManager, type CategorySpendingRow } from "./category-manager";
 import styles from "./settings.module.css";
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -86,6 +87,67 @@ function formatSource(source: PlaidPersistedSyncRunSummary["source"]) {
   if (source === "initial") return "Initial";
   if (source === "scheduled") return "Scheduled";
   return "Manual";
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function categoryTransactionsHref(categoryId: string | null, categoryName: string) {
+  const params = new URLSearchParams({ exclude_transfers: "1" });
+  if (categoryId) {
+    params.set("category", categoryId);
+  } else {
+    params.set("q", categoryName);
+  }
+  return `/transactions?${params.toString()}`;
+}
+
+function buildCategorySpendingRows(
+  categories: CategoryRecord[],
+  transactions: TransactionRecord[],
+  fromDate: string,
+  toDate: string
+): CategorySpendingRow[] {
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const rowsByKey = new Map<string, CategorySpendingRow>();
+
+  categories.forEach((category) => {
+    rowsByKey.set(category.id, {
+      amount: 0,
+      categoryId: category.id,
+      categoryName: category.name,
+      color: category.color,
+      count: 0,
+      href: categoryTransactionsHref(category.id, category.name)
+    });
+  });
+
+  transactions.forEach((transaction) => {
+    if (transaction.date < fromDate || transaction.date > toDate) return;
+    const amount = transactionSpendingAmount(transaction);
+    if (amount <= 0) return;
+
+    const category = transaction.categoryId ? categoryById.get(transaction.categoryId) : null;
+    const categoryName = category?.name ?? transaction.category;
+    const categoryId = category?.id ?? transaction.categoryId;
+    const key = categoryId ?? categoryName;
+    const current = rowsByKey.get(key) ?? {
+      amount: 0,
+      categoryId,
+      categoryName,
+      color: category?.color ?? null,
+      count: 0,
+      href: categoryTransactionsHref(categoryId, categoryName)
+    };
+
+    current.amount = roundMoney(current.amount + amount);
+    current.count += 1;
+    rowsByKey.set(key, current);
+  });
+
+  return [...rowsByKey.values()]
+    .sort((left, right) => right.amount - left.amount || left.categoryName.localeCompare(right.categoryName));
 }
 
 function SyncObservabilityPanel({
@@ -309,6 +371,13 @@ export function SettingsView({
   const activeMerchantRules = merchantRules.filter((rule) => rule.enabled).length;
   const spendingSummary = buildSpendingInsightSummary(transactions);
   const categoryConfidence = spendingSummary.confidence;
+  const currentMonthFrom = `${spendingSummary.asOfDate.slice(0, 7)}-01`;
+  const categorySpendingRows = buildCategorySpendingRows(
+    categories,
+    transactions,
+    currentMonthFrom,
+    spendingSummary.asOfDate
+  );
   const checklist = buildFirstRunChecklist({
     accounts,
     aiProviderStatus,
@@ -363,6 +432,8 @@ export function SettingsView({
       <PlaidConnectionPanel />
 
       <SyncObservabilityPanel connections={plaidConnections} latestRun={latestPlaidSyncRun} />
+
+      <CategoryManager categories={categories} spendingRows={categorySpendingRows} />
 
       <MerchantRulesPanel categories={categories} merchantRules={merchantRules} />
 

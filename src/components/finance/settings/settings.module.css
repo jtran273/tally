@@ -332,6 +332,179 @@
   border-color: var(--ink-2);
 }
 
+.primaryButton {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.primaryButton:hover {
+  border-color: var(--ink);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.categoryTools {
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.categoryQuickForm,
+.categoryForm {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.field:has(.inputControl) {
+  flex: 1 1 220px;
+}
+
+.inputControl,
+.colorControl {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.inputControl {
+  width: 100%;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.inputControl:focus,
+.colorControl:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+.colorControl {
+  width: 48px;
+  padding: 4px;
+}
+
+.inlineNotice,
+.inlineError {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inlineError {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.categorySpendList {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+}
+
+.categorySpendRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.categorySpendRow:hover {
+  background: color-mix(in oklab, var(--accent) 4%, var(--surface));
+}
+
+.categoryDot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+
+.categorySpendCopy {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.categorySpendTop {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.categorySpendTop strong {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spendBar {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.spendBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.categoryArrow {
+  color: var(--muted);
+}
+
 @media (max-width: 920px) {
   .metricGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -364,8 +537,34 @@
   }
 
   .checkAction,
+  .categoryQuickForm,
   .secondaryButton {
     width: 100%;
+  }
+
+  .categoryForm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .categoryForm .primaryButton,
+  .categoryForm .secondaryButton,
+  .primaryButton {
+    width: 100%;
+  }
+
+  .categorySpendRow {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .categoryArrow {
+    display: none;
+  }
+
+  .categorySpendTop {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 }
 

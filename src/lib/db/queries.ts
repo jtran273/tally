@@ -585,6 +585,28 @@ export async function createCategory(
   return toCategoryRecord(expectData(result, "Create category"));
 }
 
+export async function upsertCategory(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: CategoryMutationInput
+): Promise<CategoryRecord> {
+  const insert: CategoryInsert = {
+    color: input.color ?? null,
+    icon: input.icon ?? null,
+    name: input.name,
+    parent_id: input.parentId ?? null,
+    user_id: userId
+  };
+
+  const result = await client
+    .from("categories")
+    .upsert(insert, { onConflict: "user_id,name" })
+    .select("*")
+    .single();
+
+  return toCategoryRecord(expectData(result, "Upsert category"));
+}
+
 export async function updateCategory(
   client: FinanceSupabaseClient,
   userId: string,
