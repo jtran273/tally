@@ -103,6 +103,8 @@ const venmoTransaction = transaction({
 
 const groceryTransaction = transaction({
   amount: -92.45,
+  category: "Groceries",
+  categoryId: "category-groceries",
   date: "2026-05-04",
   id: "tx-grocery",
   merchant: "Grocery Mart"
@@ -190,6 +192,16 @@ function assertInsightGeneratorFixture(cards: ReturnType<typeof buildDashboardIn
   const persistedCard = requireCard(cards, "software-costs-up");
   if (!persistedCard.body.includes("directional") || !persistedCard.href.includes("Software")) {
     throw new Error("Expected persisted spend-sensitive insight to be labeled directional with a filtered link.");
+  }
+
+  const cashflowCard = requireCard(cards, "spending-cashflow");
+  if (!cashflowCard.title.includes("Month cashflow") || !cashflowCard.href.includes("exclude_transfers=1")) {
+    throw new Error("Expected generated cashflow insight to summarize spending and link to filtered transactions.");
+  }
+
+  const categoryCard = requireCard(cards, "spending-top-category");
+  if (!categoryCard.title.includes("Groceries") || !categoryCard.href.includes("category=category-groceries")) {
+    throw new Error("Expected generated top category insight to use deterministic category spend evidence.");
   }
 
   if (cards.some((card) => !card.href.startsWith("/") || !card.evidenceLabel)) {
