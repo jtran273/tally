@@ -1,5 +1,12 @@
+import assert from "node:assert/strict";
+import test from "node:test";
 import { AccountType as PlaidAccountType, type AccountBase } from "plaid";
-import { mergePlaidAccountSourcesForSync } from "./service";
+import {
+  getRemovedPlaidTransactionIdsToDelete,
+  mergePlaidAccountSourcesForSync,
+  planPendingRawTransactionReplacements,
+  shouldRefreshPlaidEnrichment
+} from "./service";
 
 function account(accountId: string, name: string, current: number): AccountBase {
   return {
@@ -36,6 +43,64 @@ export const plaidAccountSourceMergeFixture = mergePlaidAccountSourcesForSync({
 });
 
 export const plaidAccountSourceMergeStaticAssertions = assertPlaidAccountSourceMergeFixtures();
+export const plaidPendingReplacementStaticAssertions = assertPlaidPendingReplacementFixtures();
+
+test("pending raw transaction is planned for in-place posted replacement", () => {
+  assert.deepEqual(
+    planPendingRawTransactionReplacements({
+      existingPendingRows: [
+        {
+          id: "raw-pending",
+          plaid_transaction_id: "pending-tx",
+          status: "pending"
+        }
+      ],
+      incomingRows: [
+        {
+          pending_transaction_id: "pending-tx",
+          plaid_transaction_id: "posted-tx",
+          status: "posted"
+        }
+      ]
+    }),
+    [
+      {
+        incomingPlaidTransactionId: "posted-tx",
+        pendingPlaidTransactionId: "pending-tx",
+        rawTransactionId: "raw-pending"
+      }
+    ]
+  );
+});
+
+test("manual or reviewed enrichment is not refreshed by Plaid modifications", () => {
+  assert.equal(shouldRefreshPlaidEnrichment({
+    reviewed_at: null,
+    source: "plaid"
+  }), true);
+  assert.equal(shouldRefreshPlaidEnrichment({
+    reviewed_at: null,
+    source: "manual"
+  }), false);
+  assert.equal(shouldRefreshPlaidEnrichment({
+    reviewed_at: "2026-05-07T08:00:00.000Z",
+    source: "plaid"
+  }), false);
+});
+
+test("removed pending id is skipped after a posted replacement preserves that raw row", () => {
+  assert.deepEqual(
+    getRemovedPlaidTransactionIdsToDelete(
+      [
+        { transaction_id: "pending-tx" },
+        { transaction_id: "orphan-removed-tx" },
+        { transaction_id: "orphan-removed-tx" }
+      ],
+      new Set(["pending-tx"])
+    ),
+    ["orphan-removed-tx"]
+  );
+});
 
 function assertPlaidAccountSourceMergeFixtures(): true {
   if (!plaidAccountsGetFallbackFixture.some((item) => item.account_id === "acct-get")) {
@@ -49,6 +114,44 @@ function assertPlaidAccountSourceMergeFixtures(): true {
   const dedupedAccount = plaidAccountSourceMergeFixture.find((item) => item.account_id === "acct-get");
   if (dedupedAccount?.name !== "Accounts balance account") {
     throw new Error("Expected accounts/balance rows to win when they refresh an accounts/get account.");
+  }
+
+  return true;
+}
+
+function assertPlaidPendingReplacementFixtures(): true {
+  const replacements = planPendingRawTransactionReplacements({
+    existingPendingRows: [
+      {
+        id: "raw-pending",
+        plaid_transaction_id: "pending-tx",
+        status: "pending"
+      }
+    ],
+    incomingRows: [
+      {
+        pending_transaction_id: "pending-tx",
+        plaid_transaction_id: "posted-tx",
+        status: "posted"
+      }
+    ]
+  });
+
+  if (replacements[0]?.rawTransactionId !== "raw-pending") {
+    throw new Error("Expected posted Plaid transaction to replace the matching pending raw row.");
+  }
+
+  if (shouldRefreshPlaidEnrichment({ reviewed_at: null, source: "manual" })) {
+    throw new Error("Expected manual enrichment to survive Plaid modified transaction updates.");
+  }
+
+  const removedIds = getRemovedPlaidTransactionIdsToDelete(
+    [{ transaction_id: "pending-tx" }, { transaction_id: "removed-tx" }],
+    new Set(["pending-tx"])
+  );
+
+  if (removedIds.includes("pending-tx") || removedIds[0] !== "removed-tx") {
+    throw new Error("Expected removed pending id to be ignored after posted replacement.");
   }
 
   return true;

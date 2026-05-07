@@ -39,6 +39,7 @@ type AccountInsert = Database["public"]["Tables"]["accounts"]["Insert"];
 type AccountUpdate = Database["public"]["Tables"]["accounts"]["Update"];
 type BalanceSnapshotInsert = Database["public"]["Tables"]["balance_snapshots"]["Insert"];
 type RawTransactionInsert = Database["public"]["Tables"]["raw_transactions"]["Insert"];
+type RawTransactionUpdate = Database["public"]["Tables"]["raw_transactions"]["Update"];
 type EnrichedTransactionInsert = Database["public"]["Tables"]["enriched_transactions"]["Insert"];
 type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
@@ -447,6 +448,80 @@ function dedupeTransactions(transactions: Transaction[]) {
   return [...new Map(transactions.map((transaction) => [transaction.transaction_id, transaction])).values()];
 }
 
+export interface PendingRawReplacementCandidate {
+  pending_transaction_id?: string | null;
+  plaid_transaction_id?: string;
+  status?: "pending" | "posted";
+}
+
+export interface ExistingPendingRawCandidate {
+  id: string;
+  plaid_transaction_id: string;
+  status: "pending" | "posted";
+}
+
+export interface PendingRawReplacement {
+  incomingPlaidTransactionId: string;
+  pendingPlaidTransactionId: string;
+  rawTransactionId: string;
+}
+
+export function getPlaidPendingReplacementIds(transactions: readonly PendingRawReplacementCandidate[]) {
+  return new Set(
+    transactions
+      .filter((transaction) => transaction.status === "posted")
+      .map((transaction) => transaction.pending_transaction_id?.trim() ?? "")
+      .filter(Boolean)
+  );
+}
+
+export function planPendingRawTransactionReplacements({
+  existingPendingRows,
+  incomingRows
+}: {
+  existingPendingRows: readonly ExistingPendingRawCandidate[];
+  incomingRows: readonly PendingRawReplacementCandidate[];
+}): PendingRawReplacement[] {
+  const existingPendingByPlaidId = new Map(
+    existingPendingRows
+      .filter((row) => row.status === "pending")
+      .map((row) => [row.plaid_transaction_id, row])
+  );
+  const plannedPendingIds = new Set<string>();
+
+  return incomingRows.flatMap((row) => {
+    if (row.status !== "posted" || !row.pending_transaction_id || !row.plaid_transaction_id) return [];
+    if (plannedPendingIds.has(row.pending_transaction_id)) return [];
+
+    const pendingRow = existingPendingByPlaidId.get(row.pending_transaction_id);
+    if (!pendingRow) return [];
+    plannedPendingIds.add(row.pending_transaction_id);
+
+    return [{
+      incomingPlaidTransactionId: row.plaid_transaction_id,
+      pendingPlaidTransactionId: pendingRow.plaid_transaction_id,
+      rawTransactionId: pendingRow.id
+    }];
+  });
+}
+
+export function getRemovedPlaidTransactionIdsToDelete(
+  removed: readonly Pick<RemovedTransaction, "transaction_id">[],
+  preservedPendingTransactionIds: ReadonlySet<string>
+) {
+  return [...new Set(
+    removed
+      .map((transaction) => transaction.transaction_id)
+      .filter((transactionId) => !preservedPendingTransactionIds.has(transactionId))
+  )];
+}
+
+export function shouldRefreshPlaidEnrichment(
+  existing: Pick<EnrichedTransactionRow, "reviewed_at" | "source"> | null | undefined
+) {
+  return existing?.source === "plaid" && !existing.reviewed_at;
+}
+
 export interface PlaidAccountSyncSources {
   accountsGetAccounts: readonly AccountBase[];
   balanceAccounts: readonly AccountBase[];
@@ -844,15 +919,20 @@ async function fetchItemAccounts(accessToken: string) {
 async function deleteRemovedTransactions({
   client,
   item,
+  preservedPendingTransactionIds,
   removed,
   userId
 }: {
   client: FinanceSupabaseClient;
   item: PlaidItemRow;
+  preservedPendingTransactionIds?: ReadonlySet<string>;
   removed: RemovedTransaction[];
   userId: string;
 }) {
-  const transactionIds = [...new Set(removed.map((transaction) => transaction.transaction_id))];
+  const transactionIds = getRemovedPlaidTransactionIdsToDelete(
+    removed,
+    preservedPendingTransactionIds ?? new Set()
+  );
   let removedCount = 0;
 
   for (const batch of chunk(transactionIds, UPSERT_CHUNK_SIZE)) {
@@ -910,6 +990,116 @@ function buildRawTransactionInsert({
   };
 }
 
+function buildRawTransactionUpdate(insert: RawTransactionInsert): RawTransactionUpdate {
+  return {
+    account_id: insert.account_id,
+    amount: insert.amount,
+    authorized_date: insert.authorized_date,
+    authorized_datetime: insert.authorized_datetime,
+    date: insert.date,
+    datetime: insert.datetime,
+    iso_currency_code: insert.iso_currency_code,
+    location: insert.location,
+    merchant_name: insert.merchant_name,
+    name: insert.name,
+    payment_channel: insert.payment_channel,
+    payment_meta: insert.payment_meta,
+    pending_transaction_id: insert.pending_transaction_id,
+    plaid_category: insert.plaid_category,
+    plaid_category_id: insert.plaid_category_id,
+    plaid_item_id: insert.plaid_item_id,
+    plaid_transaction_id: insert.plaid_transaction_id,
+    raw_payload: insert.raw_payload,
+    status: insert.status,
+    transaction_type: insert.transaction_type
+  };
+}
+
+async function loadPendingRawRowsForReplacement({
+  client,
+  item,
+  pendingTransactionIds,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  item: PlaidItemRow;
+  pendingTransactionIds: ReadonlySet<string>;
+  userId: string;
+}) {
+  const rows: RawTransactionRow[] = [];
+
+  for (const batch of chunk([...pendingTransactionIds], UPSERT_CHUNK_SIZE)) {
+    if (batch.length === 0) continue;
+
+    const result = await client
+      .from("raw_transactions")
+      .select(RAW_TRANSACTION_COLUMNS)
+      .eq("user_id", userId)
+      .eq("plaid_item_id", item.id)
+      .eq("status", "pending")
+      .in("plaid_transaction_id", batch);
+
+    rows.push(...expectData(result, "Load pending Plaid transaction replacements") as unknown as RawTransactionRow[]);
+  }
+
+  return rows;
+}
+
+async function replacePendingRawTransactions({
+  client,
+  item,
+  inserts,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  item: PlaidItemRow;
+  inserts: RawTransactionInsert[];
+  userId: string;
+}) {
+  const pendingReplacementIds = getPlaidPendingReplacementIds(inserts);
+  const existingPendingRows = await loadPendingRawRowsForReplacement({
+    client,
+    item,
+    pendingTransactionIds: pendingReplacementIds,
+    userId
+  });
+  const replacementPlan = planPendingRawTransactionReplacements({
+    existingPendingRows,
+    incomingRows: inserts
+  });
+  const insertByPlaidId = new Map(inserts.map((insert) => [insert.plaid_transaction_id, insert]));
+  const replacedRows: RawTransactionRow[] = [];
+  const replacedPlaidTransactionIds = new Set<string>();
+  const replacedPendingPlaidTransactionIds = new Set<string>();
+
+  for (const replacement of replacementPlan) {
+    const insert = insertByPlaidId.get(replacement.incomingPlaidTransactionId);
+    if (!insert) continue;
+
+    const result = await client
+      .from("raw_transactions")
+      .update(buildRawTransactionUpdate(insert))
+      .eq("user_id", userId)
+      .eq("plaid_item_id", item.id)
+      .eq("id", replacement.rawTransactionId)
+      .eq("plaid_transaction_id", replacement.pendingPlaidTransactionId)
+      .eq("status", "pending")
+      .select(RAW_TRANSACTION_COLUMNS)
+      .single();
+    const row = expectData(result, "Replace pending Plaid raw transaction") as unknown as RawTransactionRow;
+
+    replacedRows.push(row);
+    replacedPlaidTransactionIds.add(replacement.incomingPlaidTransactionId);
+    replacedPendingPlaidTransactionIds.add(replacement.pendingPlaidTransactionId);
+  }
+
+  return {
+    replacedPendingPlaidTransactionIds,
+    replacedPlaidTransactionIds,
+    replacedRows
+  };
+}
+
 async function upsertRawTransactions({
   accountByPlaidId,
   client,
@@ -940,8 +1130,19 @@ async function upsertRawTransactions({
   }
 
   const rawRows: RawTransactionRow[] = [];
+  const replacementResult = await replacePendingRawTransactions({
+    client,
+    inserts,
+    item,
+    userId
+  });
+  rawRows.push(...replacementResult.replacedRows);
+  const remainingInserts = inserts.filter((insert) => {
+    const plaidTransactionId = insert.plaid_transaction_id;
+    return !plaidTransactionId || !replacementResult.replacedPlaidTransactionIds.has(plaidTransactionId);
+  });
 
-  for (const batch of chunk(inserts, UPSERT_CHUNK_SIZE)) {
+  for (const batch of chunk(remainingInserts, UPSERT_CHUNK_SIZE)) {
     const result = await client
       .from("raw_transactions")
       .upsert(batch, { onConflict: "user_id,plaid_transaction_id" })
@@ -953,6 +1154,7 @@ async function upsertRawTransactions({
     rawRows,
     rawTransactionsSkipped: skipped,
     rawTransactionsUpserted: rawRows.length,
+    replacedPendingPlaidTransactionIds: replacementResult.replacedPendingPlaidTransactionIds,
     transactionByPlaidId
   };
 }
@@ -1054,7 +1256,7 @@ async function seedEnrichedTransactions({
 
     if (!existing) {
       inserts.push(seed);
-    } else if (existing.source === "plaid" && !existing.reviewed_at) {
+    } else if (shouldRefreshPlaidEnrichment(existing)) {
       updates.push(seed);
     }
   }
@@ -1165,12 +1367,6 @@ async function persistTransactionUpdates({
   userId: string;
 }) {
   const changedTransactions = dedupeTransactions([...transactions.added, ...transactions.modified]);
-  const removedCount = await deleteRemovedTransactions({
-    client,
-    item,
-    removed: transactions.removed,
-    userId
-  });
   const rawResult = await upsertRawTransactions({
     accountByPlaidId,
     client,
@@ -1182,6 +1378,13 @@ async function persistTransactionUpdates({
     client,
     rawRows: rawResult.rawRows,
     transactionByPlaidId: rawResult.transactionByPlaidId,
+    userId
+  });
+  const removedCount = await deleteRemovedTransactions({
+    client,
+    item,
+    preservedPendingTransactionIds: rawResult.replacedPendingPlaidTransactionIds,
+    removed: transactions.removed,
     userId
   });
 
