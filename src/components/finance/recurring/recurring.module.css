@@ -207,10 +207,28 @@
 }
 
 .primaryCell span,
-.amountCell span {
+.amountCell span,
+.mutedBlock {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.attentionText {
+  color: var(--warn) !important;
+}
+
+.nextDue {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mutedBlock {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cadence {

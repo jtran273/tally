@@ -7,7 +7,7 @@ import type {
   TransactionRecord
 } from "../db/types";
 
-export type DetectedRecurringCadence = Extract<RecurringCadence, "weekly" | "monthly" | "annual">;
+export type DetectedRecurringCadence = Extract<RecurringCadence, "weekly" | "biweekly" | "monthly" | "quarterly" | "annual">;
 
 export interface RecurringDetectionReview {
   id: string;
@@ -62,6 +62,8 @@ export interface RecurringDetectionOptions {
   amountToleranceAmount?: number;
   priceChangeThresholdRatio?: number;
   priceChangeThresholdAmount?: number;
+  includeInactiveCandidates?: boolean;
+  inactiveCandidateGraceIntervals?: number;
 }
 
 export interface RecurringCandidateReview {
@@ -109,7 +111,7 @@ export interface RecurringPriceChangeSignal {
   source: "history" | "known-recurring";
 }
 
-export type RecurringCandidateFlagKind = "new-recurring" | "price-change";
+export type RecurringCandidateFlagKind = "new-recurring" | "price-change" | "needs-review";
 
 export interface RecurringCandidateFlag {
   kind: RecurringCandidateFlagKind;
