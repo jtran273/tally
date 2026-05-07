@@ -536,6 +536,11 @@ function cleanupReasonLabel(reason: CategoryCleanupAction["reasons"][number]) {
   return "Uncategorized";
 }
 
+function cleanupActionMerchantSearch(item: CategoryCleanupAction) {
+  if (!item.reasons.includes("uncategorized")) return undefined;
+  return item.label.replace(/^Uncategorized:\s*/i, "").trim() || item.label;
+}
+
 function CategoryCleanupPanel({ summary }: { summary: SpendingInsightSummary }) {
   const confidence = summary.confidence;
   const current = summary.currentMonth;
@@ -586,15 +591,15 @@ function CategoryCleanupPanel({ summary }: { summary: SpendingInsightSummary }) 
             <Link
               className={styles.cleanupRow}
               href={transactionsHref({
-                category: item.id ?? undefined,
+                category: cleanupActionMerchantSearch(item) ? undefined : item.id ?? undefined,
                 exclude_transfers: true,
                 from: current.fromDate,
-                q: item.id ? undefined : item.label,
+                q: cleanupActionMerchantSearch(item) ?? (item.id ? undefined : item.label),
                 quality: "needs-cleanup",
                 review: item.openReviewCount > 0 ? "open" : undefined,
                 to: current.toDate
               })}
-              key={item.id ?? item.label}
+              key={`${item.id ?? "no-category"}-${item.label}`}
             >
               <div>
                 <strong>{item.label}</strong>
