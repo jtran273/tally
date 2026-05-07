@@ -1,6 +1,7 @@
 .shell {
   display: flex;
-  width: min(100%, 1280px);
+  width: min(100%, var(--content-max));
+  min-width: 0;
   flex-direction: column;
   gap: 16px;
 }
@@ -8,12 +9,14 @@
 .notice,
 .errorNotice,
 .emptyState {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .errorNotice {
@@ -69,19 +72,22 @@
 .hero h2,
 .card h2 {
   margin: 0;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-weight: 400;
-  line-height: 1;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.05;
 }
 
 .hero h2 {
   margin-top: 8px;
-  font-size: 56px;
+  overflow-wrap: anywhere;
+  font-size: 46px;
+  font-variant-numeric: tabular-nums;
 }
 
 .card h2 {
   margin-top: 5px;
-  font-size: 24px;
+  font-size: 21px;
 }
 
 .syncPill {
@@ -125,14 +131,74 @@
   font-size: 13px;
 }
 
-.trend {
+.trendPanel {
   margin-top: 18px;
+}
+
+.trendControls {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+
+.trendControls button {
+  min-width: 44px;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trendControls button:hover,
+.trendControls button:focus-visible,
+.trendRangeActive {
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+}
+
+.trendSummary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trendSummary span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.trendSummary span:first-child {
+  font-weight: 500;
+}
+
+.trend {
+  margin-top: 10px;
 }
 
 .trend svg {
   display: block;
   width: 100%;
-  height: 136px;
+  height: 180px;
 }
 
 .trendAxis,
@@ -146,6 +212,31 @@
 .trendSource {
   justify-content: flex-start;
   margin-top: 8px;
+}
+
+.trendAxis {
+  gap: 12px;
+}
+
+.trendAxis span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.trendAxis span:last-child {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.trendAxis strong {
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .emptyTrend {
@@ -163,6 +254,7 @@
 
 .summaryCard,
 .card {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -186,10 +278,12 @@
 }
 
 .summaryCard strong {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: 30px;
-  font-weight: 400;
-  line-height: 1;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
 }
 
 .summaryCard > span:last-child {
@@ -213,6 +307,7 @@
 
 .cardHead {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
@@ -238,6 +333,7 @@
 }
 
 .groupCard {
+  min-width: 0;
   border: 1px solid var(--line-2);
   border-radius: 8px;
   padding: 14px;
@@ -248,6 +344,7 @@
 .groupMeta,
 .transactionRow {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -265,6 +362,19 @@
 .amount {
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.groupTop span,
+.groupMeta span,
+.transactionRow strong,
+.transactionRow span,
+.reviewRow strong,
+.reviewRow span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .groupCard p {
@@ -294,6 +404,7 @@
 .transactionRow,
 .reviewRow,
 .insight {
+  min-width: 0;
   border: 1px solid var(--line-2);
   border-radius: 8px;
   padding: 12px;
@@ -322,6 +433,7 @@
 
 .reviewRow {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 10px;
 }
@@ -397,7 +509,7 @@
   }
 
   .hero h2 {
-    font-size: 40px;
+    font-size: 34px;
   }
 
   .summaryGrid,
@@ -407,6 +519,28 @@
   }
 
   .trend svg {
-    height: 110px;
+    height: 150px;
+  }
+
+  .trendSummary,
+  .trendAxis {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .trendAxis span:last-child {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 480px) {
+  .transactionRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .amount {
+    align-self: flex-start;
   }
 }

@@ -1,10 +1,14 @@
 import { createPlaidLinkToken } from "@/lib/plaid/service";
 import { plaidRouteError, requirePlaidRouteUser } from "@/lib/plaid/route-helpers";
-import { NextResponse } from "next/server";
+import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
+import { type NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;
 
@@ -14,7 +18,7 @@ export async function POST() {
       userId: context.user.id
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       expiration: token.expiration,
       linkToken: token.linkToken
     });

@@ -8,12 +8,12 @@ import {
   listTransactions,
   type AccountRecord,
   type BalanceSnapshotRecord,
-  type FinanceSupabaseClient,
   type InsightRecord,
   type RecurringExpenseRecord,
   type ReviewQueueItem,
   type TransactionRecord
 } from "@/lib/db";
+import { getFinanceServerContext } from "@/lib/demo/server";
 import {
   buildBalanceTrend,
   calculateAccountTotals,
@@ -21,7 +21,6 @@ import {
   summarizeSync
 } from "@/lib/finance/balances";
 import { buildDashboardInsightCards } from "@/lib/insights";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +32,7 @@ export default async function DashboardPage() {
   let accounts: AccountRecord[] = [];
   let snapshots: BalanceSnapshotRecord[] = [];
   let recentTransactions: TransactionRecord[] = [];
+  let trendTransactions: TransactionRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let insights: InsightRecord[] = [];
@@ -40,45 +40,34 @@ export default async function DashboardPage() {
   let isConfigured = false;
   let isSignedIn = false;
 
-  const supabase = await createSupabaseServerClient();
-  isConfigured = Boolean(supabase);
+  const context = await getFinanceServerContext();
+  isConfigured = context.isConfigured;
+  isSignedIn = context.isSignedIn;
+  dataError = context.dataError;
 
-  if (supabase) {
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser();
+  if (context.client && context.userId) {
+    try {
+      accounts = await listAccounts(context.client, context.userId);
+      const accountIds = accounts.map((account) => account.id);
 
-    if (error) {
-      dataError = `Unable to verify Supabase session: ${error.message}`;
-    }
-
-    if (user) {
-      isSignedIn = true;
-      const financeClient = supabase as unknown as FinanceSupabaseClient;
-
-      try {
-        accounts = await listAccounts(financeClient, user.id);
-        const accountIds = accounts.map((account) => account.id);
-
-        [
-          snapshots,
-          recentTransactions,
-          reviewItems,
-          recurringExpenses,
-          insights
-        ] = await Promise.all([
-          accountIds.length > 0
-            ? listBalanceSnapshots(financeClient, user.id, { accountIds, limit: 500 })
-            : Promise.resolve([]),
-          listTransactions(financeClient, user.id, { limit: 8 }),
-          listReviewItems(financeClient, user.id, "open"),
-          listRecurringExpenses(financeClient, user.id),
-          listInsights(financeClient, user.id)
-        ]);
-      } catch (loadError) {
-        dataError = errorMessage(loadError);
-      }
+      [
+        snapshots,
+        trendTransactions,
+        reviewItems,
+        recurringExpenses,
+        insights
+      ] = await Promise.all([
+        accountIds.length > 0
+          ? listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 5000 })
+          : Promise.resolve([]),
+        listTransactions(context.client, context.userId, { limit: 5000 }),
+        listReviewItems(context.client, context.userId, "open"),
+        listRecurringExpenses(context.client, context.userId),
+        listInsights(context.client, context.userId)
+      ]);
+      recentTransactions = trendTransactions.slice(0, 8);
+    } catch (loadError) {
+      dataError = errorMessage(loadError);
     }
   }
 
@@ -87,7 +76,8 @@ export default async function DashboardPage() {
   const groups = groupAccounts(accounts);
   const trend = buildBalanceTrend(accounts, snapshots, {
     asOfDate: now.toISOString().slice(0, 10),
-    maxPoints: 24
+    maxPoints: 366,
+    transactions: trendTransactions
   });
   const insightCards = buildDashboardInsightCards({
     accounts,

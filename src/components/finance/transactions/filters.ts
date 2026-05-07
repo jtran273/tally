@@ -190,3 +190,26 @@ export function toTransactionListFilters(filters: TransactionFilterState): Trans
     limit: filters.limit
   };
 }
+
+export function transactionFiltersToSearchParams(filters: TransactionFilterState) {
+  const params = new URLSearchParams();
+
+  if (filters.search) params.set("q", filters.search);
+  if (filters.month) params.set("month", filters.month);
+  if (filters.fromDate) params.set("from", filters.fromDate);
+  if (filters.toDate) params.set("to", filters.toDate);
+  if (filters.accountId !== "all") params.set("account", filters.accountId);
+  if (filters.categoryId !== "all") params.set("category", filters.categoryId);
+  if (filters.intent !== "all") params.set("intent", filters.intent);
+  if (filters.reviewStatus !== "all") params.set("review", filters.reviewStatus);
+  if (filters.excludeTransfers) params.set("exclude_transfers", "1");
+  params.set("limit", String(filters.limit));
+
+  return params;
+}
+
+export function transactionFiltersHref(pathname: string, filters: TransactionFilterState) {
+  const params = transactionFiltersToSearchParams(filters);
+  const query = params.toString();
+  return `${pathname}${query ? `?${query}` : ""}`;
+}

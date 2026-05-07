@@ -1,7 +1,7 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { ArrowRight, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowRight, FlaskConical, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -9,6 +9,7 @@ import styles from "./login.module.css";
 
 interface LoginFormProps {
   initialMessage: string | null;
+  isDemoAvailable: boolean;
   isConfigured: boolean;
   redirectTo: string;
   userEmail: string | null;
@@ -23,7 +24,7 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to complete authentication.";
 }
 
-export function LoginForm({ initialMessage, isConfigured, redirectTo, userEmail }: LoginFormProps) {
+export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redirectTo, userEmail }: LoginFormProps) {
   const router = useRouter();
   const [status, setStatus] = useState<AuthStatus | null>(
     initialMessage ? { message: initialMessage, tone: "success" } : null
@@ -108,34 +109,50 @@ export function LoginForm({ initialMessage, isConfigured, redirectTo, userEmail 
             </div>
           </div>
         ) : (
-          <form className={styles.stack} onSubmit={handleSignIn}>
-            <div>
-              <p className={styles.eyebrow}>Supabase Auth</p>
-              <h1 id="login-title" className={styles.title}>Sign in to Ledger</h1>
-            </div>
+          <div className={styles.stack}>
+            <form className={styles.stack} onSubmit={handleSignIn}>
+              <div>
+                <p className={styles.eyebrow}>Supabase Auth</p>
+                <h1 id="login-title" className={styles.title}>Sign in to Ledger</h1>
+              </div>
 
-            {!isConfigured ? (
-              <p className={`${styles.notice} ${styles.error}`}>
-                Supabase Auth is not configured. Set the public Supabase URL and anon key in your environment.
-              </p>
+              {!isConfigured ? (
+                <p className={`${styles.notice} ${styles.error}`}>
+                  Supabase Auth is not configured. Set the public Supabase URL and anon key in your environment.
+                </p>
+              ) : null}
+              {status ? <p className={`${styles.notice} ${styles[status.tone]}`}>{status.message}</p> : null}
+
+              <label className={styles.field}>
+                <span>Email</span>
+                <input autoComplete="email" name="email" placeholder="you@example.com" type="email" />
+              </label>
+
+              <label className={styles.field}>
+                <span>Password</span>
+                <input autoComplete="current-password" name="password" placeholder="Password" type="password" />
+              </label>
+
+              <button className={styles.primaryButton} disabled={isSubmitting || !isConfigured} type="submit">
+                <LogIn size={16} aria-hidden />
+                {isSubmitting ? "Signing in..." : "Sign in"}
+              </button>
+            </form>
+
+            {isDemoAvailable ? (
+              <form action="/login/demo" className={styles.demoBlock} method="post">
+                <div>
+                  <p className={styles.demoTitle}>Need test data?</p>
+                  <p className={styles.demoCopy}>Open a seeded demo workspace without Supabase or Plaid.</p>
+                </div>
+                <input name="redirectTo" type="hidden" value={redirectTo} />
+                <button className={styles.demoButton} type="submit">
+                  <FlaskConical size={16} aria-hidden />
+                  Enter demo
+                </button>
+              </form>
             ) : null}
-            {status ? <p className={`${styles.notice} ${styles[status.tone]}`}>{status.message}</p> : null}
-
-            <label className={styles.field}>
-              <span>Email</span>
-              <input autoComplete="email" name="email" placeholder="you@example.com" type="email" />
-            </label>
-
-            <label className={styles.field}>
-              <span>Password</span>
-              <input autoComplete="current-password" name="password" placeholder="Password" type="password" />
-            </label>
-
-            <button className={styles.primaryButton} disabled={isSubmitting || !isConfigured} type="submit">
-              <LogIn size={16} aria-hidden />
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
+          </div>
         )}
       </section>
     </main>

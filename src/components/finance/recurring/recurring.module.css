@@ -1,0 +1,347 @@
+.shell {
+  display: flex;
+  width: min(100%, var(--content-max));
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard,
+.panel,
+.notice,
+.errorNotice,
+.emptyState {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.summaryCard {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.summaryCard strong {
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.summaryLabel,
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.trusted {
+  border-color: color-mix(in oklab, var(--pos) 18%, var(--line));
+}
+
+.warn {
+  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
+  background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+}
+
+.notice,
+.errorNotice,
+.emptyState {
+  padding: 14px 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.emptyState {
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted);
+}
+
+.emptyState strong {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.emptyState span {
+  display: block;
+  margin-top: 4px;
+}
+
+.panel {
+  overflow: hidden;
+}
+
+.panelHead {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px;
+}
+
+.panelHead h2 {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.panelHead > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.emptyMini {
+  padding: 18px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tableShell {
+  display: grid;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tableHead,
+.tableRow {
+  display: grid;
+  width: 100%;
+  min-width: 920px;
+  grid-template-columns: minmax(240px, 1.6fr) minmax(120px, 0.8fr) minmax(100px, 0.6fr) minmax(120px, 0.8fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.candidateTableShell .tableHead,
+.candidateTableShell .tableRow {
+  min-width: 1080px;
+  grid-template-columns: minmax(240px, 1.5fr) minmax(100px, 0.6fr) minmax(100px, 0.6fr) minmax(120px, 0.7fr) minmax(100px, 0.6fr) minmax(130px, 0.8fr) minmax(176px, 0.9fr);
+}
+
+.tableHead {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 16px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.tableRow {
+  border-bottom: 1px solid var(--line-2);
+  padding: 13px 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.tableRow > div {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableRow:last-child {
+  border-bottom: 0;
+}
+
+.primaryCell {
+  min-width: 0;
+}
+
+.tableRow > .primaryCell {
+  overflow: visible;
+  white-space: normal;
+}
+
+.primaryCell strong,
+.primaryCell span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primaryCell strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.primaryCell span,
+.amountCell span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cadence {
+  text-transform: capitalize;
+}
+
+.amountCell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.amountCell strong {
+  display: block;
+  color: var(--ink);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.actionCell {
+  overflow: visible;
+  white-space: normal;
+}
+
+.actionForms {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 450;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.primaryButton {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  border-color: var(--ink-2);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.inlineError,
+.inlineMessage {
+  flex-basis: 100%;
+  font-size: 11.5px;
+  white-space: normal;
+}
+
+.inlineError {
+  color: var(--neg);
+}
+
+.inlineMessage {
+  color: var(--pos);
+}
+
+.statusPill {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.status-active {
+  border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  color: var(--pos);
+}
+
+.status-pending {
+  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  color: var(--warn);
+}
+
+.status-paused,
+.status-dismissed {
+  opacity: 0.72;
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+@media (max-width: 1120px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .emptyState {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .panelHead {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

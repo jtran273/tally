@@ -4,11 +4,10 @@ import {
   listReviewItems,
   listTransactions,
   type CategoryRecord,
-  type FinanceSupabaseClient,
   type ReviewQueueItem,
   type TransactionRecord
 } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getFinanceServerContext } from "@/lib/demo/server";
 
 export const dynamic = "force-dynamic";
 
@@ -24,32 +23,20 @@ export default async function ReviewPage() {
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
 
-  const supabase = await createSupabaseServerClient();
-  isConfigured = Boolean(supabase);
+  const context = await getFinanceServerContext();
+  isConfigured = context.isConfigured;
+  isSignedIn = context.isSignedIn;
+  dataError = context.dataError;
 
-  if (supabase) {
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser();
-
-    if (error) {
-      dataError = `Unable to verify Supabase session: ${error.message}`;
-    }
-
-    if (user) {
-      isSignedIn = true;
-      const financeClient = supabase as unknown as FinanceSupabaseClient;
-
-      try {
-        [categories, reviewItems, transactions] = await Promise.all([
-          listCategories(financeClient, user.id),
-          listReviewItems(financeClient, user.id, "open"),
-          listTransactions(financeClient, user.id)
-        ]);
-      } catch (loadError) {
-        dataError = errorMessage(loadError);
-      }
+  if (context.client && context.userId) {
+    try {
+      [categories, reviewItems, transactions] = await Promise.all([
+        listCategories(context.client, context.userId),
+        listReviewItems(context.client, context.userId, "open"),
+        listTransactions(context.client, context.userId)
+      ]);
+    } catch (loadError) {
+      dataError = errorMessage(loadError);
     }
   }
 

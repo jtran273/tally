@@ -237,6 +237,8 @@ function evaluateCadence({
   const requiredMatchingIntervals = rows.length === 2 ? 1 : Math.ceil(cadenceEvidence.totalIntervals * 0.66);
   if (cadenceEvidence.matchingIntervals < requiredMatchingIntervals) return null;
 
+  if (hasDismissedRecurring(normalizedMerchant, cadence, options.existingRecurring)) return null;
+
   const existingRecurring = findExistingRecurring(normalizedMerchant, cadence, options.existingRecurring);
   const amountEvaluation = evaluateAmounts(rows, existingRecurring, options);
   if (amountEvaluation.score < 0.58) return null;
@@ -483,6 +485,18 @@ function findExistingRecurring(
     expense.status !== "dismissed" && normalizeRecurringMerchant(expense.merchant) === normalizedMerchant
   );
   return merchantMatches.find((expense) => expense.cadence === cadence) ?? merchantMatches[0] ?? null;
+}
+
+function hasDismissedRecurring(
+  normalizedMerchant: string,
+  cadence: DetectedRecurringCadence,
+  existingRecurring: readonly KnownRecurringExpense[]
+) {
+  return existingRecurring.some((expense) =>
+    expense.status === "dismissed" &&
+    normalizeRecurringMerchant(expense.merchant) === normalizedMerchant &&
+    expense.cadence === cadence
+  );
 }
 
 function resolveAsOfDate(asOfDate: string | undefined, rows: readonly DatedTransaction[]): string | undefined {

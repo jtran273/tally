@@ -1,7 +1,5 @@
 "use client";
 
-import { BASE_DATE, ledgerData } from "@/components/ledger/data";
-import { LedgerProvider, ledgerRouteHref, type LedgerRoute, useLedger } from "@/components/ledger/ledger-app";
 import {
   Home,
   Inbox,
@@ -11,11 +9,14 @@ import {
   Search,
   Settings,
   Sparkles,
+  X,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+
+type RouteKey = "dashboard" | "transactions" | "review" | "recurring" | "accounts" | "settings";
 
 type RouteMeta = {
   eyebrow: string;
@@ -24,9 +25,18 @@ type RouteMeta = {
   title: string;
 };
 
-const routeMeta: Record<LedgerRoute, RouteMeta> = {
+const routeHref: Record<RouteKey, string> = {
+  accounts: "/accounts",
+  dashboard: "/dashboard",
+  recurring: "/recurring",
+  review: "/review",
+  settings: "/settings",
+  transactions: "/transactions"
+};
+
+const routeMeta: Record<RouteKey, RouteMeta> = {
   dashboard: {
-    eyebrow: BASE_DATE.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }),
+    eyebrow: "Connected finance workspace",
     icon: Home,
     label: "Dashboard",
     title: "Dashboard"
@@ -63,30 +73,80 @@ const routeMeta: Record<LedgerRoute, RouteMeta> = {
   }
 };
 
-const navigation: LedgerRoute[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
+const navigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
 
-function currentRoute(pathname: string): LedgerRoute {
-  const match = navigation.find((route) => pathname === ledgerRouteHref[route] || pathname.startsWith(`${ledgerRouteHref[route]}/`));
+function currentRoute(pathname: string): RouteKey {
+  const match = navigation.find((route) => pathname === routeHref[route] || pathname.startsWith(`${routeHref[route]}/`));
   return match ?? "dashboard";
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  return (
-    <LedgerProvider>
-      <AppFrame>{children}</AppFrame>
-    </LedgerProvider>
-  );
-}
-
-function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const route = currentRoute(pathname);
-  const { reviewItems } = useLedger();
+  const isTransactionList = pathname === routeHref.transactions;
+  const currentTransactionSearch = isTransactionList ? searchParams.get("q") ?? "" : "";
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const shouldRefocusSearchRef = useRef(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  const focusSearchInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, []);
+
+  const openSearch = useCallback(() => {
+    setIsSearchOpen(true);
+    focusSearchInput();
+  }, [focusSearchInput]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
+
+      event.preventDefault();
+      openSearch();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [openSearch]);
+
+  useEffect(() => {
+    if (!shouldRefocusSearchRef.current) return;
+
+    shouldRefocusSearchRef.current = false;
+    setIsSearchOpen(true);
+    focusSearchInput();
+  }, [currentTransactionSearch, focusSearchInput, pathname]);
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const query = String(formData.get("q") ?? "").trim();
+    const params = isTransactionList
+      ? new URLSearchParams(searchParams.toString())
+      : new URLSearchParams();
+
+    if (query) {
+      params.set("q", query);
+    } else {
+      params.delete("q");
+    }
+
+    const serialized = params.toString();
+    shouldRefocusSearchRef.current = true;
+    router.push(`${routeHref.transactions}${serialized ? `?${serialized}` : ""}`);
+  }
 
   return (
     <div className="ledger-app">
       <aside className="sidebar">
-        <Link className="brand" href={ledgerRouteHref.dashboard} aria-label="Ledger dashboard">
+        <Link className="brand" href={routeHref.dashboard} aria-label="Ledger dashboard">
           <div className="brand-mark">L</div>
           <div className="brand-name">Ledger</div>
           <div className="brand-sub">Personal</div>
@@ -101,11 +161,10 @@ function AppFrame({ children }: { children: ReactNode }) {
                 key={item}
                 aria-current={active ? "page" : undefined}
                 className={`nav-item ${active ? "active" : ""}`}
-                href={ledgerRouteHref[item]}
+                href={routeHref[item]}
               >
                 <Icon size={16} aria-hidden />
                 <span>{routeMeta[item].label}</span>
-                {item === "review" && reviewItems.length > 0 ? <span className="nav-badge">{reviewItems.length}</span> : null}
               </Link>
             );
           })}
@@ -117,14 +176,14 @@ function AppFrame({ children }: { children: ReactNode }) {
               <Sparkles size={14} aria-hidden />
               <span>AI suggestions</span>
             </div>
-            <div className="ai-card-body">{reviewItems.length} transactions have suggested labels awaiting review.</div>
-            <Link className="ai-card-link" href={ledgerRouteHref.review}>Open review queue</Link>
+            <div className="ai-card-body">Review and recurring tabs load from persisted Plaid transaction data.</div>
+            <Link className="ai-card-link" href={routeHref.review}>Open review queue</Link>
           </div>
-          <Link className="user-row" href={ledgerRouteHref.settings}>
+          <Link className="user-row" href={routeHref.settings}>
             <div className="avatar">J</div>
             <div className="user-meta">
               <div className="user-name">James</div>
-              <div className="user-sub">{ledgerData.accounts.length} accounts - synced 2m ago</div>
+              <div className="user-sub">Real data workspace</div>
             </div>
             <Settings size={15} aria-hidden />
           </Link>
@@ -138,11 +197,51 @@ function AppFrame({ children }: { children: ReactNode }) {
             <h1 className="topbar-title">{routeMeta[route].title}</h1>
           </div>
           <div className="topbar-actions">
-            <label className="search" aria-label="Search">
-              <Search size={14} aria-hidden />
-              <input placeholder="Search transactions, merchants, categories..." />
-              <kbd>Cmd K</kbd>
-            </label>
+            <button
+              aria-controls="mobile-transaction-search"
+              aria-expanded={isSearchOpen}
+              aria-label="Open transaction search"
+              className="mobile-search-trigger"
+              onClick={openSearch}
+              type="button"
+            >
+              <Search size={15} aria-hidden />
+              <span>Search</span>
+            </button>
+            <div className={`search-layer ${isSearchOpen ? "search-open" : ""}`}>
+              <button
+                aria-label="Close transaction search"
+                className="search-backdrop"
+                onClick={() => setIsSearchOpen(false)}
+                type="button"
+              />
+              <form
+                className="search"
+                id="mobile-transaction-search"
+                role="search"
+                aria-label="Search transactions"
+                onSubmit={handleSearchSubmit}
+              >
+                <Search size={14} aria-hidden />
+                <input
+                  defaultValue={currentTransactionSearch}
+                  key={`${pathname}:${currentTransactionSearch}`}
+                  name="q"
+                  placeholder="Search transactions, merchants, categories..."
+                  ref={searchInputRef}
+                  type="search"
+                />
+                <kbd>Cmd K</kbd>
+                <button
+                  aria-label="Close search"
+                  className="search-close"
+                  onClick={() => setIsSearchOpen(false)}
+                  type="button"
+                >
+                  <X size={15} aria-hidden />
+                </button>
+              </form>
+            </div>
           </div>
         </header>
         <div className="page">{children}</div>

@@ -178,6 +178,7 @@ export interface ConfirmRecurringCandidatePayload {
 export interface DismissRecurringCandidatePayload {
   action: "dismiss-recurring";
   candidateId: string;
+  recurringExpense?: RecurringExpenseUpsertPayload;
   transactionUpdates: RecurringTransactionPatchPayload[];
   reviewResolutions: RecurringReviewResolutionPayload[];
   recurringExpenseUpdate?: {

@@ -1,7 +1,7 @@
-import type { AccountRecord, AccountType, BalanceSnapshotRecord } from "@/lib/db";
+import type { AccountRecord, AccountType, BalanceSnapshotRecord, TransactionIntent, TransactionStatus } from "@/lib/db";
 
 export type AccountGroupKey = "cash" | "credit" | "investments" | "retirement";
-export type TrendSource = "current" | "snapshot";
+export type TrendSource = "current" | "snapshot" | "transaction";
 export type SyncState = "fresh" | "stale" | "never";
 
 export interface AccountBalanceTotals {
@@ -40,6 +40,16 @@ interface BalanceLike {
   type: AccountType;
   balance: number;
 }
+
+interface BalanceTrendTransaction {
+  amount: number;
+  date: string;
+  intent: TransactionIntent;
+  status: TransactionStatus;
+}
+
+const MIN_SNAPSHOT_TREND_DAYS = 45;
+const DEFAULT_TRANSACTION_LOOKBACK_DAYS = 366;
 
 const GROUP_ORDER: AccountGroupKey[] = ["cash", "credit", "investments", "retirement"];
 
@@ -123,12 +133,20 @@ export function groupAccounts(accounts: readonly AccountRecord[]): AccountGroup[
 export function buildBalanceTrend(
   accounts: readonly AccountRecord[],
   snapshots: readonly BalanceSnapshotRecord[],
-  options: { asOfDate?: string; maxPoints?: number } = {}
+  options: {
+    asOfDate?: string;
+    maxPoints?: number;
+    minSnapshotTrendDays?: number;
+    transactionLookbackDays?: number;
+    transactions?: readonly BalanceTrendTransaction[];
+  } = {}
 ): BalanceTrendPoint[] {
   if (accounts.length === 0) return [];
 
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const totalsByDate = new Map<string, number>();
+  const asOfDate = options.asOfDate ?? new Date().toISOString().slice(0, 10);
+  const maxPoints = options.maxPoints ?? 366;
 
   snapshots.forEach((snapshot) => {
     const account = accountById.get(snapshot.accountId);
@@ -141,21 +159,115 @@ export function buildBalanceTrend(
     );
   });
 
-  const points = [...totalsByDate.entries()]
+  const points: BalanceTrendPoint[] = [...totalsByDate.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, netWorth]) => ({ date, netWorth, source: "snapshot" as const }));
 
+  const transactionTrend = buildTransactionDerivedTrend(accounts, options.transactions ?? [], {
+    asOfDate,
+    lookbackDays: options.transactionLookbackDays ?? DEFAULT_TRANSACTION_LOOKBACK_DAYS,
+    maxPoints
+  });
+
   if (points.length > 0) {
-    return points.slice(-(options.maxPoints ?? 24));
+    const snapshotSpanDays = trendSpanDays(points);
+    const minSnapshotTrendDays = options.minSnapshotTrendDays ?? MIN_SNAPSHOT_TREND_DAYS;
+
+    if (asOfDate && points[points.length - 1].date < asOfDate) {
+      points.push({
+        date: asOfDate,
+        netWorth: calculateAccountTotals(accounts).netWorth,
+        source: "current"
+      });
+    }
+
+    if (points.length >= 4 && snapshotSpanDays >= minSnapshotTrendDays) {
+      return points.slice(-maxPoints);
+    }
+
+    if (transactionTrend.length > points.length) {
+      return transactionTrend;
+    }
+
+    return points.slice(-maxPoints);
   }
+
+  if (transactionTrend.length > 0) return transactionTrend;
 
   return [
     {
-      date: options.asOfDate ?? new Date().toISOString().slice(0, 10),
+      date: asOfDate,
       netWorth: calculateAccountTotals(accounts).netWorth,
       source: "current"
     }
   ];
+}
+
+function parseDate(value: string) {
+  return new Date(`${value}T12:00:00`).getTime();
+}
+
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function trendSpanDays(points: readonly BalanceTrendPoint[]) {
+  if (points.length < 2) return 0;
+
+  const first = points[0];
+  const latest = points[points.length - 1];
+  return Math.max(0, Math.round((parseDate(latest.date) - parseDate(first.date)) / 86_400_000));
+}
+
+function buildTransactionDerivedTrend(
+  accounts: readonly AccountRecord[],
+  transactions: readonly BalanceTrendTransaction[],
+  options: { asOfDate: string; lookbackDays: number; maxPoints: number }
+) {
+  const currentNetWorth = calculateAccountTotals(accounts).netWorth;
+  const cutoffDate = addDays(options.asOfDate, -options.lookbackDays);
+  const deltasByDate = new Map<string, number>();
+
+  transactions.forEach((transaction) => {
+    if (transaction.status === "pending" || transaction.intent === "transfer") return;
+    if (transaction.date < cutoffDate || transaction.date > options.asOfDate) return;
+
+    deltasByDate.set(
+      transaction.date,
+      (deltasByDate.get(transaction.date) ?? 0) + transaction.amount
+    );
+  });
+
+  const dates = [...deltasByDate.keys()].sort((left, right) => left.localeCompare(right));
+  if (dates.length === 0) return [];
+
+  let runningNetWorth = currentNetWorth - [...deltasByDate.values()].reduce((sum, amount) => sum + amount, 0);
+  const points: BalanceTrendPoint[] = [{
+    date: cutoffDate < dates[0] ? cutoffDate : dates[0],
+    netWorth: runningNetWorth,
+    source: "transaction"
+  }];
+
+  dates.forEach((date) => {
+    runningNetWorth += deltasByDate.get(date) ?? 0;
+    points.push({
+      date,
+      netWorth: runningNetWorth,
+      source: "transaction"
+    });
+  });
+
+  if (points[points.length - 1].date < options.asOfDate) {
+    points.push({
+      date: options.asOfDate,
+      netWorth: currentNetWorth,
+      source: "current"
+    });
+  }
+
+  return points.slice(-options.maxPoints);
 }
 
 export function accountSyncState(

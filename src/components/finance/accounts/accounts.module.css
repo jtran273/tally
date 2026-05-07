@@ -1,6 +1,7 @@
 .shell {
   display: flex;
-  width: min(100%, 1280px);
+  width: min(100%, var(--content-max));
+  min-width: 0;
   flex-direction: column;
   gap: 16px;
 }
@@ -8,12 +9,14 @@
 .notice,
 .errorNotice,
 .emptyState {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .errorNotice {
@@ -52,6 +55,7 @@
 .summaryCard,
 .group,
 .accountCard {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -76,7 +80,8 @@
 }
 
 .summaryCard strong {
-  font-family: "Instrument Serif", Georgia, serif;
+  overflow-wrap: anywhere;
+  font-family: inherit;
   font-size: 30px;
   font-weight: 400;
   line-height: 1;
@@ -107,6 +112,7 @@
 
 .groupHead {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
@@ -115,7 +121,8 @@
 
 .groupHead h2 {
   margin: 5px 0 4px;
-  font-family: "Instrument Serif", Georgia, serif;
+  overflow-wrap: anywhere;
+  font-family: inherit;
   font-size: 25px;
   font-weight: 400;
   line-height: 1;
@@ -132,11 +139,12 @@
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-size: 18px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .accountGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
   gap: 12px;
 }
 
@@ -234,7 +242,8 @@
 }
 
 .balance {
-  font-family: "Instrument Serif", Georgia, serif;
+  overflow-wrap: anywhere;
+  font-family: inherit;
   font-size: 31px;
   line-height: 1;
 }
@@ -262,6 +271,7 @@
 .detailGrid strong {
   display: block;
   margin-top: 3px;
+  overflow-wrap: anywhere;
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-size: 12px;
   font-weight: 500;
@@ -290,6 +300,7 @@
 .accountFoot {
   border-top: 1px solid var(--line-2);
   padding-top: 11px;
+  flex-wrap: wrap;
 }
 
 .accountFoot span:first-child {

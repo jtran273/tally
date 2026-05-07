@@ -1,98 +1,112 @@
-# HANDOFF
+# Handoff
 
-## Current Commit
+This file summarizes the current repository state for the next engineer or agent.
 
-- `044487a3e97b1e53a452e549c178fc2cdf0a3d5e`
-- Branch: `main`
-- Remote: `origin/main`
-- Working tree status at handoff check: clean
+## Repository
 
-## Closed Issues
+- Local branch: `main`
+- Remote: `origin`
+- Remote URL: `https://github.com/jtran273/personal-finance-os.git`
+- GitHub visibility check: `PUBLIC`, `isPrivate: false`
 
-- #1 Create PRD and implementation plan docs
-- #2 Scaffold Next.js app and Ledger design baseline
-- #3 Configure Supabase Auth and environment
-- #4 Add database schema and seed data
-- #5 Build app shell and navigation hardening
-- #6 Implement Plaid Link connection
-- #7 Implement account, balance, and transaction sync
-- #8 Build accounts and net worth dashboard from persisted data
-- #9 Build transaction table and filters from persisted data
-- #10 Build transaction editing, categories, and intent labels
-- #11 Add AI suggestion adapter and mock suggestions
-- #12 Build review queue workflow
-- #14 Build recurring expense detection
-- #16 Add CSV export
-- #17 Add tests, CI, and reviewer checklist
-- #18 Configure Vercel deployment and production readiness notes
+Make the repository private before depending on it for production financial data.
 
-## Open Issues
+## Current Product State
 
-- #13 Build Venmo/Zelle/Cash App shared-expense resolution
-- #15 Build insight cards with evidence links
+Ledger is a working production-MVP personal finance dashboard with:
 
-## Issues Currently Blocked
+- Supabase Auth.
+- Protected app shell.
+- Supabase finance schema and RLS.
+- Plaid Link connection flow.
+- Plaid public token exchange.
+- Manual Plaid sync.
+- Plaid disconnect/revoke.
+- Encrypted Plaid access token storage.
+- Dashboard, transactions, review, recurring, accounts, and settings views.
+- Transaction editing.
+- Review queue.
+- Peer-to-peer split resolution.
+- Recurring candidate detection.
+- CSV export.
+- Deterministic AI suggestions and optional OpenAI provider.
+- CI and documentation.
 
-- No GitHub issue is formally blocked.
-- #15 should avoid taking ownership of spending calculations while #13 is active.
+## Important Security State
 
-## Known Blockers
+- `.env.local` exists locally and should not be printed or committed.
+- Current local secret files are ignored by git.
+- A current-file and git-history regex scan did not find obvious committed secrets.
+- Production demo mode is disabled by default.
+- Mutating route handlers have same-origin checks.
+- Browser security headers are configured.
+- Production Plaid token encryption requires `PLAID_TOKEN_ENCRYPTION_KEY`.
 
-- Supabase CLI is not installed locally.
-- Live browser-based Plaid Sandbox sync has not been fully verified after the corrected Plaid key.
-- End-to-end Plaid sync requires a signed-in user and connected Sandbox institution.
-- Peer-to-peer transactions intentionally remain unresolved until #13 lands.
+## Known Gaps
 
-## Env Status
+- GitHub repo is public until changed in GitHub.
+- No scheduled Plaid background sync.
+- No production alerting or monitoring setup.
+- No Gitleaks or equivalent secret scanning in CI yet.
+- No browser E2E suite yet.
+- Token encryption key rotation requires manual planning.
+- Supabase CLI is not confirmed installed locally.
+- Live production Plaid behavior still needs a careful one-institution smoke test.
 
-- Use `.env.local`; do not create `.env.example`.
-- `.env.local` exists and contains expected key names for Supabase, Plaid Sandbox, OpenAI, and Vercel.
-- Do not print secret values.
-- Plaid Link token check previously succeeded after key correction.
+## Verification Commands
 
-## Checks That Pass
+Run:
 
-As of commit `044487a`:
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm audit --omit=dev
+git diff --check
+```
 
-- `npm run lint`
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- `npm audit --omit=dev`
-- `git diff --check`
+## Environment Notes
 
-## Next Recommended Batch
+Use `.env.local` for local development only.
 
-Run two agents in parallel only with strict ownership:
+Do not print:
 
-- Agent A: Issue #13, shared-expense resolution.
-  - Own peer-to-peer review resolution, transaction splits, split persistence, and split-aware spending calculations.
-  - This agent owns any spending calculation changes.
+- Supabase keys,
+- Plaid secrets,
+- Plaid access tokens,
+- OpenAI keys,
+- database URLs,
+- auth headers.
 
-- Agent B: Issue #15, insight cards.
-  - Own deterministic insight generation and dashboard insight UI.
-  - Must not modify spending calculation logic while #13 is running.
-  - Should label unresolved/P2P data as unresolved, not confirmed.
+Production should set:
 
-## Files/Modules To Avoid Touching In Parallel
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PLAID_CLIENT_ID`
+- `PLAID_PRODUCTION_SECRET` or `PLAID_SECRET`
+- `PLAID_TOKEN_ENCRYPTION_KEY`
+- `PLAID_ENV`
+- `PLAID_REDIRECT_URI`
 
-Avoid overlapping edits unless one agent is explicitly assigned ownership:
+## Suggested Next Batch
 
-- `src/lib/db/queries.ts`
-- `src/lib/db/types.ts`
-- `supabase/migrations/*`
-- `src/components/finance/review/*`
-- `src/components/finance/dashboard/*`
-- `src/components/finance/transactions/*`
-- `src/app/(app)/dashboard/page.tsx`
-- `src/app/(app)/review/page.tsx`
-- `src/app/(app)/transactions/actions.ts`
-- `src/app/globals.css`
+1. Make GitHub repo private.
+2. Add secret scanning to CI.
+3. Add Playwright smoke tests.
+4. Add scheduled Plaid sync.
+5. Add audit event reporting UI.
+6. Add category and merchant rule management.
 
-## Orchestration Notes
+## Files To Review Before Large Changes
 
-- Start fresh from `main` at `044487a`.
-- Create `HANDOFF.md` first.
-- Do not start more agents until `HANDOFF.md` exists.
-- After #13 and #15 complete, run full checks again.
-- Then commit, push, close issues, and do a final browser smoke test.
+- [README.md](README.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [SECURITY.md](SECURITY.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [OPERATIONS.md](OPERATIONS.md)
+- [src/lib/db/queries.ts](src/lib/db/queries.ts)
+- [src/lib/plaid/service.ts](src/lib/plaid/service.ts)
+- [supabase/migrations/20260506000100_finance_schema.sql](supabase/migrations/20260506000100_finance_schema.sql)

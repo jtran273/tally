@@ -2,9 +2,23 @@
 
 -
 
-## Related Issue
+## User Impact
 
-- Closes #
+-
+
+## Security And Data Safety
+
+- [ ] No real secrets, tokens, auth headers, or private financial data are included.
+- [ ] Client components do not receive server-only secrets.
+- [ ] User-owned data remains scoped by `user_id`.
+- [ ] RLS, auth, or service-role behavior is documented if changed.
+- [ ] Plaid access token handling is unchanged or explicitly reviewed.
+- [ ] New mutating route handlers include same-origin protection or explain why not.
+
+## Documentation
+
+- [ ] README/docs updated for new routes, environment variables, setup, or behavior.
+- [ ] Deployment/security/operations docs updated if production behavior changed.
 
 ## Verification
 
@@ -12,17 +26,8 @@
 - [ ] `npm test`
 - [ ] `npm run build`
 - [ ] `npm audit --omit=dev`
+- [ ] `git diff --check`
 
-## Issue Acceptance Criteria
+## Screenshots Or Notes
 
-- [ ] CI installs dependencies with `npm ci`.
-- [ ] CI runs lint with `npm run lint`.
-- [ ] CI runs tests/typecheck with `npm test`.
-- [ ] CI builds the existing Next.js Ledger app with `npm run build`.
-- [ ] CI audits production dependencies with `npm audit --omit=dev`.
-
-## Reviewer Checklist
-
-- [ ] Changes map back to the related issue acceptance criteria.
-- [ ] Protected auth/schema paths are untouched unless the PR explicitly owns that work: `src/lib/supabase/*`, `src/app/login/*`, `src/middleware.ts`, `supabase/migrations/*`, `supabase/seed.sql`, `src/lib/db/*`.
-- [ ] Any new checks or scripts are lightweight, dependency-free, and scoped to this issue.
+-

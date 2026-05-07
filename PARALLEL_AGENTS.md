@@ -1,192 +1,120 @@
-# Parallel Agent Runbook
+# Parallel Agent Coordination
 
-## Current State
+Use this document when splitting future work across multiple agents or engineers. The goal is to avoid overlapping writes across tightly coupled finance, Plaid, auth, and documentation surfaces.
 
-The Ledger frontend baseline, CI checklist, and Supabase Auth foundation are committed to `main`. GitHub issues are created in `jtran273/personal-finance-os`; use the issue numbers in this runbook as the source of task ownership.
+## Current Coordination Rule
 
-## GitHub Issue Creation Status
+Do not start parallel implementation unless each worker has an explicit ownership area and a disjoint write set.
 
-Issues are created through the authenticated GitHub CLI. Use labels to track dependency state, and keep issue comments updated when agents start, hand off, or complete work.
+The highest-risk shared files are:
 
-## Best Immediate Sequence
-
-1. Land the database schema and seed data issue.
-2. Start the second parallel batch from the updated `main`.
-3. Keep secrets in `.env.local`, Vercel env vars, and Supabase/Plaid dashboards. Do not commit real keys.
-
-## First Parallel Batch
-
-These can run together after the baseline is merged.
-
-### Agent A: Supabase Auth and Environment
-
-Issue: `03 - Configure Supabase Auth and environment`
-
-Ownership:
-
+- `src/lib/db/queries.ts`
+- `src/lib/db/types.ts`
+- `src/lib/plaid/service.ts`
+- `src/lib/plaid/token-vault.ts`
 - `src/lib/supabase/*`
-- `src/app/login/*`
-- `src/middleware.ts`
-- auth-related README/env docs only
-
-Prompt:
-
-```text
-Implement Supabase Auth for this Next.js App Router project. Add browser/server Supabase helpers, a login page, logout flow, protected route middleware, and environment documentation. Do not change database schema files. Preserve the existing Ledger UI and redirect unauthenticated users to /login. Run lint, typecheck, and build.
-```
-
-Done criteria:
-
-- User can sign in and sign out.
-- Protected app routes redirect unauthenticated users.
-- Environment requirements are documented, and local values live only in `.env.local`.
-- No secrets are committed.
-
-### Agent B: Database Schema and Seed Data
-
-Issue: `04 - Add database schema and seed data`
-
-Ownership:
-
+- `src/lib/security/*`
 - `supabase/migrations/*`
-- `supabase/seed.sql`
-- `src/lib/db/*`
-- typed finance data-access helpers
+- `src/components/finance/review/*`
+- `src/components/finance/transactions/*`
+- `src/components/finance/dashboard/*`
+- root documentation files
 
-Prompt:
+## Safe Work Splits
 
-```text
-Create the Supabase Postgres schema for the Personal Finance Copilot MVP. Include institutions, plaid_items, accounts, balance_snapshots, raw_transactions, enriched_transactions, categories, review_items, transaction_splits, recurring_expenses, insights, reimbursement_records, merchant_rules, and audit_events. Add seed data equivalent to the current Ledger mock data. Add typed query helpers. Do not implement auth UI or Plaid routes. Run lint, typecheck, and build.
-```
+### Secret Scanning CI
 
-Done criteria:
-
-- Raw/enriched transaction separation exists.
-- `user_id` ownership is represented on user-owned tables.
-- Seed data supports dashboard, transactions, review queue, recurring, and accounts.
-- Foreign keys are present.
-
-### Agent C: CI, Tests, and Baseline Checks
-
-Issue: `17 - Add tests, CI, and reviewer checklist`
-
-Ownership:
+Owner writes:
 
 - `.github/workflows/*`
-- `.github/pull_request_template.md`
-- test setup files
-- focused unit/smoke tests
-
-Prompt:
-
-```text
-Add CI and baseline tests for the current Next.js Ledger app. CI should install dependencies, run lint, typecheck, tests, build, and audit. Add a PR checklist mapping changes back to issue acceptance criteria. Add focused tests where practical without touching Supabase schema or auth implementation. Run the full checks locally.
-```
-
-Done criteria:
-
-- CI covers install, lint, typecheck, tests, build, and audit.
-- PR template includes reviewer checklist.
-- Existing app still builds.
-
-## Second Parallel Batch
-
-Run after Agent B lands schema and seed data.
-
-### Agent D: Dashboard from Persisted Data
-
-Issue: `08 - Build accounts and net worth dashboard from persisted data`
-
-Ownership:
-
-- dashboard/account data loaders
-- finance calculation utilities
-- account/net worth UI wiring
-
-Depends on:
-
-- Issue 04
+- optional scripts under `scripts/`
+- `SECURITY.md`
+- `OPERATIONS.md`
 
 Avoid:
 
-- Do not change Plaid ingestion.
-- Do not own transaction edit mutations.
+- app runtime code,
+- Supabase schema,
+- Plaid service logic.
 
-### Agent E: Transactions Table from Persisted Data
+### Playwright Smoke Tests
 
-Issue: `09 - Build transaction table and filters from persisted data`
+Owner writes:
 
-Ownership:
-
-- transaction list data loading
-- filter query state
-- table/list display wiring
-
-Depends on:
-
-- Issue 04
+- test config,
+- browser smoke tests,
+- package scripts if needed,
+- CI updates for the new test command.
 
 Avoid:
 
-- Do not implement transaction edit drawer persistence unless issue 10 is assigned.
+- changing app behavior unless a test exposes a real bug.
 
-### Agent F: AI Suggestion Adapter
+### Scheduled Plaid Sync
 
-Issue: `11 - Add AI suggestion adapter and mock suggestions`
+Owner writes:
 
-Ownership:
-
-- `src/lib/ai/*`
-- deterministic suggestion service
-- suggestion tests
-
-Depends on:
-
-- Issue 04 data types
+- new route/job code for scheduled sync,
+- `src/lib/plaid/*` only where needed,
+- deployment docs for scheduler setup.
 
 Avoid:
 
-- Do not call OpenAI yet unless explicitly assigned.
+- transaction table UI,
+- review UI,
+- unrelated query helper refactors.
 
-### Agent G: Recurring Detection
+### Audit Reporting UI
 
-Issue: `14 - Build recurring expense detection`
+Owner writes:
 
-Ownership:
-
-- recurring domain logic
-- recurring candidates/actions
-- focused tests
-
-Depends on:
-
-- Issue 04
+- audit query helpers,
+- audit view components,
+- route under `src/app/(app)`,
+- shell navigation if adding a new route.
 
 Avoid:
 
-- Do not wire recurring into Plaid ingestion until sync ownership is clear.
+- Plaid sync internals,
+- transaction mutation behavior.
 
-## Serial or Single-Owner Work
+### Category And Merchant Rules UI
 
-Keep these with one agent at a time:
+Owner writes:
 
-- Issue 06 and 07: Plaid Link and Plaid sync.
-- Issue 10 and 12: Transaction editing and review queue mutation APIs.
-- Issue 13: Peer-to-peer split persistence and spending calculations.
-- Issue 16: CSV export after transaction enrichment persistence is stable.
-- Issue 18: Deployment notes late in the process.
+- category/rule query helpers,
+- settings or dedicated category/rule components,
+- server actions for those forms.
 
-## Keys You Are Gathering
+Avoid:
 
-Put local values in `.env.local` and Vercel values in the Vercel project settings:
+- raw transaction persistence,
+- Plaid token storage,
+- auth middleware.
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_DB_URL`
-- `PLAID_CLIENT_ID`
-- `PLAID_SECRET`
-- `PLAID_ENV=sandbox`
-- `OPENAI_API_KEY`
+## Handoff Format
 
-The app can continue without keys until auth/Plaid/AI issues start.
+Each worker should report:
+
+- files changed,
+- behavior changed,
+- verification commands run,
+- remaining risks,
+- any environment variables added,
+- any migrations added.
+
+## Merge Checklist
+
+Before combining parallel work:
+
+- Re-read `git diff --name-only` for overlap.
+- Run `npm run lint`.
+- Run `npm test`.
+- Run `npm run build`.
+- Run `npm audit --omit=dev`.
+- Confirm docs mention any new environment variable, route, table, or security behavior.
+- Confirm no worker printed or committed secrets.
+
+## Documentation Ownership
+
+Do not have multiple workers rewrite root docs at the same time. Docs should be updated after code integration so they describe the final combined behavior.

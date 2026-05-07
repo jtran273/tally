@@ -7,10 +7,12 @@ import {
   exchangePlaidPublicToken,
   listPlaidConnections,
   syncPlaidItem,
+  type PlaidSyncItemSummary,
   type PlaidInstitutionInput
 } from "@/lib/plaid/service";
 import { logPlaidError } from "@/lib/plaid/errors";
-import { NextResponse, type NextRequest } from "next/server";
+import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
+import { type NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
@@ -52,12 +54,15 @@ async function readExchangeRequest(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;
 
   const parsed = await readExchangeRequest(request);
   if ("error" in parsed) {
-    return NextResponse.json({ error: parsed.error }, { status: 400 });
+    return jsonNoStore({ error: parsed.error }, { status: 400 });
   }
 
   try {
@@ -69,10 +74,11 @@ export async function POST(request: NextRequest) {
       userId: context.user.id
     });
     let syncedConnection = connection;
+    let sync: PlaidSyncItemSummary | null = null;
     let syncError: string | null = null;
 
     try {
-      await syncPlaidItem({
+      sync = await syncPlaidItem({
         client: writeClient,
         itemId: connection.id,
         userId: context.user.id
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
       syncedConnection = connections.find((item) => item.id === connection.id) ?? connection;
     }
 
-    return NextResponse.json({ connection: syncedConnection, syncError });
+    return jsonNoStore({ connection: syncedConnection, sync, syncError });
   } catch (error) {
     return plaidRouteError(
       "plaid_public_token_exchange_failed",

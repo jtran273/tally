@@ -1,91 +1,213 @@
-# Personal Finance Copilot PRD
+# Personal Finance OS PRD
 
 ## Product Summary
 
-Personal Finance Copilot is a single-user finance dashboard that connects to Plaid Sandbox, imports financial data into Supabase, preserves raw provider records, and lets the user review and enrich transactions before trusting dashboard totals.
+Personal Finance OS, branded in-app as Ledger, is a personal finance operating system for importing real financial activity, reviewing ambiguous transactions, and maintaining trusted budget data.
 
-The MVP should feel like a calm finance operating system: dense enough for real review work, but quiet and readable. The initial UI direction is the Claude Design `Ledger.html` handoff: warm neutral surfaces, editorial serif headings, compact tables, review nudges, peer-to-peer resolution, and mobile bottom navigation.
+The product is built around one principle: raw provider data should be preserved, while user-approved enrichment should power decisions. Ledger does not blindly trust imported transactions. It makes uncertain items visible, asks for review, and keeps a record of material changes.
 
-## MVP Goals
+## Target User
 
-- Sign in and sign out with Supabase Auth.
-- Connect Plaid Sandbox institutions.
-- Sync accounts, balances, and transactions.
-- Store immutable raw transaction payloads separately from editable user enrichment.
-- Show account overview grouped by cash, credit, investments, and retirement.
-- Show net worth, cash, liabilities, investments, retirement, balance snapshots, and spending summaries.
-- Provide transaction search, filtering, sorting, and editing.
-- Support editable merchant, category, subcategory, intent, notes, and review status.
-- Generate review items for ambiguous, low-confidence, large, peer-to-peer, unclear transfer, missing category, and recurring-candidate transactions.
-- Support Venmo, Zelle, and Cash App explanation plus split workflows.
-- Detect recurring expense candidates and allow confirm or dismiss.
-- Show deterministic/mock insight cards before real AI integration.
-- Export reviewed/enriched transactions to CSV.
+The first user is an individual managing personal, business, shared, reimbursable, transfer, and recurring financial activity across multiple accounts.
+
+This user needs:
+
+- a reliable picture of balances and net worth,
+- a way to clean imported transactions,
+- confidence that transfers and peer-to-peer payments are not misclassified as spending,
+- recurring expense awareness,
+- exportable enriched records,
+- a private and secure production deployment.
+
+## Product Goals
+
+- Connect financial institutions through Plaid.
+- Import accounts, balances, balance snapshots, and transactions.
+- Preserve raw Plaid transaction data.
+- Maintain editable enriched transaction records.
+- Show dashboard totals that are based on trusted data.
+- Flag transactions that need review.
+- Resolve peer-to-peer and shared spending through split allocation.
+- Detect recurring expenses.
+- Export enriched transaction data to CSV.
+- Keep secrets, Plaid access tokens, and service-role credentials server-only.
 
 ## Non-Goals
 
-- Production Plaid launch.
-- Receipt OCR.
-- Tax-specific export formats beyond simple CSV.
 - Native mobile app.
-- Multi-user household support.
+- Multi-user household collaboration.
 - Autonomous AI edits.
-- Real OpenClaw write actions.
+- Tax-specific filing workflows.
+- Receipt OCR.
+- Public marketing site.
+- Full production Plaid compliance program documentation.
+- Background sync scheduler.
+
+## Current Product Surface
+
+### Login
+
+Users sign in through Supabase Auth. Demo mode exists for local development, but it is disabled by default in production.
+
+### Dashboard
+
+The Today dashboard shows:
+
+- net worth,
+- cash, credit, investment, and retirement groups,
+- balance trend,
+- spending summary,
+- recent transactions,
+- review queue count,
+- recurring context,
+- insight cards with evidence-oriented copy.
+
+### Transactions
+
+Users can:
+
+- search transactions,
+- filter by date, account, category, intent, recurring status, and review status,
+- inspect raw Plaid merchant/name/category context,
+- edit merchant, category, intent, note, and recurring status,
+- export filtered transactions to CSV.
+
+### Review
+
+The review queue explains why a transaction needs attention and lets the user:
+
+- accept suggestions,
+- dismiss review items,
+- edit labels,
+- resolve peer-to-peer transactions with structured splits.
+
+Review reasons include:
+
+- peer-to-peer payment,
+- large transaction,
+- transfer pair,
+- unclear transfer,
+- low confidence,
+- missing category,
+- new recurring candidate,
+- recurring candidate.
+
+### Recurring
+
+The recurring view detects repeated transaction patterns and lets the user confirm or dismiss candidates.
+
+### Accounts
+
+The accounts view groups accounts by:
+
+- cash,
+- credit,
+- investments,
+- retirement.
+
+It shows current balance, available balance, credit limit, currency, active state, institution, and last sync context.
+
+### Settings
+
+Settings includes:
+
+- Plaid connection list,
+- Plaid environment label,
+- connect institution action,
+- manual sync action,
+- disconnect action,
+- AI provider status,
+- review and recurring summary.
 
 ## Key Workflows
 
-### First Run
+### First Production Sign-In
 
-1. User signs in.
-2. User lands on the Ledger dashboard with seeded demo data if Plaid is not connected.
-3. User connects a Plaid Sandbox institution from settings.
-4. App syncs accounts, balances, and transactions.
+1. User opens `/login`.
+2. User signs in with Supabase Auth.
+3. User lands on `/dashboard`.
+4. User opens `/settings`.
+5. User connects one Plaid institution.
+6. App exchanges the public token server-side.
+7. App imports accounts, balances, raw transactions, enriched transactions, and review items.
+8. User reviews imported data before trusting totals.
 
 ### Daily Review
 
-1. User opens Today.
-2. Dashboard shows net worth, spending period controls, review count, insights, and recent activity.
-3. User opens the review queue.
-4. User accepts, edits, dismisses, or explains each flagged transaction.
-5. Resolved items leave the queue and trusted totals update.
+1. User opens `/dashboard`.
+2. User sees review count and recent activity.
+3. User opens `/review`.
+4. User accepts, edits, dismisses, or splits flagged items.
+5. Resolved items leave the open queue.
+6. Dashboard and transaction totals update from enriched data.
 
-### Peer-to-Peer Resolution
+### Peer-To-Peer Resolution
 
-1. Peer-to-peer transaction is flagged.
-2. User explains the transaction in plain language.
-3. The app proposes structured splits.
-4. User edits split category, intent, and amounts.
-5. Transaction becomes resolved only after the split is fully allocated.
+1. User opens a peer-to-peer review item.
+2. User explains or allocates the real purpose.
+3. User enters split labels, categories, intents, and amounts.
+4. Split rows must total the full transaction amount.
+5. App writes transaction splits, updates enrichment, resolves the review item, and records audit events.
+
+### Recurring Review
+
+1. User opens `/recurring`.
+2. App shows detected recurring candidates.
+3. User confirms or dismisses each candidate.
+4. Confirmed recurring rows appear in summaries and future review context.
 
 ### Export
 
-1. User filters reviewed/enriched transactions.
+1. User filters transactions.
 2. User exports CSV.
-3. CSV includes raw identifiers and user-approved labels, but no Plaid access tokens.
+3. CSV includes enriched fields and selected raw Plaid context.
+4. CSV excludes Plaid access tokens, auth secrets, and service credentials.
 
 ## Data Principles
 
-- Raw Plaid data is immutable from the app perspective.
-- User enrichment is the source of truth for dashboards and exports.
-- Every user-owned record includes `user_id`.
-- Sync jobs must be idempotent.
-- Plaid access tokens are server-only secrets.
-- Audit events record material label and review changes.
+- Raw Plaid data is preserved.
+- Enriched data is the user-facing source of truth.
+- Every finance row has `user_id`.
+- RLS protects user-owned rows.
+- Plaid access tokens are server-only and encrypted at rest.
+- Service-role writes must still operate inside an authenticated user context.
+- Review and recurring decisions should write audit events.
+- Unresolved peer-to-peer data should not be treated as final spending truth.
 
-## UX Direction
+## Security Requirements
 
-- Name: Ledger.
-- Primary layout: desktop sidebar, mobile bottom tab bar.
-- First screen: Today dashboard, not a marketing page.
-- Style: quiet finance dashboard with editorial headings, tabular numbers, restrained color, and dense but readable tables.
-- Core views: Today, Transactions, Review, Recurring, Accounts, Settings.
-- AI behavior: suggestions are visible as suggestions only; unresolved data should not be presented as confirmed.
+- GitHub repository should be private for production.
+- Production demo mode must be disabled unless deliberately enabled for a non-sensitive demo.
+- Production Plaid access token encryption must use `PLAID_TOKEN_ENCRYPTION_KEY`.
+- Browser security headers must be present.
+- Mutating route handlers must reject invalid cross-origin requests.
+- Supabase URL must use HTTPS in production.
+- Provider secrets must never be sent to client components.
+- Logs must not contain full secrets, raw auth headers, full Plaid payloads, or full database URLs.
 
 ## Acceptance Criteria
 
-- A signed-in user can move through the whole seeded MVP without Plaid.
-- A Plaid Sandbox user can connect, sync, and re-sync without duplicates.
-- Raw and enriched transaction data are stored separately.
-- Dashboard spending totals exclude transfers and unresolved peer-to-peer splits where appropriate.
-- Review queue explains why each transaction needs attention.
+- A signed-in user can navigate all app views.
+- Protected routes redirect unauthenticated users to `/login`.
+- Local demo mode works outside production.
+- Production hides demo mode by default.
+- A Plaid Sandbox user can connect, sync, disconnect, and reconnect without duplicate transactions.
+- Raw and enriched transaction records remain separate.
+- Transaction edits persist.
+- Review queue explains each item.
+- Peer-to-peer splits require full allocation before resolution.
+- Recurring candidates can be confirmed or dismissed.
 - CSV export matches selected filters and excludes secrets.
+- CI runs lint, typecheck, tests, build, and production dependency audit.
+
+## Future Product Work
+
+- Scheduled background sync.
+- More complete insight evidence links.
+- Merchant rules management UI.
+- Reimbursement tracking UI.
+- Audit event reporting UI.
+- Category management UI.
+- Token encryption migration tooling.
+- Stronger end-to-end tests around Plaid and auth.
+- Production observability and alerting.

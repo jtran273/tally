@@ -1,160 +1,173 @@
-# Personal Finance Copilot Implementation Plan
+# Implementation Plan
+
+This document tracks what exists, what is production-ready enough for the current MVP, and what should come next.
 
 ## Current Baseline
 
-The repository now contains a Next.js App Router prototype implementation of the Claude Design `Ledger.html` handoff:
+The app is now a working Next.js App Router finance dashboard with:
 
-- `src/components/ledger/ledger-app.tsx`
-- `src/components/ledger/data.ts`
-- `src/app/globals.css`
-- `src/app/page.tsx`
-
-This is a real React/TypeScript implementation with mock data and local state. It is not yet connected to Supabase, Plaid, persistent storage, or real AI providers.
+- Supabase Auth sign-in/sign-out.
+- Auth-protected app routes.
+- Supabase schema, RLS policies, indexes, and seed data.
+- Plaid Link token creation, public token exchange, sync, connection list, and disconnect.
+- Account, balance, balance snapshot, raw transaction, and enriched transaction persistence.
+- Dashboard, transactions, review, recurring, accounts, and settings views.
+- Transaction editing.
+- Review queue workflow.
+- Peer-to-peer split resolution.
+- Recurring candidate detection and confirm/dismiss actions.
+- CSV export.
+- Deterministic AI suggestion fallback and optional OpenAI provider.
+- CI for lint, tests/typecheck, build, and audit.
+- Production-oriented deployment and security documentation.
 
 ## Stack
 
 - Next.js App Router with TypeScript.
-- CSS-first implementation for the imported Ledger design.
-- Lucide React icons.
-- Future UI additions may use Tailwind CSS and shadcn/ui where they fit the design system.
-- Supabase Postgres and Supabase Auth.
-- Plaid Sandbox first.
-- Deterministic/mock AI adapter first, real provider later.
-- Vercel deployment target.
+- React client components for interactive finance views.
+- Server components for signed-in data loading.
+- Server actions for transaction, review, and recurring mutations.
+- Route handlers for Plaid, export, demo, and logout.
+- Supabase Auth.
+- Supabase Postgres.
+- Plaid Link and Plaid Transactions.
+- Optional OpenAI Responses API provider.
+- Vercel deployment.
+- GitHub Actions CI.
 
-## Phases
+## Completed Phases
 
 ### Phase 0: Foundation
 
-- Keep the Ledger UI compiling and building.
-- Add environment examples.
-- Add CI for install, lint, typecheck, test, and build.
-- Keep README, PRD, and implementation plan current.
+Status: complete.
 
-Exit criteria:
+- Next.js app scaffold.
+- Ledger UI direction implemented.
+- Global styles and shell navigation.
+- Package scripts.
+- CI baseline.
+- Initial product and implementation docs.
 
-- `npm run dev` starts.
-- `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
-- Documentation describes environment variables and next work.
+### Phase 1: Data And Auth Foundation
 
-### Phase 1: Data/Auth Foundation
+Status: complete.
 
-- Add Supabase Auth.
-- Add protected route handling.
-- Add Supabase migrations for MVP tables.
-- Seed demo data equivalent to the Ledger mock data.
-- Add typed data access helpers.
+- Supabase Auth configured.
+- Server/browser Supabase helpers.
+- Auth middleware.
+- Login and logout.
+- Finance schema and seed data.
+- RLS policies.
+- Typed database helpers.
 
-Exit criteria:
+### Phase 2: Plaid Sync
 
-- User can sign in/out.
-- Protected app routes redirect unauthenticated users.
-- Seeded data supports dashboard, transactions, recurring, and review queue.
-- Raw/enriched transaction separation exists in schema.
+Status: complete for manual MVP sync.
 
-### Phase 2: Plaid Sandbox Sync
-
-- Add Plaid server client.
-- Create link token route.
-- Exchange public token server-side.
-- Persist items and institutions.
-- Sync accounts, balances, balance snapshots, and transactions.
-- Prevent duplicate transactions.
-
-Exit criteria:
-
-- Sandbox institution connection works.
-- Accounts and transactions import.
-- Last sync and safe error state display.
-- Re-sync is idempotent.
+- Plaid config and client.
+- Link token route.
+- Public token exchange route.
+- Plaid item persistence.
+- Encrypted access token storage.
+- Account and balance sync.
+- Transaction sync with raw/enriched separation.
+- Manual sync.
+- Disconnect/revoke flow.
 
 ### Phase 3: Core Finance UI
 
-- Replace mock data reads with data access calls.
-- Keep Ledger shell/navigation and responsive behavior.
-- Add persistent transaction editing.
-- Add category and intent management.
-- Add audit events.
+Status: complete for MVP.
 
-Exit criteria:
-
-- User edits persist.
-- Raw Plaid fields remain unchanged.
-- Dashboards use enriched/user-confirmed labels.
-- Transfers are excluded from spending totals.
+- Dashboard from persisted data.
+- Accounts view.
+- Transaction table.
+- Transaction filters.
+- Transaction edit form.
+- Category and intent labels.
+- Audit events for material edits.
 
 ### Phase 4: Review Intelligence
 
-- Add AI suggestion adapter interface.
-- Implement deterministic/mock provider.
-- Generate review reasons.
-- Persist and resolve review items.
-- Confirm/dismiss recurring candidates.
-- Link insight cards to evidence.
+Status: complete for MVP.
 
-Exit criteria:
+- Review reason helpers.
+- Deterministic suggestion provider.
+- Optional OpenAI provider.
+- Review queue UI.
+- Accept/dismiss/edit workflows.
+- Peer-to-peer split workflow.
+- Recurring candidate detection.
+- Confirm/dismiss recurring actions.
+- Dashboard insight generation.
 
-- Ambiguous transactions enter review queue with reasons.
-- User can accept, edit, dismiss, or split without leaving workflow.
-- Peer-to-peer items remain unresolved until explained.
-- Recurring candidates can be confirmed/dismissed.
+### Phase 5: Export, Deployment, And Hardening
 
-### Phase 5: Export and Deployment
+Status: complete for current production MVP.
 
-- Add CSV export endpoint.
-- Add loading, empty, and error states.
-- Add focused unit tests and smoke tests.
-- Add Vercel/Supabase/Plaid deployment notes.
+- CSV export endpoint.
+- Vercel deployment guide.
+- Security guide.
+- Operations runbook.
+- Production demo-mode guard.
+- Same-origin checks for mutating route handlers.
+- Browser security headers.
+- Production Plaid token encryption key support.
 
-Exit criteria:
+## Current Security Gaps To Close
 
-- Reviewed/enriched transactions export correctly.
-- CI passes.
-- Vercel build passes.
-- MVP can be used end-to-end with Plaid Sandbox.
+- GitHub repository is currently public and should be made private before relying on production financial data.
+- A full dedicated secret scanner such as Gitleaks should be run in CI or manually before broader use.
+- Production observability and alerting are not configured.
+- Token encryption key rotation needs a planned migration path.
+- Background sync is not scheduled.
 
-## GitHub Issue Map
+## Next Recommended Work
 
-1. Create PRD and implementation plan docs.
-2. Scaffold Next.js app and Ledger design baseline.
-3. Configure Supabase Auth and environment.
-4. Add database schema and seed data.
-5. Build app shell and navigation.
-6. Implement Plaid Link connection.
-7. Implement account, balance, and transaction sync.
-8. Build accounts and net worth dashboard from persisted data.
-9. Build transaction table and filters from persisted data.
-10. Build transaction editing, categories, and intent labels.
-11. Add AI suggestion adapter and mock suggestions.
-12. Build review queue workflow.
-13. Build Venmo/Zelle/Cash App shared-expense resolution.
-14. Build recurring expense detection.
-15. Build insight cards with evidence links.
-16. Add CSV export.
-17. Add tests, CI, and reviewer checklist.
-18. Configure Vercel deployment and production readiness notes.
+### P0
 
-## Parallelization Guidance
+- Make the GitHub repository private.
+- Set `PLAID_TOKEN_ENCRYPTION_KEY` in Vercel Production.
+- Confirm `ENABLE_DEMO_MODE` is unset or `false` in Vercel Production.
+- Run a production smoke test from [DEPLOYMENT.md](DEPLOYMENT.md).
 
-Ready after the app scaffold is stable:
+### P1
 
-- Auth/environment can run in parallel with schema work if auth code owns session helpers only.
-- App shell polish can run in parallel with schema work if it keeps mock data boundaries.
-- After schema lands, dashboard, transaction table, AI adapter, and recurring detection can run in parallel.
+- Add Gitleaks or an equivalent secret scan to CI.
+- Add Playwright smoke tests for login redirect, protected routes, and core navigation.
+- Add an audit/events view for security and data changes.
+- Add scheduled Plaid sync.
+- Add operational logging with request ids and safe provider metadata.
 
-Avoid parallel edits:
+### P2
 
-- Do not split schema ownership across agents.
-- Do not parallelize transaction table and transaction edit drawer unless component ownership is explicit.
-- Keep Plaid Link and Plaid sync with one agent until the data contract is stable.
-- Do not parallelize review queue and peer-to-peer resolution unless mutation APIs are already fixed.
-- Avoid multiple agents editing README/docs at the same time.
+- Add merchant rule management UI.
+- Add category management UI.
+- Add reimbursement tracking UI.
+- Add more insight evidence links.
+- Add token re-encryption migration tooling.
+- Add richer export formats.
 
-## Reviewer Checklist
+## Engineering Constraints
 
-- Does the change satisfy the issue acceptance criteria?
-- Does it preserve raw provider data?
-- Does it protect user-owned data with `user_id` boundaries?
-- Does it avoid exposing Plaid tokens to the browser?
-- Does it keep unresolved data distinct from trusted totals?
-- Do lint, typecheck, tests, and build pass?
+- Do not expose service role or provider secrets to client components.
+- Keep raw Plaid records separate from user enrichment.
+- Keep user ownership explicit in every query helper.
+- Keep RLS in place for every finance table.
+- Keep review uncertainty visible.
+- Keep AI suggestions advisory.
+- Keep docs updated when environment, deployment, data model, or security behavior changes.
+
+## Verification Standard
+
+Before shipping:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm audit --omit=dev
+git diff --check
+```
+
+For production changes, also complete the smoke test in [DEPLOYMENT.md](DEPLOYMENT.md).

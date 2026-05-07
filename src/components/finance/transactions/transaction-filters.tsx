@@ -3,6 +3,7 @@ import { Download, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import {
   transactionIntentOptions,
+  transactionFiltersHref,
   transactionLimitOptions,
   transactionReviewOptions,
   type TransactionFilterState
@@ -15,35 +16,17 @@ interface TransactionFiltersProps {
   filters: TransactionFilterState;
 }
 
-function exportHref(filters: TransactionFilterState) {
-  const params = new URLSearchParams();
-
-  if (filters.search) params.set("q", filters.search);
-  if (filters.month) params.set("month", filters.month);
-  if (filters.fromDate) params.set("from", filters.fromDate);
-  if (filters.toDate) params.set("to", filters.toDate);
-  if (filters.accountId !== "all") params.set("account", filters.accountId);
-  if (filters.categoryId !== "all") params.set("category", filters.categoryId);
-  if (filters.intent !== "all") params.set("intent", filters.intent);
-  if (filters.reviewStatus !== "all") params.set("review", filters.reviewStatus);
-  if (filters.excludeTransfers) params.set("exclude_transfers", "1");
-  params.set("limit", String(filters.limit));
-
-  const query = params.toString();
-  return `/api/export/transactions${query ? `?${query}` : ""}`;
-}
-
 export function TransactionFilters({ accounts, categories, filters }: TransactionFiltersProps) {
   return (
     <form action="/transactions" className={styles.filters}>
       <label className={`${styles.field} ${styles.searchField}`}>
-        <span>Merchant</span>
+        <span>Search</span>
         <div className={styles.textControl}>
           <Search size={14} aria-hidden />
           <input
             defaultValue={filters.search}
             name="q"
-            placeholder="Search merchant, raw name, category, note..."
+            placeholder="Search merchant, raw name, category, account, note..."
             type="search"
           />
         </div>
@@ -123,7 +106,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
           <SlidersHorizontal size={14} aria-hidden />
           Apply
         </button>
-        <Link className={styles.secondaryButton} href={exportHref(filters)} prefetch={false}>
+        <Link className={styles.secondaryButton} href={transactionFiltersHref("/api/export/transactions", filters)} prefetch={false}>
           <Download size={14} aria-hidden />
           Export CSV
         </Link>

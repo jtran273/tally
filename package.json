@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck"
+    "test": "npm run typecheck && node --import tsx --test $(find src -name '*.test.ts' -print)",
+    "test:e2e": "PLAYWRIGHT_START_SERVER=1 playwright test"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -24,11 +25,13 @@
     "postcss": "^8.5.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
     "eslint-config-next": "^16.2.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   }
 }

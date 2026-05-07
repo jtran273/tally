@@ -11,6 +11,7 @@ export type AiSuggestionSource =
   | "merchant-rule"
   | "merchant-cue"
   | "plaid-category"
+  | "openai"
   | "amount-cue"
   | "fallback";
 

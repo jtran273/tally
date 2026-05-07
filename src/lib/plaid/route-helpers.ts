@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse } from "next/server";
 import type { Database } from "../db/types";
+import { jsonNoStore } from "../security/request";
 import { getSupabaseConfig } from "../supabase/env";
 import { createSupabaseServerClient } from "../supabase/server";
 import { getPlaidErrorStatus, logPlaidError, PlaidRouteConfigurationError } from "./errors";
@@ -10,7 +10,7 @@ export async function requirePlaidRouteUser() {
 
   if (!supabase) {
     return {
-      response: NextResponse.json({ error: "Authentication is not configured." }, { status: 503 })
+      response: jsonNoStore({ error: "Authentication is not configured." }, { status: 503 })
     } as const;
   }
 
@@ -21,7 +21,7 @@ export async function requirePlaidRouteUser() {
 
   if (error || !user) {
     return {
-      response: NextResponse.json({ error: "Authentication required." }, { status: 401 })
+      response: jsonNoStore({ error: "Authentication required." }, { status: 401 })
     } as const;
   }
 
@@ -31,7 +31,7 @@ export async function requirePlaidRouteUser() {
 export function plaidRouteError(context: string, error: unknown, userMessage: string) {
   logPlaidError(context, error);
 
-  return NextResponse.json(
+  return jsonNoStore(
     { error: userMessage },
     { status: getPlaidErrorStatus(error) }
   );

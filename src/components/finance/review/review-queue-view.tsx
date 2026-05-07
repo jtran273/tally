@@ -214,7 +214,11 @@ function RawContext({ item }: { item: ReviewQueueItem }) {
     <div className={styles.rawContext}>
       <div>
         <span>Raw merchant</span>
-        <strong>{item.transaction.plaidMerchant ?? "Unavailable"}</strong>
+        <strong>{item.transaction.plaidMerchant ?? item.transaction.plaidName ?? "Unavailable"}</strong>
+      </div>
+      <div>
+        <span>Raw name</span>
+        <strong>{item.transaction.plaidName ?? "Unavailable"}</strong>
       </div>
       <div>
         <span>Raw category</span>
@@ -303,7 +307,7 @@ function EmptyQueue() {
     <div className={styles.emptyState}>
       <CheckCircle2 size={28} aria-hidden />
       <h2>No open review items</h2>
-      <p>All persisted review items are resolved or dismissed.</p>
+      <p>Open review items are generated from persisted Plaid transactions, and none are currently unresolved.</p>
       <Link className={styles.secondaryButton} href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />

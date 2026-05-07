@@ -61,6 +61,10 @@ interface FinanceTableBuilder<Row, Insert, Update> {
   insert(values: Insert | Insert[]): FinanceFilterBuilder<Row>;
   select(columns?: string): FinanceFilterBuilder<Row>;
   update(values: Update): FinanceFilterBuilder<Row>;
+  upsert(
+    values: Insert | Insert[],
+    options?: { ignoreDuplicates?: boolean; onConflict?: string }
+  ): FinanceFilterBuilder<Row>;
 }
 
 export interface FinanceSupabaseClient {
@@ -137,6 +141,8 @@ type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transact
 type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
 type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
+type RecurringExpenseInsert = Database["public"]["Tables"]["recurring_expenses"]["Insert"];
+type RecurringExpenseUpdate = Database["public"]["Tables"]["recurring_expenses"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
 type TransactionSplitInsert = Database["public"]["Tables"]["transaction_splits"]["Insert"];
 
@@ -166,7 +172,7 @@ function unique(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
-function slicePage<T>(rows: T[], limit?: number, offset = 0) {
+function slicePage<T>(rows: readonly T[], limit?: number, offset = 0) {
   if (limit === undefined) return rows.slice(offset);
   return rows.slice(offset, offset + limit);
 }
@@ -273,6 +279,49 @@ function toInsightRecord(row: InsightRow): InsightRecord {
   };
 }
 
+function transactionSearchText(transaction: TransactionRecord) {
+  return [
+    transaction.merchant,
+    transaction.plaidMerchant,
+    transaction.plaidName,
+    transaction.category,
+    transaction.plaidCategory,
+    transaction.accountName,
+    transaction.accountMask,
+    transaction.institutionName,
+    transaction.note
+  ].filter(Boolean).join(" ");
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[_/\\|,.;:()[\]{}#]+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function filterTransactionRecordsForList(
+  transactions: readonly TransactionRecord[],
+  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "reviewStatus" | "search"> = {}
+) {
+  const search = normalizeSearchText(filters.search ?? "");
+  const searched = search
+    ? transactions.filter((transaction) => transactionMatchesSearch(transaction, search))
+    : [...transactions];
+  const transferFiltered = filters.excludeTransfers
+    ? searched.filter((transaction) => transaction.intent !== "transfer")
+    : searched;
+  const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
+    ? transferFiltered.filter((transaction) =>
+      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
+    )
+    : transferFiltered;
+
+  return slicePage(reviewFiltered, filters.limit, filters.offset);
+}
+
 function buildTransactionRecord({
   row,
   raw,
@@ -313,12 +362,20 @@ function buildTransactionRecord({
     reviewStatus: openReview?.status ?? null,
     reviewItems: reviews,
     plaidCategory: raw?.plaid_category ?? null,
-    plaidMerchant: raw?.merchant_name ?? raw?.name ?? null,
+    plaidMerchant: raw?.merchant_name ?? null,
+    plaidName: raw?.name ?? null,
     note: row.note,
     recurring: row.is_recurring,
     splits,
     reviewedAt: row.reviewed_at
   };
+}
+
+export function transactionMatchesSearch(transaction: TransactionRecord, search: string) {
+  const needle = normalizeSearchText(search);
+  if (!needle) return true;
+
+  return normalizeSearchText(transactionSearchText(transaction)).includes(needle);
 }
 
 async function hydrateTransactions(
@@ -495,30 +552,7 @@ export async function listTransactions(
 
   const enrichedRows = expectData(await query, "List enriched transactions");
   const hydrated = await hydrateTransactions(client, userId, enrichedRows);
-  const search = filters.search?.trim().toLowerCase();
-  const searched = search
-    ? hydrated.filter((transaction) =>
-      [
-        transaction.merchant,
-        transaction.plaidMerchant,
-        transaction.category,
-        transaction.plaidCategory,
-        transaction.accountName,
-        transaction.institutionName,
-        transaction.note
-      ].filter(Boolean).join(" ").toLowerCase().includes(search)
-    )
-    : hydrated;
-  const transferFiltered = filters.excludeTransfers
-    ? searched.filter((transaction) => transaction.intent !== "transfer")
-    : searched;
-  const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
-    ? transferFiltered.filter((transaction) =>
-      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
-    )
-    : transferFiltered;
-
-  return slicePage(reviewFiltered, filters.limit, filters.offset);
+  return filterTransactionRecordsForList(hydrated, filters);
 }
 
 export async function getEnrichedTransactionRow(
@@ -664,6 +698,38 @@ export async function listRecurringExpenses(
     isNew: row.is_new,
     confidence: row.confidence
   }));
+}
+
+export async function upsertRecurringExpense(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: RecurringExpenseInsert,
+  onConflict = "user_id,merchant_name,cadence"
+): Promise<RecurringExpenseRow> {
+  const result = await client
+    .from("recurring_expenses")
+    .upsert({ ...input, user_id: userId }, { onConflict })
+    .select("*")
+    .single();
+
+  return expectData(result, "Upsert recurring expense");
+}
+
+export async function updateRecurringExpense(
+  client: FinanceSupabaseClient,
+  userId: string,
+  recurringExpenseId: string,
+  patch: RecurringExpenseUpdate
+): Promise<RecurringExpenseRow> {
+  const result = await client
+    .from("recurring_expenses")
+    .update(patch)
+    .eq("user_id", userId)
+    .eq("id", recurringExpenseId)
+    .select("*")
+    .single();
+
+  return expectData(result, "Update recurring expense");
 }
 
 export async function listBalanceSnapshots(

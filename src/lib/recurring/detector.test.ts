@@ -92,6 +92,35 @@ export const recurringDetectionDismissPayload = buildDismissRecurringPayload(
   { reviewedAt: "2026-05-16T12:00:00.000Z" }
 );
 
+export const recurringDetectionPayloadAssertions = assertRecurringPayloadFixtures(
+  recurringDetectionConfirmPayload,
+  recurringDetectionDismissPayload
+);
+
+export const recurringDismissedCandidateFixture = detectRecurringCandidates(recurringDetectionFixture, {
+  asOfDate: "2026-05-16",
+  existingRecurring: [
+    ...existingRecurringFixture,
+    {
+      id: "rec-dismissed-substack",
+      merchant: "Substack",
+      amount: 8,
+      cadence: "monthly",
+      accountId: "account-1",
+      categoryId: "category-software",
+      lastChargeDate: "2026-05-06",
+      lastAmount: 8,
+      status: "dismissed",
+      isNew: false,
+      confidence: 0.91
+    }
+  ]
+});
+
+export const recurringDismissedCandidateAssertions = assertDismissedCandidateFixture(
+  recurringDismissedCandidateFixture
+);
+
 function assertRecurringDetectionFixture(candidates: readonly RecurringCandidate[]): true {
   expectCandidate(candidates, "Coffee Club", "weekly", "new-recurring");
   expectCandidate(candidates, "Substack", "monthly", "new-recurring");
@@ -104,6 +133,79 @@ function assertRecurringDetectionFixture(candidates: readonly RecurringCandidate
 
   if (candidates.some((candidate) => candidate.merchant === "Grocery Mart")) {
     throw new Error("Expected grocery noise to be excluded from recurring candidates.");
+  }
+
+  return true;
+}
+
+function assertRecurringPayloadFixtures(
+  confirmPayload: typeof recurringDetectionConfirmPayload,
+  dismissPayload: typeof recurringDetectionDismissPayload
+): true {
+  if (
+    confirmPayload.action !== "confirm-recurring" ||
+    confirmPayload.recurringExpense.values.merchant_name !== "Substack" ||
+    confirmPayload.recurringExpense.values.status !== "active" ||
+    confirmPayload.recurringExpense.values.is_new !== false
+  ) {
+    throw new Error("Expected confirm recurring payload to upsert an active, no-longer-new recurring expense.");
+  }
+
+  if (confirmPayload.recurringExpense.conflictColumns.join(",") !== "user_id,merchant_name,cadence") {
+    throw new Error("Expected confirm recurring payload to use the stable recurring expense conflict key.");
+  }
+
+  if (
+    confirmPayload.transactionUpdates.length === 0 ||
+    confirmPayload.transactionUpdates.some((update) =>
+      update.patch.isRecurring !== true ||
+      update.patch.reviewedAt !== "2026-05-16T12:00:00.000Z"
+    )
+  ) {
+    throw new Error("Expected confirm recurring payload to mark candidate transactions recurring and reviewed.");
+  }
+
+  if (
+    confirmPayload.reviewResolutions.length !== 1 ||
+    confirmPayload.reviewResolutions[0]?.reviewItemId !== "review-substack" ||
+    confirmPayload.reviewResolutions[0]?.status !== "resolved"
+  ) {
+    throw new Error("Expected confirm recurring payload to resolve only open recurring review items.");
+  }
+
+  if (
+    dismissPayload.action !== "dismiss-recurring" ||
+    dismissPayload.transactionUpdates.length === 0 ||
+    dismissPayload.transactionUpdates.some((update) =>
+      update.patch.isRecurring !== false ||
+      update.patch.reviewedAt !== "2026-05-16T12:00:00.000Z"
+    )
+  ) {
+    throw new Error("Expected dismiss recurring payload to mark new candidate transactions non-recurring.");
+  }
+
+  if (
+    dismissPayload.reviewResolutions.length !== 1 ||
+    dismissPayload.reviewResolutions[0]?.reviewItemId !== "review-substack" ||
+    dismissPayload.reviewResolutions[0]?.status !== "dismissed"
+  ) {
+    throw new Error("Expected dismiss recurring payload to dismiss only open recurring review items.");
+  }
+
+  if (dismissPayload.recurringExpenseUpdate) {
+    throw new Error("Expected dismiss payload for a new unmatched candidate not to update an existing recurring row.");
+  }
+
+  if (dismissPayload.recurringExpense?.values.status !== "dismissed") {
+    throw new Error("Expected dismiss payload for a new unmatched candidate to persist a dismissed recurring row.");
+  }
+
+  return true;
+}
+
+function assertDismissedCandidateFixture(candidates: readonly RecurringCandidate[]): true {
+  if (candidates.some((candidate) => candidate.merchant === "Substack")) {
+    throw new Error("Expected dismissed recurring rows to suppress matching detected candidates.");
   }
 
   return true;

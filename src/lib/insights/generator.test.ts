@@ -48,6 +48,7 @@ function transaction(
     note: "",
     plaidCategory: null,
     plaidMerchant: null,
+    plaidName: null,
     plaidTransactionId: null,
     rawTransactionId: `raw-${input.id}`,
     recurring: false,

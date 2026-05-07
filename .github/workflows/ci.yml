@@ -45,3 +45,6 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev
+
+      - name: Check diff whitespace
+        run: git diff --check

@@ -157,6 +157,7 @@ const transactionCsvColumns: TransactionCsvColumn[] = [
   { header: "transaction_id", value: (transaction) => transaction.id },
   { header: "account_id", value: (transaction) => transaction.accountId },
   { header: "plaid_merchant", value: (transaction) => transaction.plaidMerchant },
+  { header: "plaid_name", value: (transaction) => transaction.plaidName },
   { header: "recurring", value: (transaction) => transaction.recurring }
 ];
 

@@ -206,7 +206,7 @@ export function AccountsView({
           <Database size={24} aria-hidden />
           <div>
             <strong>No persisted accounts yet</strong>
-            <span>Connected or seeded accounts will appear here with balances, snapshots, and sync status.</span>
+            <span>Connected accounts will appear here with balances, snapshots, and sync status.</span>
           </div>
         </div>
       ) : (

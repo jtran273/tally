@@ -179,6 +179,10 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
               <strong>{transaction.plaidMerchant ?? "None"}</strong>
             </div>
             <div>
+              <span>Raw Plaid name</span>
+              <strong>{transaction.plaidName ?? "None"}</strong>
+            </div>
+            <div>
               <span>Raw Plaid category</span>
               <strong>{transaction.plaidCategory ?? "None"}</strong>
             </div>

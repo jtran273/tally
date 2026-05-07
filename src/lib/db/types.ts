@@ -382,6 +382,7 @@ export interface TransactionRecord {
   reviewItems: ReviewItemRecord[];
   plaidCategory: string | null;
   plaidMerchant: string | null;
+  plaidName: string | null;
   note: string;
   recurring: boolean;
   splits: TransactionSplitRecord[];

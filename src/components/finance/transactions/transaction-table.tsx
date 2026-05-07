@@ -1,11 +1,13 @@
-import type { ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { AccountRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { Clock3, Pencil, Repeat, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import styles from "./transactions.module.css";
 
 interface TransactionTableProps {
+  accountOnlyFilter: boolean;
   filtersActive: boolean;
   limit: number;
+  selectedAccount: AccountRecord | null;
   transactions: TransactionRecord[];
 }
 
@@ -72,17 +74,51 @@ function accountLabel(transaction: TransactionRecord) {
   ].filter(Boolean).join(" ");
 }
 
-export function TransactionTable({ filtersActive, limit, transactions }: TransactionTableProps) {
+function rawPlaidLine(transaction: TransactionRecord) {
+  return [
+    transaction.plaidMerchant && transaction.plaidMerchant !== transaction.merchant
+      ? transaction.plaidMerchant
+      : null,
+    transaction.plaidName && transaction.plaidName !== transaction.merchant && transaction.plaidName !== transaction.plaidMerchant
+      ? transaction.plaidName
+      : null
+  ].filter(Boolean).join(" / ");
+}
+
+function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
+  if (accountOnlyFilter && selectedAccount) return `No transaction rows for ${selectedAccount.name}`;
+  return filtersActive ? "No transactions match these filters" : "No persisted transactions yet";
+}
+
+function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
+  if (accountOnlyFilter && selectedAccount) {
+    if (selectedAccount.type === "investment" || selectedAccount.type === "retirement") {
+      return "This account can be connected and show balances even when Plaid Transactions does not return posted rows for it.";
+    }
+
+    return "This connected account has no persisted transaction rows yet. Newly connected accounts may need a sync before posted activity appears.";
+  }
+
+  return filtersActive
+    ? "Clear or loosen the filters to widen the persisted transaction set."
+    : "Once Plaid syncs transactions, enriched and raw transaction records will appear here.";
+}
+
+export function TransactionTable({
+  accountOnlyFilter,
+  filtersActive,
+  limit,
+  selectedAccount,
+  transactions
+}: TransactionTableProps) {
   if (transactions.length === 0) {
     return (
       <div className={styles.emptyState}>
         <div className={styles.emptyTitle}>
-          {filtersActive ? "No transactions match these filters" : "No persisted transactions yet"}
+          {emptyTransactionTitle(filtersActive, accountOnlyFilter, selectedAccount)}
         </div>
         <div className={styles.emptyCopy}>
-          {filtersActive
-            ? "Clear or loosen the filters to widen the persisted transaction set."
-            : "Once Plaid syncs transactions, enriched and raw transaction records will appear here."}
+          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount)}
         </div>
       </div>
     );
@@ -107,6 +143,7 @@ export function TransactionTable({ filtersActive, limit, transactions }: Transac
           <tbody>
             {transactions.map((transaction) => {
               const hasOpenReview = transaction.reviewItems.some((review) => review.status === "open");
+              const rawLine = rawPlaidLine(transaction);
 
               return (
                 <tr
@@ -122,7 +159,7 @@ export function TransactionTable({ filtersActive, limit, transactions }: Transac
                   <td>
                     <div className={styles.merchantCell}>
                       <div className={styles.merchantName}>
-                        {transaction.merchant}
+                        <span className={styles.merchantText}>{transaction.merchant}</span>
                         {transaction.status === "pending" ? (
                           <span className={`${styles.badge} ${styles.pendingBadge}`}>
                             <Clock3 size={11} aria-hidden />
@@ -143,11 +180,9 @@ export function TransactionTable({ filtersActive, limit, transactions }: Transac
                         ) : null}
                       </div>
                       <div className={styles.secondaryLine}>
-                        {transaction.plaidMerchant && transaction.plaidMerchant !== transaction.merchant
-                          ? transaction.plaidMerchant
-                          : transaction.note || "Raw and enriched names match"}
+                        {rawLine || transaction.note || "Raw and enriched names match"}
                       </div>
-                      {transaction.note && transaction.plaidMerchant && transaction.plaidMerchant !== transaction.merchant ? (
+                      {transaction.note && rawLine ? (
                         <div className={styles.noteLine}>{transaction.note}</div>
                       ) : null}
                     </div>

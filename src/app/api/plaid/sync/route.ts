@@ -3,12 +3,17 @@ import {
   plaidRouteError,
   requirePlaidRouteUser
 } from "@/lib/plaid/route-helpers";
+import { getPlaidRuntimeEnvironment } from "@/lib/plaid/config";
 import { listPlaidConnections, syncPlaidConnections } from "@/lib/plaid/service";
-import { NextResponse } from "next/server";
+import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
+import { type NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const originError = requireSameOriginRequest(request);
+  if (originError) return originError;
+
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;
 
@@ -16,8 +21,9 @@ export async function POST() {
     const writeClient = createPlaidRouteWriteClient();
     const sync = await syncPlaidConnections(writeClient, context.user.id);
     const connections = await listPlaidConnections(writeClient, context.user.id);
+    const environment = getPlaidRuntimeEnvironment();
 
-    return NextResponse.json({ connections, sync });
+    return jsonNoStore({ connections, environment, sync });
   } catch (error) {
     return plaidRouteError(
       "plaid_sync_failed",

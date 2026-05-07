@@ -51,6 +51,20 @@ export function TransactionsView({
   transactions
 }: TransactionsViewProps) {
   const summary = summarize(transactions);
+  const selectedAccount = filters.accountId === "all"
+    ? null
+    : accounts.find((account) => account.id === filters.accountId) ?? null;
+  const accountOnlyFilter = Boolean(
+    selectedAccount &&
+    !filters.search &&
+    filters.categoryId === "all" &&
+    filters.intent === "all" &&
+    filters.reviewStatus === "all" &&
+    !filters.month &&
+    !filters.fromDate &&
+    !filters.toDate &&
+    !filters.excludeTransfers
+  );
 
   return (
     <div className={styles.shell}>
@@ -115,7 +129,13 @@ export function TransactionsView({
         </div>
       ) : null}
 
-      <TransactionTable filtersActive={filters.hasActiveFilters} limit={filters.limit} transactions={transactions} />
+      <TransactionTable
+        accountOnlyFilter={accountOnlyFilter}
+        filtersActive={filters.hasActiveFilters}
+        limit={filters.limit}
+        selectedAccount={selectedAccount}
+        transactions={transactions}
+      />
     </div>
   );
 }

@@ -4,6 +4,8 @@ export {
   normalizeRecurringMerchant
 } from "./detector";
 export {
+  applyConfirmRecurringPayload,
+  applyDismissRecurringPayload,
   buildConfirmRecurringPayload,
   buildDismissRecurringPayload
 } from "./actions";

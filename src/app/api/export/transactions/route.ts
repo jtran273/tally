@@ -8,14 +8,13 @@ import {
 import {
   listAccounts,
   listCategories,
-  listTransactions,
-  type FinanceSupabaseClient
+  listTransactions
 } from "@/lib/db";
+import { getFinanceServerContext } from "@/lib/demo/server";
 import {
   buildTransactionsCsv,
   listTransactionReimbursementSummaries
 } from "@/lib/export/transactions";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -54,34 +53,28 @@ function exportFilename(filters: TransactionFilterState) {
 }
 
 export async function GET(request: NextRequest) {
-  const supabase = await createSupabaseServerClient();
+  const context = await getFinanceServerContext();
 
-  if (!supabase) {
+  if (!context.isConfigured) {
     return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
   }
 
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
+  if (!context.client || !context.userId) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  const financeClient = supabase as unknown as FinanceSupabaseClient;
   const parsedFilters = parseTransactionFilters(searchParamsToRecord(request.nextUrl.searchParams));
 
   try {
     const [accounts, categories] = await Promise.all([
-      listAccounts(financeClient, user.id),
-      listCategories(financeClient, user.id)
+      listAccounts(context.client, context.userId),
+      listCategories(context.client, context.userId)
     ]);
     const filters = normalizeTransactionFilters(parsedFilters, accounts, categories);
-    const transactions = await listTransactions(financeClient, user.id, toTransactionListFilters(filters));
+    const transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
     const reimbursements = await listTransactionReimbursementSummaries(
-      financeClient,
-      user.id,
+      context.client,
+      context.userId,
       transactions.map((transaction) => transaction.id)
     );
     const csv = buildTransactionsCsv(transactions, reimbursements);

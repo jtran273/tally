@@ -11,10 +11,9 @@ import {
   listTransactions,
   type AccountRecord,
   type CategoryRecord,
-  type FinanceSupabaseClient,
   type TransactionRecord
 } from "@/lib/db";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getFinanceServerContext } from "@/lib/demo/server";
 
 export const dynamic = "force-dynamic";
 
@@ -36,33 +35,21 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   let isConfigured = false;
   let isSignedIn = false;
 
-  const supabase = await createSupabaseServerClient();
-  isConfigured = Boolean(supabase);
+  const context = await getFinanceServerContext();
+  isConfigured = context.isConfigured;
+  isSignedIn = context.isSignedIn;
+  dataError = context.dataError;
 
-  if (supabase) {
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser();
-
-    if (error) {
-      dataError = `Unable to verify Supabase session: ${error.message}`;
-    }
-
-    if (user) {
-      isSignedIn = true;
-      const financeClient = supabase as unknown as FinanceSupabaseClient;
-
-      try {
-        [accounts, categories] = await Promise.all([
-          listAccounts(financeClient, user.id),
-          listCategories(financeClient, user.id)
-        ]);
-        filters = normalizeTransactionFilters(filters, accounts, categories);
-        transactions = await listTransactions(financeClient, user.id, toTransactionListFilters(filters));
-      } catch (loadError) {
-        dataError = errorMessage(loadError);
-      }
+  if (context.client && context.userId) {
+    try {
+      [accounts, categories] = await Promise.all([
+        listAccounts(context.client, context.userId),
+        listCategories(context.client, context.userId)
+      ]);
+      filters = normalizeTransactionFilters(filters, accounts, categories);
+      transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
+    } catch (loadError) {
+      dataError = errorMessage(loadError);
     }
   }
 

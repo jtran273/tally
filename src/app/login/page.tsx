@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isDemoModeEnabled } from "@/lib/demo/auth";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <LoginForm
       initialMessage={signedOut ? "Signed out." : null}
+      isDemoAvailable={isDemoModeEnabled()}
       isConfigured={isConfigured}
       redirectTo={redirectTo}
       userEmail={userEmail}

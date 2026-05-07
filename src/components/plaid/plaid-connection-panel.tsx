@@ -1,8 +1,10 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+type PlaidEnvironment = "sandbox" | "production";
 
 interface PlaidConnectionSummary {
   availableProducts: string[];
@@ -21,6 +23,7 @@ interface PlaidConnectionSummary {
 
 interface ConnectionsResponse {
   connections: PlaidConnectionSummary[];
+  environment: PlaidEnvironment;
 }
 
 interface LinkTokenResponse {
@@ -30,21 +33,42 @@ interface LinkTokenResponse {
 
 interface ExchangeResponse {
   connection: PlaidConnectionSummary;
+  sync: SyncItemSummary | null;
   syncError: string | null;
+}
+
+interface SyncItemSummary {
+  accountsUpserted: number;
+  balanceSnapshotsUpserted: number;
+  enrichedTransactionsInserted: number;
+  enrichedTransactionsUpdated: number;
+  rawTransactionsSkipped: number;
+  rawTransactionsUpserted: number;
+  transactionsRemoved: number;
 }
 
 interface SyncRunSummary {
   accountsUpserted: number;
   balanceSnapshotsUpserted: number;
+  enrichedTransactionsInserted: number;
+  enrichedTransactionsUpdated: number;
   failed: number;
+  rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   succeeded: number;
   totalItems: number;
+  transactionsRemoved: number;
 }
 
 interface SyncResponse {
   connections: PlaidConnectionSummary[];
+  environment: PlaidEnvironment;
   sync: SyncRunSummary;
+}
+
+interface DisconnectResponse {
+  connection: PlaidConnectionSummary;
+  connections: PlaidConnectionSummary[];
 }
 
 type RequestState = "idle" | "loading" | "exchanging" | "syncing";
@@ -64,6 +88,22 @@ function formatSyncDate(value: string | null) {
   });
 }
 
+function formatEnvironment(environment: PlaidEnvironment) {
+  return environment === "production" ? "Production" : "Sandbox";
+}
+
+function getEnrichedTransactionCount(summary: SyncItemSummary | SyncRunSummary) {
+  return summary.enrichedTransactionsInserted + summary.enrichedTransactionsUpdated;
+}
+
+function formatSyncItemMessage(summary: SyncItemSummary) {
+  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
+}
+
+function formatSyncRunMessage(summary: SyncRunSummary) {
+  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions, ${getEnrichedTransactionCount(summary)} enriched transactions, ${summary.failed} failures.`;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
 
@@ -77,6 +117,8 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export function PlaidConnectionPanel() {
   const [connections, setConnections] = useState<PlaidConnectionSummary[]>([]);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [environment, setEnvironment] = useState<PlaidEnvironment>("sandbox");
   const [error, setError] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const openedTokenRef = useRef<string | null>(null);
@@ -86,6 +128,10 @@ export function PlaidConnectionPanel() {
 
   const connectedInstitutionCount = useMemo(
     () => new Set(connections.map((connection) => connection.plaidInstitutionId ?? connection.institutionName)).size,
+    [connections]
+  );
+  const syncableConnectionCount = useMemo(
+    () => connections.filter((connection) => connection.status !== "revoked").length,
     [connections]
   );
   const lastSyncAt = useMemo(() => {
@@ -106,7 +152,10 @@ export function PlaidConnectionPanel() {
         readJson<ConnectionsResponse>(response)
       )
       .then((data) => {
-        if (!ignore) setConnections(data.connections);
+        if (!ignore) {
+          setConnections(data.connections);
+          setEnvironment(data.environment);
+        }
       })
       .catch((loadError: unknown) => {
         if (!ignore) {
@@ -148,7 +197,9 @@ export function PlaidConnectionPanel() {
         data.connection,
         ...current.filter((connection) => connection.id !== data.connection.id)
       ]);
-      setSuccessMessage(`${data.connection.institutionName} connected${data.syncError ? "." : " and synced."}`);
+      setSuccessMessage(
+        `${data.connection.institutionName} connected.${data.sync ? ` ${formatSyncItemMessage(data.sync)}` : ""}`
+      );
       if (data.syncError) setError(data.syncError);
       setLinkToken(null);
     } catch (exchangeError) {
@@ -215,17 +266,12 @@ export function PlaidConnectionPanel() {
       );
 
       setConnections(data.connections);
+      setEnvironment(data.environment);
+      const message = formatSyncRunMessage(data.sync);
       if (data.sync.failed > 0) {
-        setError(`Sync failed for ${data.sync.failed} Plaid item${data.sync.failed === 1 ? "" : "s"}.`);
-        setSuccessMessage(
-          data.sync.succeeded > 0
-            ? `Synced ${data.sync.succeeded} of ${data.sync.totalItems} Plaid items.`
-            : null
-        );
+        setError(`Sync incomplete. ${message}`);
       } else {
-        setSuccessMessage(
-          `Synced ${data.sync.rawTransactionsUpserted} transactions and ${data.sync.accountsUpserted} accounts.`
-        );
+        setSuccessMessage(message);
       }
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.");
@@ -234,22 +280,49 @@ export function PlaidConnectionPanel() {
     }
   };
 
-  const isBusy = requestState === "loading" || requestState === "exchanging" || openRequested;
+  const disconnectConnection = async (connection: PlaidConnectionSummary) => {
+    if (connection.status === "revoked") return;
+
+    const confirmed = window.confirm(
+      `Disconnect ${connection.institutionName}? Historical transactions will stay in the app, but future Plaid syncs will stop.`
+    );
+    if (!confirmed) return;
+
+    setDisconnectingId(connection.id);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const data = await fetch(`/api/plaid/connections/${connection.id}`, { method: "DELETE" }).then((response) =>
+        readJson<DisconnectResponse>(response)
+      );
+
+      setConnections(data.connections);
+      setSuccessMessage(`${data.connection.institutionName} disconnected. Historical transactions were preserved.`);
+    } catch (disconnectError) {
+      setError(disconnectError instanceof Error ? disconnectError.message : "Unable to disconnect Plaid institution.");
+    } finally {
+      setDisconnectingId(null);
+    }
+  };
+
+  const isBusy = requestState === "loading" || requestState === "exchanging" || openRequested || Boolean(disconnectingId);
   const isSyncing = requestState === "syncing";
+  const environmentLabel = formatEnvironment(environment);
 
   return (
     <section className="settings-panel plaid-panel">
       <div className="settings-panel-head">
         <div>
           <div className="card-eyebrow">
-            <ShieldCheck size={13} /> Plaid Sandbox
+            <ShieldCheck size={13} /> Plaid {environmentLabel}
           </div>
           <div className="settings-title">Bank connections</div>
         </div>
         <div className="plaid-actions">
           <button
             className="btn"
-            disabled={isBusy || isSyncing || connections.length === 0}
+            disabled={isBusy || isSyncing || syncableConnectionCount === 0}
             onClick={syncConnections}
             type="button"
           >
@@ -265,6 +338,10 @@ export function PlaidConnectionPanel() {
 
       <div className="plaid-metrics">
         <div className="setting-metric">
+          <div className="setting-metric-value">{environmentLabel}</div>
+          <div className="settings-row-sub">Environment</div>
+        </div>
+        <div className="setting-metric">
           <div className="setting-metric-value">{connections.length}</div>
           <div className="settings-row-sub">Items</div>
         </div>
@@ -277,6 +354,13 @@ export function PlaidConnectionPanel() {
           <div className="settings-row-sub">Last sync</div>
         </div>
       </div>
+
+      {environment === "production" ? (
+        <div className="plaid-alert warning">
+          <AlertTriangle size={14} />
+          <span>Production mode imports real account balances and transactions from connected institutions.</span>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="plaid-alert error">
@@ -315,6 +399,17 @@ export function PlaidConnectionPanel() {
               </div>
             </div>
             <span className={`plaid-status ${connection.status}`}>{connection.status}</span>
+            {connection.status !== "revoked" ? (
+              <button
+                className="btn btn-danger plaid-disconnect"
+                disabled={isBusy || isSyncing}
+                onClick={() => void disconnectConnection(connection)}
+                type="button"
+              >
+                <Unplug size={14} />
+                {disconnectingId === connection.id ? "Disconnecting" : "Disconnect"}
+              </button>
+            ) : null}
           </div>
         ))}
       </div>

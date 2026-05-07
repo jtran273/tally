@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AccountType as PlaidAccountType,
   CountryCode,
+  ItemRemoveReasonCode,
   Products,
   type AccountBase,
   type Institution,
@@ -21,6 +22,8 @@ import type {
   RawTransactionRow,
   TransactionIntent
 } from "../db/types";
+import { buildTransactionReviewItems } from "../review/heuristics";
+import { getPlaidConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
@@ -34,6 +37,7 @@ type AccountUpdate = Database["public"]["Tables"]["accounts"]["Update"];
 type BalanceSnapshotInsert = Database["public"]["Tables"]["balance_snapshots"]["Insert"];
 type RawTransactionInsert = Database["public"]["Tables"]["raw_transactions"]["Insert"];
 type EnrichedTransactionInsert = Database["public"]["Tables"]["enriched_transactions"]["Insert"];
+type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
 const INSTITUTION_COLUMNS = "id,user_id,name,plaid_institution_id,logo_url,primary_color,website_url,created_at,updated_at";
 const PLAID_ITEM_COLUMNS = [
@@ -341,9 +345,15 @@ function getPlaidCategory(transaction: Transaction) {
 
 function getDefaultCategoryName(transaction: Transaction) {
   const pfc = transaction.personal_finance_category;
+  const primary = pfc?.primary ?? "";
+  const detailed = pfc?.detailed ?? "";
+  const appCategory = mapPlaidPersonalFinanceCategory(primary, detailed);
+
+  if (appCategory) return appCategory;
+
   const categoryText = [
-    pfc?.primary,
-    pfc?.detailed,
+    primary,
+    detailed,
     ...(transaction.category ?? [])
   ].filter(Boolean).join(" ").toUpperCase();
 
@@ -367,6 +377,28 @@ function getDefaultCategoryName(transaction: Transaction) {
   return transaction.category?.at(-1) ?? "Uncategorized";
 }
 
+function mapPlaidPersonalFinanceCategory(primary: string, detailed: string) {
+  if (primary === "INCOME") return "Income";
+  if (primary.startsWith("TRANSFER") || primary === "LOAN_PAYMENTS" || primary === "LOAN_DISBURSEMENTS") return "Transfer";
+
+  if (primary === "FOOD_AND_DRINK") {
+    return detailed === "FOOD_AND_DRINK_GROCERIES" ? "Groceries" : "Food / Restaurants";
+  }
+
+  if (primary === "GENERAL_MERCHANDISE") return "Shopping";
+  if (primary === "TRANSPORTATION") return "Transport / Rideshare";
+  if (primary === "TRAVEL") return "Travel / Flights";
+  if (primary === "RENT_AND_UTILITIES") return "Housing";
+
+  if (primary === "MEDICAL") {
+    return detailed === "MEDICAL_PHARMACIES_AND_SUPPLEMENTS" ? "Health / Pharmacy" : "Health / Fitness";
+  }
+
+  if (primary === "PERSONAL_CARE") return "Health / Fitness";
+
+  return null;
+}
+
 function getDefaultIntent(transaction: Transaction): TransactionIntent {
   const categoryText = [
     transaction.personal_finance_category?.primary,
@@ -374,7 +406,11 @@ function getDefaultIntent(transaction: Transaction): TransactionIntent {
     ...(transaction.category ?? [])
   ].filter(Boolean).join(" ").toUpperCase();
 
-  return categoryText.includes("TRANSFER") ? "transfer" : "personal";
+  return categoryText.includes("TRANSFER")
+    || categoryText.includes("LOAN_PAYMENTS")
+    || categoryText.includes("LOAN_DISBURSEMENTS")
+    ? "transfer"
+    : "personal";
 }
 
 function getDefaultConfidence(transaction: Transaction) {
@@ -386,12 +422,30 @@ function getMerchantName(transaction: Transaction) {
   return cleanRequiredText(transaction.merchant_name ?? transaction.name, "Plaid transaction");
 }
 
-function dedupePlaidAccounts(accounts: AccountBase[]) {
+function dedupePlaidAccounts(accounts: readonly AccountBase[]) {
   return [...new Map(accounts.map((account) => [account.account_id, account])).values()];
 }
 
 function dedupeTransactions(transactions: Transaction[]) {
   return [...new Map(transactions.map((transaction) => [transaction.transaction_id, transaction])).values()];
+}
+
+export interface PlaidAccountSyncSources {
+  accountsGetAccounts: readonly AccountBase[];
+  balanceAccounts: readonly AccountBase[];
+  transactionSyncAccounts: readonly AccountBase[];
+}
+
+export function mergePlaidAccountSourcesForSync({
+  accountsGetAccounts,
+  balanceAccounts,
+  transactionSyncAccounts
+}: PlaidAccountSyncSources) {
+  return dedupePlaidAccounts([
+    ...transactionSyncAccounts,
+    ...accountsGetAccounts,
+    ...balanceAccounts
+  ]);
 }
 
 function persistedSyncError(error: unknown) {
@@ -746,6 +800,30 @@ async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initial
   }
 }
 
+async function fetchBalanceAccounts(accessToken: string) {
+  const plaid = getPlaidClient();
+
+  try {
+    const response = await plaid.accountsBalanceGet({ access_token: accessToken });
+    return response.data.accounts;
+  } catch (error) {
+    const safe = getSafePlaidError(error);
+
+    if (safe.code === "INVALID_PRODUCT") {
+      console.warn("plaid_balance_fetch_skipped", safe);
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+async function fetchItemAccounts(accessToken: string) {
+  const plaid = getPlaidClient();
+  const response = await plaid.accountsGet({ access_token: accessToken });
+  return response.data.accounts;
+}
+
 async function deleteRemovedTransactions({
   client,
   item,
@@ -934,6 +1012,7 @@ async function seedEnrichedTransactions({
   const categoryByName = new Map(categoryRows.map((row) => [row.name.toLowerCase(), row]));
   const inserts: EnrichedTransactionInsert[] = [];
   const updates: EnrichedTransactionInsert[] = [];
+  const changedRows: EnrichedTransactionRow[] = [];
 
   for (const raw of rawRows) {
     const existing = existingByRawId.get(raw.id);
@@ -955,15 +1034,38 @@ async function seedEnrichedTransactions({
     const result = await client
       .from("enriched_transactions")
       .upsert(batch, { onConflict: "user_id,raw_transaction_id" })
-      .select("id");
+      .select("*");
 
-    expectData(result, "Seed Plaid enriched transactions");
+    changedRows.push(...expectData(result, "Seed Plaid enriched transactions") as unknown as EnrichedTransactionRow[]);
   }
+
+  await insertGeneratedReviewItems(client, changedRows);
 
   return {
     enrichedTransactionsInserted: inserts.length,
     enrichedTransactionsUpdated: updates.length
   };
+}
+
+async function insertGeneratedReviewItems(
+  client: FinanceSupabaseClient,
+  transactions: EnrichedTransactionRow[]
+) {
+  const reviewItems: ReviewItemInsert[] = transactions.flatMap(buildTransactionReviewItems);
+
+  for (const batch of chunk(reviewItems, UPSERT_CHUNK_SIZE)) {
+    if (batch.length === 0) continue;
+
+    const result = await client
+      .from("review_items")
+      .upsert(batch, {
+        ignoreDuplicates: true,
+        onConflict: "user_id,enriched_transaction_id,reason"
+      })
+      .select("id");
+
+    expectData(result, "Insert generated Plaid review items");
+  }
 }
 
 async function persistTransactionUpdates({
@@ -1026,7 +1128,12 @@ async function loadPlaidItemForSync(
   if (result.error) throw new Error(`Load Plaid item for sync: ${result.error.message}`);
   if (!result.data) throw new Error("Plaid item was not found.");
 
-  return result.data as unknown as PlaidItemRow;
+  const item = result.data as unknown as PlaidItemRow;
+  if (item.status === "revoked") {
+    throw new Error("Plaid item has been revoked.");
+  }
+
+  return item;
 }
 
 async function listPlaidItemsForSync(client: FinanceSupabaseClient, userId: string) {
@@ -1091,12 +1198,18 @@ async function syncLoadedPlaidItem(
   item: PlaidItemRow
 ): Promise<PlaidSyncItemSummary> {
   const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
-  const plaid = getPlaidClient();
   const syncedAt = new Date().toISOString();
   const snapshotDate = syncedAt.slice(0, 10);
-  const balanceResponse = await plaid.accountsBalanceGet({ access_token: accessToken });
   const transactionUpdates = await fetchTransactionSyncUpdatesWithRetry(accessToken, item.transaction_cursor);
-  const accounts = dedupePlaidAccounts([...balanceResponse.data.accounts, ...transactionUpdates.accounts]);
+  const [itemAccounts, balanceAccounts] = await Promise.all([
+    fetchItemAccounts(accessToken),
+    fetchBalanceAccounts(accessToken)
+  ]);
+  const accounts = mergePlaidAccountSourcesForSync({
+    accountsGetAccounts: itemAccounts,
+    balanceAccounts,
+    transactionSyncAccounts: transactionUpdates.accounts
+  });
   const accountResult = await upsertPlaidAccounts({
     accounts,
     client,
@@ -1142,12 +1255,14 @@ export async function createPlaidLinkToken({
   userEmail: string | null;
   userId: string;
 }): Promise<PlaidLinkTokenResult> {
+  const config = getPlaidConfig();
   const plaid = getPlaidClient();
   const response = await plaid.linkTokenCreate({
     client_name: "Ledger",
     country_codes: [CountryCode.Us],
     language: "en",
     products: [Products.Transactions],
+    redirect_uri: config.redirectUri ?? undefined,
     user: {
       client_user_id: userId,
       email_address: userEmail ?? undefined
@@ -1284,6 +1399,90 @@ export async function syncPlaidConnections(client: FinanceSupabaseClient, userId
   }
 
   return summarizeSyncRun(results);
+}
+
+async function loadPlaidItemForRevoke(
+  client: FinanceSupabaseClient,
+  userId: string,
+  itemId: string
+) {
+  const result = await client
+    .from("plaid_items")
+    .select(PLAID_ITEM_SYNC_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (result.error) throw new Error(`Load Plaid item for disconnect: ${result.error.message}`);
+  if (!result.data) throw new Error("Plaid item was not found.");
+
+  return result.data as unknown as PlaidItemRow;
+}
+
+async function updatePlaidItemRevoked(
+  client: FinanceSupabaseClient,
+  userId: string,
+  itemId: string
+) {
+  const update: PlaidItemUpdate = {
+    error_code: null,
+    error_message: null,
+    status: "revoked"
+  };
+  const result = await client
+    .from("plaid_items")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .select(PLAID_ITEM_COLUMNS)
+    .single();
+
+  return expectData(result, "Mark Plaid item revoked") as unknown as PlaidItemPublicRow;
+}
+
+async function loadInstitutionForPlaidItem(
+  client: FinanceSupabaseClient,
+  userId: string,
+  institutionId: string
+) {
+  const result = await client
+    .from("institutions")
+    .select(INSTITUTION_COLUMNS)
+    .eq("user_id", userId)
+    .eq("id", institutionId)
+    .maybeSingle();
+
+  if (result.error) throw new Error(`Load Plaid institution: ${result.error.message}`);
+
+  return result.data as InstitutionRow | null;
+}
+
+export async function revokePlaidConnection({
+  client,
+  itemId,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  itemId: string;
+  userId: string;
+}) {
+  const item = await loadPlaidItemForRevoke(client, userId, itemId);
+
+  if (item.status !== "revoked") {
+    const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
+    const plaid = getPlaidClient();
+
+    await plaid.itemRemove({
+      access_token: accessToken,
+      reason_code: ItemRemoveReasonCode.Other,
+      reason_note: "User disconnected this item from the budgeting app."
+    });
+  }
+
+  const revokedItem = await updatePlaidItemRevoked(client, userId, item.id);
+  const institution = await loadInstitutionForPlaidItem(client, userId, revokedItem.institution_id);
+
+  return toConnectionSummary(revokedItem, institution ?? undefined);
 }
 
 export async function listPlaidConnections(client: FinanceSupabaseClient, userId: string) {

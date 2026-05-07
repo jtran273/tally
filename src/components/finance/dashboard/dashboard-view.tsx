@@ -1,3 +1,5 @@
+"use client";
+
 import type {
   AccountRecord,
   RecurringExpenseRecord,
@@ -19,6 +21,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import styles from "./dashboard.module.css";
 
 interface DashboardViewProps {
@@ -57,6 +60,22 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short"
 });
 
+const longDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+  year: "numeric"
+});
+
+type TrendRangeKey = "1M" | "3M" | "6M" | "1Y" | "ALL";
+
+const trendRangeOptions: { days: number | null; key: TrendRangeKey; label: string }[] = [
+  { days: 31, key: "1M", label: "1M" },
+  { days: 93, key: "3M", label: "3M" },
+  { days: 186, key: "6M", label: "6M" },
+  { days: 366, key: "1Y", label: "1Y" },
+  { days: null, key: "ALL", label: "All" }
+];
+
 const reviewReasonLabels: Record<ReviewQueueItem["reason"], string> = {
   large: "Large",
   "low-confidence": "Low confidence",
@@ -79,6 +98,10 @@ function formatSignedMoney(value: number) {
 
 function formatDate(value: string) {
   return dateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
+function formatLongDate(value: string) {
+  return longDateFormatter.format(new Date(`${value}T12:00:00`));
 }
 
 function formatRelativeTime(value: string | null) {
@@ -112,6 +135,19 @@ function latestTrendDelta(trend: readonly BalanceTrendPoint[]) {
   return { amount, percent };
 }
 
+function filterTrendByRange(trend: readonly BalanceTrendPoint[], rangeKey: TrendRangeKey) {
+  const range = trendRangeOptions.find((option) => option.key === rangeKey);
+  if (!range?.days || trend.length < 2) return [...trend];
+
+  const latest = trend[trend.length - 1];
+  const latestTime = new Date(`${latest.date}T12:00:00`).getTime();
+  const cutoffTime = latestTime - range.days * 24 * 60 * 60 * 1000;
+  const firstInRangeIndex = trend.findIndex((point) => new Date(`${point.date}T12:00:00`).getTime() >= cutoffTime);
+
+  if (firstInRangeIndex <= 0) return [...trend];
+  return trend.slice(firstInRangeIndex - 1);
+}
+
 function transactionAmountClass(amount: number) {
   if (amount > 0) return styles.positiveAmount;
   if (amount < 0) return styles.negativeAmount;
@@ -125,7 +161,14 @@ function syncLabel(summary: SyncSummary) {
   return "Fresh";
 }
 
-function TrendSpark({ trend }: { trend: BalanceTrendPoint[] }) {
+function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: BalanceTrendPoint[] }) {
+  const [rangeKey, setRangeKey] = useState<TrendRangeKey>("6M");
+  const selectedTrend = useMemo(() => filterTrendByRange(trend, rangeKey), [rangeKey, trend]);
+  const delta = latestTrendDelta(selectedTrend);
+  const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
+  const hasSnapshotTrend = trend.some((point) => point.source === "snapshot");
+  const hasTransactionTrend = trend.some((point) => point.source === "transaction");
+
   if (trend.length === 0) {
     return (
       <div className={styles.emptyTrend}>
@@ -135,38 +178,113 @@ function TrendSpark({ trend }: { trend: BalanceTrendPoint[] }) {
     );
   }
 
-  const values = trend.map((point) => point.netWorth);
+  const values = selectedTrend.map((point) => point.netWorth);
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const width = 640;
-  const height = 132;
-  const points = trend.map((point, index) => {
-    const x = trend.length === 1 ? width / 2 : (index / (trend.length - 1)) * width;
-    const y = height - ((point.netWorth - min) / range) * height;
+  const width = 720;
+  const height = 180;
+  const padding = { bottom: 24, left: 8, right: 8, top: 14 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const points = selectedTrend.map((point, index) => {
+    const x = selectedTrend.length === 1 ? width / 2 : padding.left + (index / (selectedTrend.length - 1)) * plotWidth;
+    const y = padding.top + plotHeight - ((point.netWorth - min) / range) * plotHeight;
     return [x, y] as const;
   });
-  const line = points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const area = `${line} L${points[points.length - 1][0].toFixed(1)},${height} L${points[0][0].toFixed(1)},${height} Z`;
+  const line =
+    selectedTrend.length === 1
+      ? `M${padding.left},${points[0][1].toFixed(1)} L${width - padding.right},${points[0][1].toFixed(1)}`
+      : points.map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const area =
+    selectedTrend.length === 1
+      ? ""
+      : `${line} L${points[points.length - 1][0].toFixed(1)},${height - padding.bottom} L${points[0][0].toFixed(1)},${height - padding.bottom} Z`;
+  const start = selectedTrend[0];
+  const end = selectedTrend[selectedTrend.length - 1];
+  const gridLines = [0, 0.5, 1].map((position) => padding.top + position * plotHeight);
 
   return (
-    <div className={styles.trend}>
-      <svg aria-label="Net worth balance trend" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+    <div className={styles.trendPanel}>
+      <div className={styles.trendControls} aria-label="Balance trend range">
+        {trendRangeOptions.map((option) => (
+          <button
+            aria-pressed={rangeKey === option.key}
+            className={rangeKey === option.key ? styles.trendRangeActive : undefined}
+            key={option.key}
+            onClick={() => setRangeKey(option.key)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className={styles.trendSummary}>
+        <span className={delta ? delta.amount < 0 ? styles.negative : styles.positive : undefined}>
+          <DeltaIcon size={14} aria-hidden />
+          {delta ? (
+            <>
+              {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%)
+            </>
+          ) : (
+            "No period delta yet"
+          )}
+        </span>
+        <span>{selectedTrend.length.toLocaleString("en-US")} {selectedTrend.length === 1 ? "point" : "points"}</span>
+      </div>
+      <div className={styles.trend}>
+        <svg aria-label="Net worth balance trend" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
         <defs>
           <linearGradient id="dashboardTrendFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.16" />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={area} fill="url(#dashboardTrendFill)" />
+        {gridLines.map((y) => (
+          <line
+            key={y}
+            stroke="var(--line-2)"
+            strokeDasharray="4 6"
+            strokeWidth="1"
+            x1={padding.left}
+            x2={width - padding.right}
+            y1={y}
+            y2={y}
+          />
+        ))}
+        {area ? <path d={area} fill="url(#dashboardTrendFill)" /> : null}
         <path d={line} fill="none" stroke="var(--accent)" strokeLinecap="round" strokeWidth="2" />
         {points.map(([x, y], index) => (
-          <circle cx={x} cy={y} fill="var(--surface)" key={`${trend[index].date}-${index}`} r="3.5" stroke="var(--accent)" strokeWidth="1.5" />
+          <circle
+            cx={x}
+            cy={y}
+            fill="var(--surface)"
+            key={`${selectedTrend[index].date}-${index}`}
+            r={index === 0 || index === points.length - 1 ? "4.5" : "3"}
+            stroke="var(--accent)"
+            strokeWidth="1.5"
+          >
+            <title>{`${formatLongDate(selectedTrend[index].date)}: ${formatMoney(selectedTrend[index].netWorth)}`}</title>
+          </circle>
         ))}
       </svg>
+      </div>
       <div className={styles.trendAxis}>
-        <span>{formatDate(trend[0].date)}</span>
-        <span>{trend.length > 1 ? formatDate(trend[trend.length - 1].date) : "Current"}</span>
+        <span>
+          <strong>{formatLongDate(start.date)}</strong>
+          {formatMoney(start.netWorth, true)}
+        </span>
+        <span>
+          <strong>{selectedTrend.length > 1 ? formatLongDate(end.date) : "Current"}</strong>
+          {formatMoney(end.netWorth, true)}
+        </span>
+      </div>
+      <div className={styles.trendSource}>
+        {hasSnapshotTrend
+          ? `${snapshotCount.toLocaleString("en-US")} balance snapshots available`
+          : hasTransactionTrend
+            ? "Estimated from posted non-transfer transaction history"
+          : "Snapshot trend unavailable; using current persisted balances"}
       </div>
     </div>
   );
@@ -369,10 +487,6 @@ export function DashboardView({
   totals,
   trend
 }: DashboardViewProps) {
-  const delta = latestTrendDelta(trend);
-  const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
-  const hasSnapshotTrend = trend.some((point) => point.source === "snapshot");
-
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
@@ -398,7 +512,7 @@ export function DashboardView({
           <Database size={24} aria-hidden />
           <div>
             <strong>No persisted accounts yet</strong>
-            <span>Connect Plaid or load seed data to populate account balances and net worth.</span>
+            <span>Connect Plaid to populate account balances and net worth.</span>
           </div>
         </div>
       ) : (
@@ -415,20 +529,7 @@ export function DashboardView({
                 <span>{formatRelativeTime(syncSummary.latestSyncedAt)}</span>
               </div>
             </div>
-            <div className={styles.heroDelta}>
-              <DeltaIcon size={14} aria-hidden />
-              {delta ? (
-                <span>
-                  {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%) across {hasSnapshotTrend ? `${snapshotCount} balance snapshots` : "current balances"}
-                </span>
-              ) : (
-                <span>{hasSnapshotTrend ? `${snapshotCount} balance snapshots loaded` : "Current balances only"}</span>
-              )}
-            </div>
-            <TrendSpark trend={trend} />
-            <div className={styles.trendSource}>
-              {hasSnapshotTrend ? "Snapshot balance trend" : "Snapshot trend unavailable; using current persisted balances"}
-            </div>
+            <TrendChart snapshotCount={snapshotCount} trend={trend} />
           </section>
 
           <section className={styles.summaryGrid} aria-label="Balance summary">

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { isDemoRequest } from "@/lib/demo/auth";
 import { getSupabaseConfig } from "./env";
 
 const PUBLIC_PATHS = ["/login"];
@@ -27,6 +28,10 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (isPublicPath(pathname)) {
+    return supabaseResponse;
+  }
+
+  if (isDemoRequest(request)) {
     return supabaseResponse;
   }
 

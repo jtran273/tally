@@ -30,6 +30,9 @@ pnpm-debug.log*
 # Test and coverage output
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
 
 # Generated TypeScript state
 tsconfig.tsbuildinfo
+.vercel

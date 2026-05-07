@@ -3,11 +3,10 @@ import {
   listAccounts,
   listBalanceSnapshots,
   type AccountRecord,
-  type BalanceSnapshotRecord,
-  type FinanceSupabaseClient
+  type BalanceSnapshotRecord
 } from "@/lib/db";
+import { getFinanceServerContext } from "@/lib/demo/server";
 import { calculateAccountTotals, groupAccounts, summarizeSync } from "@/lib/finance/balances";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,32 +21,20 @@ export default async function AccountsPage() {
   let isConfigured = false;
   let isSignedIn = false;
 
-  const supabase = await createSupabaseServerClient();
-  isConfigured = Boolean(supabase);
+  const context = await getFinanceServerContext();
+  isConfigured = context.isConfigured;
+  isSignedIn = context.isSignedIn;
+  dataError = context.dataError;
 
-  if (supabase) {
-    const {
-      data: { user },
-      error
-    } = await supabase.auth.getUser();
-
-    if (error) {
-      dataError = `Unable to verify Supabase session: ${error.message}`;
-    }
-
-    if (user) {
-      isSignedIn = true;
-      const financeClient = supabase as unknown as FinanceSupabaseClient;
-
-      try {
-        accounts = await listAccounts(financeClient, user.id);
-        const accountIds = accounts.map((account) => account.id);
-        snapshots = accountIds.length > 0
-          ? await listBalanceSnapshots(financeClient, user.id, { accountIds, limit: 500 })
-          : [];
-      } catch (loadError) {
-        dataError = errorMessage(loadError);
-      }
+  if (context.client && context.userId) {
+    try {
+      accounts = await listAccounts(context.client, context.userId);
+      const accountIds = accounts.map((account) => account.id);
+      snapshots = accountIds.length > 0
+        ? await listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 500 })
+        : [];
+    } catch (loadError) {
+      dataError = errorMessage(loadError);
     }
   }
 

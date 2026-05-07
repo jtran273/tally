@@ -1,0 +1,244 @@
+.shell {
+  display: flex;
+  width: min(100%, var(--content-max));
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel,
+.notice,
+.errorNotice {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.notice,
+.errorNotice {
+  padding: 14px 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.panel {
+  overflow: hidden;
+}
+
+.panelHead {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 16px;
+}
+
+.panelHead h2 {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.eyebrow,
+.metric span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.dataPill {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in oklab, var(--pos) 20%, var(--line));
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  color: var(--pos);
+  font-size: 11px;
+}
+
+.statusPill,
+.providerMeta {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: var(--ink-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.statusReady {
+  border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  color: var(--pos);
+}
+
+.statusFallback {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.providerMeta {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.metric {
+  display: flex;
+  min-width: 0;
+  min-height: 104px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.metric strong {
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.settingList {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+}
+
+.settingRow,
+.accessRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.settingTitle {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settingSub {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.toggle {
+  display: inline-flex;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  background: var(--surface-2);
+}
+
+.toggle span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted-2);
+}
+
+.toggleOn {
+  justify-content: flex-end;
+  border-color: color-mix(in oklab, var(--pos) 24%, var(--line));
+  background: color-mix(in oklab, var(--pos) 9%, var(--surface));
+}
+
+.toggleOn span {
+  background: var(--pos);
+}
+
+.secondaryButton {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 450;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.secondaryButton:hover {
+  border-color: var(--ink-2);
+}
+
+@media (max-width: 920px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .panelHead {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .accessRow,
+  .settingRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .providerMeta {
+    max-width: 100%;
+  }
+
+  .secondaryButton {
+    width: 100%;
+  }
+}
