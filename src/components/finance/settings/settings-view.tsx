@@ -433,8 +433,8 @@ export function SettingsView({
             </span>
           </div>
           <SettingToggle
-            label="Human approval required"
-            detail="AI suggestions are advisory and do not edit enriched transactions unless a reviewer accepts them."
+            label="Guarded automation"
+            detail="High-confidence import cleanup can apply automatically; manual-only exceptions still require review."
             checked
           />
           <SettingToggle
