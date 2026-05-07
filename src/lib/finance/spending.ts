@@ -1,4 +1,5 @@
 import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
+import { summarizeTransactionReimbursement } from "./reimbursements";
 
 const SPENDING_INTENTS = new Set<TransactionIntent>(["business", "personal", "shared"]);
 const DAY_MS = 86_400_000;
@@ -21,6 +22,8 @@ export interface SpendingWindowSummary {
   fromDate: string;
   toDate: string;
   spending: number;
+  reimbursable: number;
+  reimbursementOutstanding: number;
   trustedSpending: number;
   unresolvedReviewSpending: number;
   income: number;
@@ -165,8 +168,11 @@ function summarizeWindow(
   const windowTransactions = transactions.filter((transaction) => inDateRange(transaction, fromDate, toDate));
   const totals = windowTransactions.reduce(
     (summary, transaction) => {
+      const reimbursement = summarizeTransactionReimbursement(transaction);
       const spendingAmount = transactionSpendingAmount(transaction);
       summary.spending += spendingAmount;
+      summary.reimbursable += reimbursement.reimbursableAmount;
+      summary.reimbursementOutstanding += reimbursement.outstandingAmount;
       if (spendingAmount > 0 && hasOpenReview(transaction)) {
         summary.openReviewTransactionCount += 1;
         summary.unresolvedReviewSpending += spendingAmount;
@@ -176,7 +182,15 @@ function summarizeWindow(
       if (transaction.amount > 0 && transaction.intent !== "transfer") summary.income += transaction.amount;
       return summary;
     },
-    { income: 0, openReviewTransactionCount: 0, spending: 0, trustedSpending: 0, unresolvedReviewSpending: 0 }
+    {
+      income: 0,
+      openReviewTransactionCount: 0,
+      reimbursable: 0,
+      reimbursementOutstanding: 0,
+      spending: 0,
+      trustedSpending: 0,
+      unresolvedReviewSpending: 0
+    }
   );
 
   const spending = roundMoney(totals.spending);
@@ -187,6 +201,8 @@ function summarizeWindow(
     income,
     netCashflow: roundMoney(income - spending),
     openReviewTransactionCount: totals.openReviewTransactionCount,
+    reimbursable: roundMoney(totals.reimbursable),
+    reimbursementOutstanding: roundMoney(totals.reimbursementOutstanding),
     spending,
     trustedSpending: roundMoney(totals.trustedSpending),
     toDate,

@@ -11,6 +11,8 @@ import type {
   InsightRow,
   Json,
   PlaidItemRow,
+  PlaidSyncRunItemRow,
+  PlaidSyncRunRow,
   RawTransactionRow,
   RecurringCadence,
   RecurringExpenseRow,
@@ -214,6 +216,25 @@ const transactionSplits: TransactionSplitRow[] = ledgerData.txns.flatMap((transa
   }))
 );
 
+const reimbursementRecords: ReimbursementRecordRow[] = transactionSplits
+  .filter((split) => split.intent === "reimbursable")
+  .map((split) => ({
+    counterparty: split.label.replace(/^covered for\s+/i, "") || null,
+    created_at: NOW,
+    due_date: isoDaysFromBase(12),
+    enriched_transaction_id: split.enriched_transaction_id,
+    expected_amount: split.amount,
+    id: `demo-reimbursement-${split.id}`,
+    notes: "Demo reimbursement tracked from a reimbursable split.",
+    received_amount: 0,
+    received_at: null,
+    received_transaction_id: null,
+    split_id: split.id,
+    status: "expected",
+    updated_at: NOW,
+    user_id: DEMO_USER_ID
+  }));
+
 const recurringExpenses: RecurringExpenseRow[] = ledgerData.recurring.map((expense) => ({
   account_id: accounts.find((account) => account.type === "credit")?.id ?? null,
   amount: expense.amount,
@@ -254,6 +275,54 @@ const balanceSnapshots: BalanceSnapshotRow[] = ledgerData.trend
       user_id: DEMO_USER_ID
     }));
   });
+
+const plaidSyncRuns: PlaidSyncRunRow[] = [{
+  accounts_upserted: accounts.length,
+  balance_snapshots_upserted: balanceSnapshots.length,
+  completed_at: NOW,
+  created_at: NOW,
+  enriched_transactions_inserted: enrichedTransactions.length,
+  enriched_transactions_updated: 0,
+  failed_items: 0,
+  id: "demo-sync-run-latest",
+  raw_transactions_skipped: 0,
+  raw_transactions_upserted: rawTransactions.length,
+  safe_error_code: null,
+  safe_error_message: null,
+  source: "scheduled",
+  started_at: NOW,
+  status: "succeeded",
+  succeeded_items: plaidItems.length,
+  total_items: plaidItems.length,
+  transactions_removed: 0,
+  updated_at: NOW,
+  user_id: DEMO_USER_ID
+}];
+
+const plaidSyncRunItems: PlaidSyncRunItemRow[] = plaidItems.map((item) => ({
+  accounts_upserted: accounts.filter((account) => account.plaid_item_id === item.id).length,
+  balance_snapshots_upserted: balanceSnapshots.filter((snapshot) =>
+    accounts.find((account) => account.id === snapshot.account_id)?.plaid_item_id === item.id
+  ).length,
+  completed_at: NOW,
+  created_at: NOW,
+  enriched_transactions_inserted: enrichedTransactions.filter((transaction) =>
+    rawTransactions.find((raw) => raw.id === transaction.raw_transaction_id)?.plaid_item_id === item.id
+  ).length,
+  enriched_transactions_updated: 0,
+  id: `demo-sync-item-${item.id}`,
+  last_successful_sync_at: NOW,
+  plaid_item_id: item.id,
+  raw_transactions_skipped: 0,
+  raw_transactions_upserted: rawTransactions.filter((transaction) => transaction.plaid_item_id === item.id).length,
+  safe_error_code: null,
+  safe_error_message: null,
+  started_at: NOW,
+  status: "succeeded",
+  sync_run_id: "demo-sync-run-latest",
+  transactions_removed: 0,
+  user_id: DEMO_USER_ID
+}));
 
 const insights: InsightRow[] = [
   {
@@ -298,9 +367,11 @@ const rows = {
   institutions,
   merchant_rules: [],
   plaid_items: plaidItems,
+  plaid_sync_run_items: plaidSyncRunItems,
+  plaid_sync_runs: plaidSyncRuns,
   raw_transactions: rawTransactions,
   recurring_expenses: recurringExpenses,
-  reimbursement_records: [] as ReimbursementRecordRow[],
+  reimbursement_records: reimbursementRecords,
   review_items: reviewItems,
   transaction_splits: transactionSplits
 } satisfies { [Table in FinanceTableName]: TableRow<Table>[] };
@@ -429,8 +500,6 @@ export function listDemoPlaidConnections() {
       institutionName: institution?.name ?? "Demo institution",
       issue,
       lastSuccessfulSyncAt: item.last_successful_sync_at,
-      plaidInstitutionId: institution?.plaid_institution_id ?? null,
-      plaidItemId: item.plaid_item_id,
       updatedAt: item.updated_at,
       status: item.status
     };

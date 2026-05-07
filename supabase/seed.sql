@@ -50,6 +50,77 @@ on conflict (user_id, plaid_item_id) do update set
   last_successful_sync_at = excluded.last_successful_sync_at,
   transaction_cursor = excluded.transaction_cursor;
 
+insert into public.plaid_sync_runs (
+  id,
+  user_id,
+  source,
+  status,
+  started_at,
+  completed_at,
+  total_items,
+  succeeded_items,
+  failed_items,
+  accounts_upserted,
+  balance_snapshots_upserted,
+  raw_transactions_upserted,
+  raw_transactions_skipped,
+  enriched_transactions_inserted,
+  enriched_transactions_updated,
+  transactions_removed
+)
+values (
+  '21000000-0000-0000-0000-000000000001',
+  '11111111-1111-1111-1111-111111111111',
+  'scheduled',
+  'succeeded',
+  '2026-05-06 11:57:00-07',
+  '2026-05-06 11:58:00-07',
+  9,
+  9,
+  0,
+  9,
+  18,
+  0,
+  0,
+  0,
+  0,
+  0
+)
+on conflict (id) do update set
+  status = excluded.status,
+  completed_at = excluded.completed_at,
+  total_items = excluded.total_items,
+  succeeded_items = excluded.succeeded_items,
+  failed_items = excluded.failed_items;
+
+insert into public.plaid_sync_run_items (
+  user_id,
+  sync_run_id,
+  plaid_item_id,
+  status,
+  started_at,
+  completed_at,
+  accounts_upserted,
+  balance_snapshots_upserted,
+  last_successful_sync_at
+)
+select
+  user_id,
+  '21000000-0000-0000-0000-000000000001',
+  id,
+  'succeeded',
+  '2026-05-06 11:57:00-07',
+  '2026-05-06 11:58:00-07',
+  1,
+  2,
+  last_successful_sync_at
+from public.plaid_items
+where user_id = '11111111-1111-1111-1111-111111111111'
+on conflict (sync_run_id, plaid_item_id) do update set
+  status = excluded.status,
+  completed_at = excluded.completed_at,
+  last_successful_sync_at = excluded.last_successful_sync_at;
+
 insert into public.accounts (
   id,
   user_id,

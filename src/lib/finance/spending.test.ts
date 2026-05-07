@@ -5,7 +5,7 @@ import {
   transactionSplitRemaining,
   transactionSplitTotal
 } from "./spending";
-import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
+import type { ReimbursementRecord, TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
 
 function split(
   id: string,
@@ -28,8 +28,26 @@ function tx(amount: number, intent: TransactionIntent, splits: TransactionSplitR
   return {
     amount,
     intent,
+    reimbursements: [],
     splits
-  } satisfies Pick<TransactionRecord, "amount" | "intent" | "splits">;
+  } satisfies Pick<TransactionRecord, "amount" | "intent" | "reimbursements" | "splits">;
+}
+
+function reimbursement(input: Partial<ReimbursementRecord> = {}): ReimbursementRecord {
+  return {
+    counterparty: "Chris",
+    dueDate: "2026-05-19",
+    expectedAmount: 75,
+    id: "reimbursement-1",
+    notes: null,
+    receivedAmount: 0,
+    receivedAt: null,
+    receivedTransactionId: null,
+    splitId: "covered-for-friends",
+    status: "expected",
+    transactionId: "tx-review",
+    ...input
+  };
 }
 
 function transaction(
@@ -51,6 +69,7 @@ function transaction(
     plaidTransactionId: null,
     rawTransactionId: `raw-${input.id}`,
     recurring: false,
+    reimbursements: [],
     reviewedAt: null,
     reviewItems: [],
     reviewReason: null,
@@ -142,6 +161,16 @@ function assertSpendingFixtures(): true {
       reviewStatus: "open"
     }),
     transaction({
+      amount: -75,
+      category: "Food",
+      categoryId: "category-food",
+      date: "2026-05-02",
+      id: "tx-reimbursable",
+      intent: "reimbursable",
+      merchant: "Venmo",
+      reimbursements: [reimbursement({ transactionId: "tx-reimbursable" })]
+    }),
+    transaction({
       amount: -999,
       category: "Transfer",
       categoryId: "category-transfer",
@@ -154,6 +183,10 @@ function assertSpendingFixtures(): true {
 
   if (summary.currentWeek.spending !== 522 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2478) {
     throw new Error("Expected current week cashflow to count spend, income, and transfer exclusions deterministically.");
+  }
+
+  if (summary.currentWeek.reimbursable !== 75 || summary.currentWeek.reimbursementOutstanding !== 75) {
+    throw new Error("Expected spending summaries to surface reimbursable and outstanding reimbursement dollars.");
   }
 
   if (summary.currentWeek.trustedSpending !== 480 || summary.currentWeek.unresolvedReviewSpending !== 42 || summary.currentWeek.openReviewTransactionCount !== 1) {

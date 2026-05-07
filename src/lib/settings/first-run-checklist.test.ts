@@ -33,8 +33,6 @@ const connection: PlaidConnectionSummary = {
   institutionName: "Test Bank",
   issue: null,
   lastSuccessfulSyncAt: "2026-05-06T00:00:00.000Z",
-  plaidInstitutionId: "ins_test",
-  plaidItemId: "plaid-item-1",
   status: "active",
   updatedAt: "2026-05-06T00:00:00.000Z"
 };

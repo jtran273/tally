@@ -6,6 +6,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import { accountSyncState, summarizeSync, type SyncSummary } from "@/lib/finance/balances";
+import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 
 export const FINANCE_ACTION_MANIFEST_VERSION = "2026-05-06" as const;
@@ -88,6 +89,9 @@ export interface SpendingSummary {
   fromDate: string | null;
   generatedAt: string;
   openReviewCount: number;
+  reimbursementOutstanding: number;
+  reimbursableAmount: number;
+  reimbursedAmount: number;
   toDate: string | null;
   totalSpending: number;
   transactionCount: number;
@@ -286,6 +290,7 @@ export function buildSpendingSummary(
     intentBucket.transactionCount += 1;
     byIntent.set(transaction.intent, intentBucket);
   });
+  const reimbursement = buildReimbursementReportingSummary(transactions);
 
   return {
     action: "read.spending_summary",
@@ -294,6 +299,9 @@ export function buildSpendingSummary(
     fromDate: options.fromDate ?? null,
     generatedAt: options.generatedAt ?? new Date().toISOString(),
     openReviewCount: transactions.filter((transaction) => transaction.reviewStatus === "open").length,
+    reimbursementOutstanding: reimbursement.outstandingAmount,
+    reimbursableAmount: reimbursement.reimbursableAmount,
+    reimbursedAmount: reimbursement.receivedAmount,
     toDate: options.toDate ?? null,
     totalSpending: roundMoney(totalSpending),
     transactionCount: transactions.length

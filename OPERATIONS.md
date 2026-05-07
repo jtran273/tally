@@ -119,6 +119,7 @@ Expected healthy state:
 - Plaid environment label matches the deployment.
 - Connected institution appears once.
 - Last successful sync is present after sync.
+- Latest sync run in Settings shows source, final status, item success/failure counts, and changed-row counts.
 - Accounts import with balances.
 - Transactions import without duplicates.
 - Revoked items remain visible as revoked and do not sync again.
@@ -196,6 +197,22 @@ Check:
 - Plaid cursor handling,
 - pending-to-posted replacement behavior,
 - any manual seed data overlapping with real Plaid ids.
+
+## Scheduled Plaid Sync
+
+The scheduled sync route is:
+
+```text
+/api/plaid/sync/scheduled
+```
+
+Configure `CRON_SECRET` as a server-only environment variable before enabling a scheduler. The route accepts `GET` or `POST` only when the request includes:
+
+```text
+Authorization: Bearer <CRON_SECRET>
+```
+
+The route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. Logs and JSON responses must stay limited to safe status, counts, and sanitized Plaid error metadata.
 
 ## Supabase Troubleshooting
 

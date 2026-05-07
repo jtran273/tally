@@ -15,6 +15,8 @@ import type {
   Json,
   MerchantRuleRow,
   RawTransactionRow,
+  ReimbursementRecord,
+  ReimbursementRecordRow,
   RecurringExpenseRecord,
   RecurringExpenseRow,
   RecurringStatus,
@@ -267,6 +269,22 @@ function toSplitRecord(row: TransactionSplitRow, category?: CategoryRow): Transa
   };
 }
 
+function toReimbursementRecord(row: ReimbursementRecordRow): ReimbursementRecord {
+  return {
+    id: row.id,
+    transactionId: row.enriched_transaction_id,
+    splitId: row.split_id,
+    receivedTransactionId: row.received_transaction_id,
+    counterparty: row.counterparty,
+    expectedAmount: row.expected_amount,
+    receivedAmount: row.received_amount,
+    status: row.status,
+    dueDate: row.due_date,
+    receivedAt: row.received_at,
+    notes: row.notes
+  };
+}
+
 function toBalanceSnapshotRecord(row: BalanceSnapshotRow): BalanceSnapshotRecord {
   return {
     id: row.id,
@@ -344,6 +362,7 @@ function buildTransactionRecord({
   institution,
   category,
   reviews,
+  reimbursements,
   splits
 }: {
   row: EnrichedTransactionRow;
@@ -352,6 +371,7 @@ function buildTransactionRecord({
   institution?: InstitutionRow;
   category?: CategoryRow;
   reviews: ReviewItemRecord[];
+  reimbursements: ReimbursementRecord[];
   splits: TransactionSplitRecord[];
 }): TransactionRecord {
   const openReview = reviews.find((review) => review.status === "open") ?? null;
@@ -382,6 +402,7 @@ function buildTransactionRecord({
     note: row.note,
     recurring: row.is_recurring,
     splits,
+    reimbursements,
     reviewedAt: row.reviewed_at
   };
 }
@@ -409,6 +430,7 @@ async function hydrateTransactions(
     institutionResult,
     categoryResult,
     reviewResult,
+    reimbursementResult,
     splitResult
   ] = await Promise.all([
     client.from("raw_transactions").select("*").eq("user_id", userId).in("id", rawIds),
@@ -416,6 +438,7 @@ async function hydrateTransactions(
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
     client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
+    client.from("reimbursement_records").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
     client.from("transaction_splits").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds)
   ]);
 
@@ -426,6 +449,10 @@ async function hydrateTransactions(
   const reviewsByTransaction = groupBy(
     expectData(reviewResult, "Load review items for transactions").map(toReviewItemRecord),
     (review) => review.transactionId
+  );
+  const reimbursementsByTransaction = groupBy(
+    expectData(reimbursementResult, "Load reimbursement records for transactions").map(toReimbursementRecord),
+    (reimbursement) => reimbursement.transactionId
   );
   const splitsByTransaction = groupBy(
     expectData(splitResult, "Load transaction splits").map((split) =>
@@ -443,6 +470,7 @@ async function hydrateTransactions(
       institution: account ? institutionById.get(account.institution_id) : undefined,
       category: row.category_id ? categoryById.get(row.category_id) : undefined,
       reviews: reviewsByTransaction.get(row.id) ?? [],
+      reimbursements: reimbursementsByTransaction.get(row.id) ?? [],
       splits: splitsByTransaction.get(row.id) ?? []
     });
   });

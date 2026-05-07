@@ -1,6 +1,7 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
-import { Database, Filter, Hourglass, Inbox } from "lucide-react";
+import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
+import { Database, Filter, HandCoins, Hourglass, Inbox } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
@@ -28,7 +29,7 @@ function formatMoney(value: number) {
 }
 
 function summarize(transactions: TransactionRecord[]) {
-  return transactions.reduce(
+  const transactionSummary = transactions.reduce(
     (summary, transaction) => {
       summary.spending += transactionSpendingAmount(transaction);
 
@@ -39,6 +40,11 @@ function summarize(transactions: TransactionRecord[]) {
     },
     { spending: 0, pending: 0, needsReview: 0 }
   );
+
+  return {
+    ...transactionSummary,
+    reimbursements: buildReimbursementReportingSummary(transactions)
+  };
 }
 
 export function TransactionsView({
@@ -83,7 +89,17 @@ export function TransactionsView({
             Spending
           </span>
           <strong>{formatMoney(summary.spending)}</strong>
-          <span>Outflow excluding transfers</span>
+          <span>Owned outflow excluding transfers and reimbursable portions</span>
+        </div>
+        <div className={styles.summaryCard}>
+          <span className={styles.summaryLabel}>
+            <HandCoins size={13} aria-hidden />
+            Reimbursements
+          </span>
+          <strong>{formatMoney(summary.reimbursements.outstandingAmount)}</strong>
+          <span>
+            Outstanding from {formatMoney(summary.reimbursements.reimbursableAmount)} reimbursable activity
+          </span>
         </div>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>

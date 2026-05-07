@@ -1,5 +1,6 @@
 import type { AccountRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
-import { Clock3, Pencil, Repeat, TriangleAlert } from "lucide-react";
+import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
+import { Clock3, HandCoins, Pencil, Repeat, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import styles from "./transactions.module.css";
 
@@ -49,6 +50,14 @@ const intentLabels: Record<TransactionIntent, string> = {
   transfer: "Transfer"
 };
 
+const reimbursementLabels: Record<TransactionReimbursementState, string> = {
+  none: "",
+  reimbursable: "Reimbursable",
+  "partially-reimbursed": "Partially reimbursed",
+  reimbursed: "Reimbursed",
+  "written-off": "Written off"
+};
+
 function formatDate(value: string) {
   return dateFormatter.format(new Date(`${value}T12:00:00`));
 }
@@ -58,6 +67,10 @@ function formatMoney(value: number) {
   if (value < 0) return `-${formatted}`;
   if (value > 0) return `+${formatted}`;
   return formatted;
+}
+
+function formatUnsignedMoney(value: number) {
+  return moneyFormatter.format(Math.abs(value));
 }
 
 function reviewLabel(transaction: TransactionRecord) {
@@ -143,6 +156,7 @@ export function TransactionTable({
           <tbody>
             {transactions.map((transaction) => {
               const hasOpenReview = transaction.reviewItems.some((review) => review.status === "open");
+              const reimbursement = summarizeTransactionReimbursement(transaction);
               const rawLine = rawPlaidLine(transaction);
 
               return (
@@ -178,10 +192,21 @@ export function TransactionTable({
                             Review
                           </span>
                         ) : null}
+                        {reimbursement.state !== "none" ? (
+                          <span className={`${styles.badge} ${styles.reimbursementBadge}`}>
+                            <HandCoins size={11} aria-hidden />
+                            {reimbursementLabels[reimbursement.state]}
+                          </span>
+                        ) : null}
                       </div>
                       <div className={styles.secondaryLine}>
                         {rawLine || transaction.note || "Raw and enriched names match"}
                       </div>
+                      {reimbursement.state !== "none" ? (
+                        <div className={styles.reimbursementLine}>
+                          {formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from {formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable
+                        </div>
+                      ) : null}
                       {transaction.note && rawLine ? (
                         <div className={styles.noteLine}>{transaction.note}</div>
                       ) : null}

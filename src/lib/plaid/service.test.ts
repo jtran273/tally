@@ -6,7 +6,8 @@ import {
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
   shouldRefreshImportedEnrichment,
-  shouldRefreshPlaidEnrichment
+  shouldRefreshPlaidEnrichment,
+  summarizeSyncRun
 } from "./service";
 
 function account(accountId: string, name: string, current: number): AccountBase {
@@ -109,6 +110,49 @@ test("imported enrichment refresh preserves manual and reviewed overrides", () =
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "plaid" }), false);
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "rule" }), false);
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "manual" }), false);
+});
+
+test("sync run summary marks partial failures and excludes provider ids", () => {
+  const summary = summarizeSyncRun(
+    [
+      {
+        accountsUpserted: 2,
+        balanceSnapshotsUpserted: 2,
+        enrichedTransactionsInserted: 3,
+        enrichedTransactionsUpdated: 1,
+        id: "internal-item-id",
+        lastSuccessfulSyncAt: "2026-05-07T08:00:00.000Z",
+        rawTransactionsSkipped: 1,
+        rawTransactionsUpserted: 4,
+        transactionsRemoved: 0
+      },
+      {
+        accountsUpserted: 0,
+        balanceSnapshotsUpserted: 0,
+        enrichedTransactionsInserted: 0,
+        enrichedTransactionsUpdated: 0,
+        errorCode: "ITEM_LOGIN_REQUIRED",
+        errorMessage: "Plaid sync failed.",
+        id: "internal-error-item-id",
+        lastSuccessfulSyncAt: null,
+        rawTransactionsSkipped: 0,
+        rawTransactionsUpserted: 0,
+        transactionsRemoved: 0
+      }
+    ],
+    {
+      runId: "run-id",
+      source: "scheduled",
+      startedAt: "2026-05-07T08:00:00.000Z"
+    }
+  );
+
+  assert.equal(summary.status, "partial");
+  assert.equal(summary.succeeded, 1);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.rawTransactionsUpserted, 4);
+  assert.equal("plaidItemId" in summary.items[0], false);
+  assert.equal("transactionCursor" in summary.items[0], false);
 });
 
 function assertPlaidAccountSourceMergeFixtures(): true {
