@@ -20,10 +20,9 @@ Ledger is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an o
 
 ## Production Repository Requirement
 
-The current GitHub visibility check returned `PUBLIC`. Make the repository private before relying on it for production financial data:
+The GitHub repository is expected to be private for production financial data. Verify it with:
 
 ```bash
-gh repo edit jtran273/personal-finance-os --visibility private
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
 ```
 

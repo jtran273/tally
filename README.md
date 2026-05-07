@@ -1,59 +1,135 @@
 # Personal Finance OS
 
-Personal Finance OS is a private personal finance dashboard for importing bank data, reviewing transactions, tracking recurring spending, and turning raw account activity into trusted budget data.
+Personal Finance OS is a personal finance dashboard for importing bank data, reviewing messy transactions, tracking recurring spending, and turning raw account activity into trusted budget records.
 
-The app is branded in the UI as **Ledger**. It is built for a single signed-in user today, with every finance table keyed by `user_id` so the data model can support more users later.
+The app is branded in the UI as **Ledger**. It is currently built for one primary user, but the database already models every finance record with `user_id` so the product can expand later without rewriting the data ownership model.
 
-## Production Status
+## What Ledger Is
 
-This repo is connected to `https://github.com/jtran273/personal-finance-os.git`. The GitHub visibility check on this checkout returned `PUBLIC`, not private. Treat the codebase as public until the repository visibility is changed in GitHub.
+Ledger is not just a transaction table. It is a review-first finance workspace.
 
-The app has production-oriented safeguards in place:
+Bank feeds are useful, but imported data is often incomplete or misleading. Plaid can tell the app that a transaction was a Venmo payment, a transfer, or a generic merchant charge, but it cannot always know whether that activity was personal spending, business spending, shared spending, reimbursement, or a transfer that should not count against a budget.
 
-- Supabase Auth protects all app routes outside `/login`.
-- Supabase Row Level Security limits finance rows by `auth.uid() = user_id`.
-- Plaid access tokens are encrypted before storage and are never sent to the browser.
-- Production demo mode is disabled unless `ENABLE_DEMO_MODE=true` is explicitly set.
-- Mutating route handlers reject invalid cross-origin requests.
-- Security headers are configured in `next.config.ts`.
-- `.env.local`, `.vercel`, `.next`, and dependency/build output are ignored by git.
+Ledger keeps those concepts separate:
 
-## What The Product Does
+- **Raw provider data** answers: what did Plaid send?
+- **Enriched transaction data** answers: what should the user trust this transaction to mean?
+- **Review items** answer: what still needs human judgment?
+- **Splits and recurring records** answer: how should activity affect budget and planning views?
 
-Ledger helps turn raw financial activity into trusted, reviewable records:
+This separation is the core of the product. It lets the app preserve evidence, explain calculations, and avoid treating uncertain imported data as final truth.
 
-- Connects banks and cards through Plaid.
-- Imports institutions, Plaid items, accounts, balances, balance snapshots, and transactions.
-- Preserves raw Plaid transaction records separately from editable enriched transactions.
-- Lets the user edit merchant, category, intent, notes, recurring status, and review state.
-- Flags ambiguous transactions for review.
-- Supports peer-to-peer split resolution for Venmo, Zelle, Cash App, and similar payments.
-- Detects recurring expense candidates and lets the user confirm or dismiss them.
-- Builds dashboard totals, spending views, account groups, review nudges, and insight cards.
-- Exports enriched transaction data to CSV without secrets.
+## Current Status
 
-## Current App Views
+- GitHub repo: `jtran273/personal-finance-os`
+- Visibility: private
+- Default branch: `main`
+- Deployment target: Vercel
+- Database/Auth: Supabase
+- Financial data provider: Plaid
+- Optional AI provider: OpenAI
 
-- `/login`: Supabase email/password sign-in, sign-out state, and local demo entry when enabled.
-- `/dashboard`: net worth, account totals, spending summary, recent transactions, review count, insights, and recurring context.
-- `/transactions`: searchable and filterable enriched transaction table.
-- `/transactions/[transactionId]`: transaction edit form with raw Plaid context.
-- `/review`: review queue for low-confidence, missing-category, large, transfer-like, recurring, and peer-to-peer transactions.
-- `/recurring`: recurring expense candidates and confirmed recurring rows.
-- `/accounts`: accounts grouped by cash, credit, investments, and retirement.
-- `/settings`: Plaid connection controls, sync/disconnect actions, AI provider status, and operational summary.
+Production hardening currently includes:
+
+- Supabase Auth on protected app routes.
+- Supabase RLS policies on finance tables.
+- Server-only Plaid token exchange and sync.
+- Encrypted Plaid access token storage.
+- Production demo mode disabled by default.
+- Same-origin checks for mutating route handlers.
+- Security headers in `next.config.ts`.
+- Ignored local secret files and generated build output.
+
+## Main Workflows
+
+### Sign In
+
+Users sign in with Supabase Auth at `/login`. Protected routes redirect unauthenticated users back to login.
+
+Local demo mode can open a seeded workspace without Supabase or Plaid, but production disables demo mode unless `ENABLE_DEMO_MODE=true` is explicitly set.
+
+### Connect A Bank
+
+In `/settings`, the user starts Plaid Link. The browser receives only a short-lived Plaid public token. The server exchanges that public token for a Plaid access token, encrypts it, stores it in Supabase, and immediately runs an initial sync.
+
+The Plaid access token never goes to the browser.
+
+### Sync Accounts And Transactions
+
+Manual sync imports:
+
+- institutions,
+- Plaid items,
+- accounts,
+- current balances,
+- balance snapshots,
+- raw transactions,
+- enriched transactions,
+- review items.
+
+Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
+
+### Review Transactions
+
+The review queue flags transactions that need judgment, including:
+
+- peer-to-peer payments,
+- large charges,
+- unclear transfers,
+- transfer pairs,
+- low-confidence categories,
+- missing categories,
+- recurring candidates.
+
+Users can accept suggestions, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits.
+
+### Edit Enriched Records
+
+The transaction edit view lets the user change app-facing fields:
+
+- merchant,
+- category,
+- intent,
+- notes,
+- recurring status.
+
+Raw Plaid fields stay preserved for context and auditability.
+
+### Track Recurring Spending
+
+The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`.
+
+### Export
+
+The CSV export uses the current transaction filters and returns enriched finance data plus safe raw Plaid context. It does not export Plaid access tokens, service-role keys, auth headers, or provider secrets.
+
+## App Pages
+
+| Route | What it does |
+| --- | --- |
+| `/login` | Supabase sign-in and optional local demo entry |
+| `/dashboard` | Net worth, account totals, spending summary, insights, recurring context, review count |
+| `/transactions` | Searchable and filterable enriched transaction table |
+| `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
+| `/review` | Queue for transactions that need human review |
+| `/recurring` | Recurring expense candidates and confirmed recurring rows |
+| `/accounts` | Accounts grouped by cash, credit, investments, and retirement |
+| `/settings` | Plaid connection, manual sync, disconnect, and provider status |
 
 ## Stack
 
 - Next.js App Router
-- React and TypeScript
-- CSS Modules plus global app styles
-- Supabase Auth and Supabase Postgres
+- React
+- TypeScript
+- CSS Modules and global CSS
+- Supabase Auth
+- Supabase Postgres
 - Plaid Link and Plaid Transactions
-- OpenAI Responses API as an optional suggestion provider
-- Vercel deployment target
+- Optional OpenAI Responses API provider
+- Vercel
+- GitHub Actions
 - Node test runner with `tsx`
-- GitHub Actions CI
+- Playwright smoke tests
 
 ## Local Development
 
@@ -63,13 +139,19 @@ Install dependencies:
 npm install
 ```
 
-Run the development server:
+Run the app:
 
 ```bash
 npm run dev
 ```
 
-Run verification:
+Default local URL:
+
+```text
+http://localhost:3000
+```
+
+Run the core checks:
 
 ```bash
 npm run lint
@@ -79,11 +161,11 @@ npm run build
 npm audit --omit=dev
 ```
 
-## Environment
+## Environment Variables
 
 Local secrets belong in `.env.local`. Do not commit real values.
 
-Core variables:
+Common local shape:
 
 ```bash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -103,51 +185,56 @@ OPENAI_MODEL=
 ENABLE_DEMO_MODE=true
 ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
-
 Generate a production Plaid token encryption key with:
 
 ```bash
 openssl rand -base64 32
 ```
 
+Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
+
 ## Repository Map
 
 ```text
-src/app/                         Next.js routes, pages, route handlers, server actions
-src/components/finance/          Ledger finance views and forms
-src/components/plaid/            Plaid Link connection UI
-src/components/shell/            Authenticated app shell and navigation
-src/lib/db/                      Typed Supabase query helpers and app-facing records
-src/lib/demo/                    Local demo data and demo session guard
+src/app/                         Next.js pages, route handlers, server actions, layouts
+src/components/finance/          Dashboard, transactions, review, recurring, accounts, settings UI
+src/components/plaid/            Plaid Link connection panel
+src/components/shell/            Authenticated app navigation shell
+src/lib/ai/                      AI provider interface, deterministic fallback, optional OpenAI provider
+src/lib/db/                      Typed Supabase query helpers and app-facing finance records
+src/lib/demo/                    Local demo mode and seeded in-memory finance client
+src/lib/export/                  CSV export helpers
 src/lib/finance/                 Balance and spending calculations
 src/lib/insights/                Dashboard insight generation
-src/lib/plaid/                   Plaid client, config, sync, token encryption, and errors
-src/lib/recurring/               Recurring expense detection and mutations
-src/lib/review/                  Review reason and suggestion helpers
+src/lib/plaid/                   Plaid config, client, sync, token vault, and safe error handling
+src/lib/recurring/               Recurring detection and recurring mutations
+src/lib/review/                  Review reasons, heuristics, and suggestion helpers
 src/lib/security/                Request security helpers
-src/lib/supabase/                Supabase browser/server clients and middleware
-supabase/migrations/             Database schema, RLS, policies, indexes
-supabase/seed.sql                Demo/dev seed data only
-.github/workflows/ci.yml         Lint, test, build, and audit CI
+src/lib/supabase/                Supabase browser/server clients and auth middleware
+supabase/migrations/             Database schema, indexes, grants, RLS policies
+supabase/seed.sql                Development seed data only
+e2e/                             Playwright smoke tests
+.github/workflows/ci.yml         CI checks
 ```
 
-## Documentation
+## Documentation Set
 
-- [PRD.md](PRD.md): product goals, workflows, and acceptance criteria.
-- [ARCHITECTURE.md](ARCHITECTURE.md): runtime architecture, data flow, modules, and route map.
-- [SECURITY.md](SECURITY.md): production security model, repo privacy, secrets, RLS, CSRF, headers, and incident response.
-- [DEPLOYMENT.md](DEPLOYMENT.md): Vercel, Supabase, Plaid, and environment setup.
-- [OPERATIONS.md](OPERATIONS.md): runbook for local checks, deployment verification, sync troubleshooting, and maintenance.
-- [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md): completed work and roadmap.
-- [HANDOFF.md](HANDOFF.md): current project state and known gaps.
-- [PARALLEL_AGENTS.md](PARALLEL_AGENTS.md): coordination notes for splitting future implementation work.
+The repo intentionally keeps only the main docs:
+
+- [README.md](README.md): product overview, workflows, local setup, and repo map.
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the app is structured, how data flows, and where key code lives.
+- [SECURITY.md](SECURITY.md): auth, RLS, secret handling, Plaid token protection, headers, and incident response.
+- [DEPLOYMENT.md](DEPLOYMENT.md): Vercel, Supabase, Plaid, OpenAI, and production environment setup.
+- [OPERATIONS.md](OPERATIONS.md): day-to-day checks, smoke tests, troubleshooting, maintenance, and rotation runbooks.
+
+Historical planning, handoff, and parallel-agent notes were removed because they were useful during buildout but noisy for normal repo use.
 
 ## Development Rules
 
-- Keep real secrets in `.env.local`, Vercel environment variables, Supabase, Plaid, and OpenAI dashboards only.
-- Never expose `SUPABASE_SERVICE_ROLE_KEY`, Plaid secrets, Plaid access tokens, or raw auth headers to client components.
-- Keep raw Plaid records immutable from the UI perspective.
-- Write user edits to enriched records and record material changes in `audit_events`.
-- Keep unresolved peer-to-peer and review data distinct from trusted spending totals.
-- Run the verification commands before shipping changes.
+- Keep real secrets in `.env.local`, Vercel, Supabase, Plaid, and OpenAI dashboards only.
+- Never expose `SUPABASE_SERVICE_ROLE_KEY`, Plaid secrets, Plaid access tokens, database URLs, or auth headers to client components.
+- Keep raw Plaid data separate from enriched transaction data.
+- Write user-facing edits to enriched records.
+- Record material review and transaction changes in `audit_events`.
+- Treat unresolved review and peer-to-peer items as uncertain until the user resolves them.
+- Update the relevant main doc when routes, environment variables, data model, deployment behavior, or security behavior changes.

@@ -4,29 +4,29 @@ This app handles financial data. Treat the repository, deployment settings, data
 
 ## Repository Privacy
 
-The current `origin` remote is:
+The `origin` remote is:
 
 ```text
 https://github.com/jtran273/personal-finance-os.git
 ```
 
-The GitHub visibility check returned:
+The expected GitHub visibility is:
 
 ```text
-visibility: PUBLIC
-isPrivate: false
+visibility: PRIVATE
+isPrivate: true
 ```
 
-Before using this app with real production data, change the repository to private in GitHub or with:
-
-```bash
-gh repo edit jtran273/personal-finance-os --visibility private
-```
-
-After changing visibility, verify it:
+Verify it with:
 
 ```bash
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
+```
+
+If it ever becomes public again, make it private before using real financial data:
+
+```bash
+gh repo edit jtran273/personal-finance-os --visibility private --accept-visibility-change-consequences
 ```
 
 ## Secret Handling
