@@ -85,6 +85,7 @@ The review queue flags transactions that need judgment, including:
 - recurring candidates.
 
 Users can accept suggestions one at a time, bulk accept accept-ready AI suggestions after reviewing each preview row, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows stay out of bulk acceptance.
+When an accepted cleanup would create a merchant rule, the review card previews the deterministic impact on recent safe transaction context before acceptance, including matched rows, changed rows, and whether any matched transactions are still open in review. The preview uses app-owned transaction ids and enriched/raw merchant labels only, not provider ids.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
 
 ### Agent Inbox

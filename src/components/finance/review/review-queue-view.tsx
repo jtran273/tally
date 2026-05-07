@@ -3,6 +3,11 @@ import type { AuditEventRow, CategoryRecord, ReviewQueueItem, TransactionIntent,
 import { summarizeTransactionReimbursement } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import {
+  buildAcceptedAiMerchantRuleCandidate,
+  buildMerchantRuleImpactPreview,
+  type MerchantRuleImpactPreview
+} from "@/lib/merchant-rules";
+import {
   getReviewReasonCopy,
   isPeerToPeerReview,
   REVIEW_REASON_ORDER
@@ -309,6 +314,60 @@ function SuggestionRows({ item }: { item: ReviewQueueItem }) {
   );
 }
 
+function MerchantRuleImpact({
+  preview
+}: {
+  preview: MerchantRuleImpactPreview | null;
+}) {
+  if (!preview) return null;
+
+  return (
+    <div className={styles.ruleImpactPanel}>
+      <div className={styles.ruleImpactHead}>
+        <div>
+          <span className={styles.columnLabel}>Merchant rule preview</span>
+          <strong>{preview.matchedCount.toLocaleString("en-US")} recent matches</strong>
+        </div>
+        <span className={preview.changedCount > 0 ? styles.readyPill : styles.skipPill}>
+          {preview.changedCount.toLocaleString("en-US")} would change
+        </span>
+      </div>
+      <p>
+        Accepting this suggestion would create a rule for {preview.proposedMerchantName}:
+        {" "}{preview.proposedCategoryName}, {intentLabels[preview.proposedIntent].toLowerCase()}
+        {preview.proposedRecurring === null ? "" : `, recurring ${preview.proposedRecurring ? "yes" : "no"}`}.
+        {preview.reviewOpenCount > 0 ? ` ${preview.reviewOpenCount.toLocaleString("en-US")} matched rows are still in review.` : ""}
+      </p>
+      {preview.transactions.length > 0 ? (
+        <div className={styles.ruleImpactRows} aria-label="Merchant rule recent transaction impact">
+          {preview.transactions.map((transaction) => (
+            <div className={styles.ruleImpactRow} key={transaction.transactionId}>
+              <div>
+                <strong>{transaction.merchantName}</strong>
+                <span>{formatDate(transaction.date)} | {formatSignedMoney(transaction.amount)}</span>
+              </div>
+              <div>
+                <span>{transaction.currentCategoryName} -&gt; {transaction.suggestedCategoryName}</span>
+                <span>
+                  {intentLabels[transaction.currentIntent]} -&gt; {intentLabels[transaction.suggestedIntent]}
+                  {" | "}Recurring {transaction.currentRecurring ? "yes" : "no"} -&gt; {transaction.suggestedRecurring ? "yes" : "no"}
+                </span>
+              </div>
+              <span className={transaction.wouldChange ? styles.readyPill : styles.skipPill}>
+                {transaction.wouldChange ? "Change" : "No change"}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <span className={styles.emptySuggestion}>
+          No other recent transactions match this proposed rule.
+        </span>
+      )}
+    </div>
+  );
+}
+
 function RawContext({ item }: { item: ReviewQueueItem }) {
   return (
     <div className={styles.rawContext}>
@@ -339,12 +398,42 @@ function RawContext({ item }: { item: ReviewQueueItem }) {
   );
 }
 
-function ReviewCard({ categories, item }: { categories: CategoryRecord[]; item: ReviewQueueItem }) {
+function ReviewCard({
+  categories,
+  item,
+  transactions
+}: {
+  categories: CategoryRecord[];
+  item: ReviewQueueItem;
+  transactions: TransactionRecord[];
+}) {
   const copy = getReviewReasonCopy(item.reason);
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
   const peerToPeer = isPeerToPeerReview(item.reason);
   const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
   const canDismiss = !peerToPeer;
+  const ruleCandidate = canAccept
+    ? buildAcceptedAiMerchantRuleCandidate({
+      categories,
+      rawTransaction: {
+        merchant_name: item.transaction.plaidMerchant,
+        name: item.transaction.plaidName
+      },
+      suggestion,
+      transaction: {
+        amount: item.transaction.amount,
+        merchant_name: item.transaction.merchant
+      }
+    })
+    : null;
+  const ruleImpactPreview = ruleCandidate
+    ? buildMerchantRuleImpactPreview({
+      candidate: ruleCandidate,
+      categories,
+      excludeTransactionId: item.transaction.id,
+      transactions
+    })
+    : null;
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
@@ -378,6 +467,7 @@ function ReviewCard({ categories, item }: { categories: CategoryRecord[]; item: 
       </div>
 
       <SuggestionRows item={item} />
+      <MerchantRuleImpact preview={ruleImpactPreview} />
       <ReimbursementContext transaction={item.transaction} />
       <RawContext item={item} />
 
@@ -554,7 +644,7 @@ export function ReviewQueueView({
                   </div>
                   <div className={styles.cardStack}>
                     {group.items.map((item) => (
-                      <ReviewCard categories={categories} item={item} key={item.id} />
+                      <ReviewCard categories={categories} item={item} key={item.id} transactions={transactions} />
                     ))}
                   </div>
                 </section>

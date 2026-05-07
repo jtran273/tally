@@ -4,10 +4,12 @@ import type {
   CategoryRecord,
   CategoryRow,
   MerchantRuleRow,
-  RawTransactionRow
+  RawTransactionRow,
+  TransactionRecord
 } from "./db";
 import {
   buildAcceptedAiMerchantRuleCandidate,
+  buildMerchantRuleImpactPreview,
   buildRuleAppliedEnrichment,
   findMatchingMerchantRule
 } from "./merchant-rules";
@@ -104,6 +106,41 @@ function suggestion(input: Partial<NormalizedReviewSuggestion> = {}): Normalized
   };
 }
 
+function transaction(input: Partial<TransactionRecord> & Pick<TransactionRecord, "id" | "merchant">): TransactionRecord {
+  const { id, merchant, ...overrides } = input;
+
+  return {
+    accountId: "account-checking",
+    accountMask: "1234",
+    accountName: "Checking",
+    amount: -20,
+    category: "Uncategorized",
+    categoryId: null,
+    confidence: 0.42,
+    date: "2026-05-06",
+    id,
+    institutionName: "Demo Bank",
+    intent: "personal",
+    merchant,
+    note: "",
+    plaidCategory: "Service",
+    plaidMerchant: merchant,
+    plaidName: `${merchant} CARD PURCHASE`,
+    plaidTransactionId: null,
+    rawTransactionId: `raw-${id}`,
+    recurring: false,
+    reimbursements: [],
+    reviewedAt: null,
+    reviewItems: [],
+    reviewReason: null,
+    reviewStatus: null,
+    splits: [],
+    status: "posted",
+    userId,
+    ...overrides
+  };
+}
+
 test("merchant rules honor disabled rules, amount bounds, and priority", () => {
   const rules = [
     rule({
@@ -183,5 +220,83 @@ test("accepted AI suggestions produce merchant rule candidates only with concret
       }
     }),
     null
+  );
+});
+
+test("merchant rule impact preview deterministically shows safe recent matches and changes", () => {
+  const candidate = buildAcceptedAiMerchantRuleCandidate({
+    categories: [category],
+    rawTransaction: {
+      merchant_name: "OPENAI",
+      name: "OPENAI *CHATGPT SUBSCRIPTION"
+    },
+    suggestion: suggestion(),
+    transaction: {
+      amount: -20,
+      merchant_name: "OpenAI"
+    }
+  });
+
+  assert.ok(candidate);
+  const preview = buildMerchantRuleImpactPreview({
+    candidate,
+    categories: [category],
+    excludeTransactionId: "tx-current",
+    transactions: [
+      transaction({
+        id: "tx-current",
+        merchant: "OpenAI",
+        plaidMerchant: "OPENAI"
+      }),
+      transaction({
+        date: "2026-05-04",
+        id: "tx-chatgpt",
+        merchant: "OpenAI ChatGPT",
+        plaidMerchant: "OPENAI",
+        reviewItems: [{
+          aiSuggestion: {},
+          confidence: null,
+          createdAt: now,
+          explanation: "Needs category",
+          id: "review-openai",
+          reason: "missing-category",
+          resolutionNote: null,
+          resolvedAt: null,
+          status: "open",
+          transactionId: "tx-chatgpt"
+        }],
+        reviewReason: "missing-category",
+        reviewStatus: "open"
+      }),
+      transaction({
+        category: category.name,
+        categoryId: category.id,
+        date: "2026-05-03",
+        id: "tx-openai-ready",
+        intent: "business",
+        merchant: "OpenAI",
+        plaidName: "OPENAI API",
+        recurring: true
+      }),
+      transaction({
+        date: "2026-05-02",
+        id: "tx-coffee",
+        merchant: "Coffee Shop",
+        plaidMerchant: "COFFEE SHOP"
+      })
+    ]
+  });
+
+  assert.equal(preview.scannedCount, 3);
+  assert.equal(preview.matchedCount, 2);
+  assert.equal(preview.changedCount, 1);
+  assert.equal(preview.reviewOpenCount, 1);
+  assert.equal(preview.proposedCategoryName, category.name);
+  assert.deepEqual(
+    preview.transactions.map((row) => [row.transactionId, row.wouldChange]),
+    [
+      ["tx-chatgpt", true],
+      ["tx-openai-ready", false]
+    ]
   );
 });

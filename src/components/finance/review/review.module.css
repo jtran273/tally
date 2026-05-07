@@ -577,6 +577,89 @@
   font-size: 13px;
 }
 
+.ruleImpactPanel {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  border: 1px solid color-mix(in oklab, var(--info) 22%, var(--line));
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--info) 5%, var(--surface));
+}
+
+.ruleImpactHead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ruleImpactHead > div {
+  min-width: 0;
+}
+
+.ruleImpactHead strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ruleImpactPanel p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.ruleImpactRows {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.ruleImpactRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.3fr) minmax(82px, auto);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid var(--line-2);
+  padding: 9px;
+}
+
+.ruleImpactRow:last-child {
+  border-bottom: 0;
+}
+
+.ruleImpactRow > div {
+  min-width: 0;
+}
+
+.ruleImpactRow strong,
+.ruleImpactRow span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ruleImpactRow strong {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.ruleImpactRow span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .reimbursementContext {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -950,6 +1033,10 @@
   }
 
   .bulkPreviewRow {
+    grid-template-columns: 1fr;
+  }
+
+  .ruleImpactRow {
     grid-template-columns: 1fr;
   }
 

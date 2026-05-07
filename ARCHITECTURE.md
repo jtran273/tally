@@ -136,6 +136,8 @@ Review items are created for transactions that need user attention, including:
 
 Users can accept suggestions individually or use a bulk accept flow for accept-ready AI suggestions. The bulk flow shows per-item current-versus-suggested previews and skip reasons, and the server rechecks eligibility before writing. Peer-to-peer items remain manual-only and require structured split allocation. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
 
+Accepted AI cleanups can propose reusable merchant rules for future imports. Before the reviewer accepts one of those suggestions, `/review` runs the same deterministic merchant-pattern matcher against recent hydrated transactions and shows the likely impact: matched count, changed count, current-versus-proposed category/intent/recurring values, and open-review overlap. The simulator uses enriched transaction fields plus safe raw merchant/name labels; it does not render Plaid transaction ids, item ids, raw payloads, tokens, or provider request metadata.
+
 ## Recurring Flow
 
 `src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed rows become part of dashboard and settings summaries.

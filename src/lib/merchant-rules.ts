@@ -4,6 +4,7 @@ import type {
   EnrichedTransactionRow,
   MerchantRuleRow,
   RawTransactionRow,
+  TransactionRecord,
   TransactionIntent
 } from "./db";
 import type { NormalizedReviewSuggestion } from "./review/suggestions";
@@ -29,6 +30,33 @@ export interface RuleAppliedEnrichment {
   source: "rule";
 }
 
+export interface MerchantRuleImpactTransaction {
+  amount: number;
+  currentCategoryName: string;
+  currentIntent: TransactionIntent;
+  currentRecurring: boolean;
+  date: string;
+  merchantName: string;
+  suggestedCategoryName: string;
+  suggestedIntent: TransactionIntent;
+  suggestedRecurring: boolean;
+  transactionId: string;
+  wouldChange: boolean;
+}
+
+export interface MerchantRuleImpactPreview {
+  changedCount: number;
+  matchedCount: number;
+  matchedTotalAmount: number;
+  proposedCategoryName: string;
+  proposedIntent: TransactionIntent;
+  proposedMerchantName: string;
+  proposedRecurring: boolean | null;
+  reviewOpenCount: number;
+  scannedCount: number;
+  transactions: MerchantRuleImpactTransaction[];
+}
+
 const DEFAULT_ACCEPTED_AI_RULE_PRIORITY = 80;
 const RULE_CONFIDENCE = 0.96;
 const PEER_TO_PEER_MERCHANT_PATTERN = /\b(apple cash|cash app|cashapp|venmo|zelle)\b/i;
@@ -50,7 +78,10 @@ function escapeLikePattern(value: string) {
   return value.replace(WILDCARD_PATTERN, (match) => `\\${match}`);
 }
 
-function merchantEvidence(raw: RawTransactionRow | null, fallback: string | null) {
+function merchantEvidence(
+  raw: (Pick<RawTransactionRow, "merchant_name"> & { name?: string | null }) | null,
+  fallback: string | null
+) {
   const direct = cleanText(raw?.merchant_name) ?? cleanText(fallback);
   if (direct) return direct;
 
@@ -99,7 +130,7 @@ export function buildAcceptedAiMerchantRuleCandidate({
   transaction
 }: {
   categories: readonly CategoryRecord[];
-  rawTransaction: RawTransactionRow | null;
+  rawTransaction: (Pick<RawTransactionRow, "merchant_name"> & { name?: string | null }) | null;
   suggestion: NormalizedReviewSuggestion;
   transaction: Pick<EnrichedTransactionRow, "amount" | "merchant_name">;
 }): MerchantRuleCandidate | null {
@@ -121,6 +152,80 @@ export function buildAcceptedAiMerchantRuleCandidate({
     normalizedMerchantName,
     notes: `Accepted AI cleanup for ${normalizedMerchantName} on ${new Date().toISOString().slice(0, 10)}.`,
     priority: DEFAULT_ACCEPTED_AI_RULE_PRIORITY
+  };
+}
+
+function transactionMerchantTexts(transaction: Pick<TransactionRecord, "merchant" | "plaidMerchant" | "plaidName">) {
+  return [
+    cleanText(transaction.plaidMerchant),
+    cleanText(transaction.plaidName),
+    cleanText(transaction.merchant)
+  ].filter((value): value is string => Boolean(value));
+}
+
+function transactionMatchesCandidate(candidate: MerchantRuleCandidate, transaction: TransactionRecord) {
+  return transactionMerchantTexts(transaction)
+    .map(normalizeMerchantKey)
+    .some((text) => patternMatchesText(candidate.merchantPattern, text));
+}
+
+export function buildMerchantRuleImpactPreview({
+  candidate,
+  categories,
+  excludeTransactionId,
+  limit = 5,
+  maxTransactionsToScan = 500,
+  transactions
+}: {
+  candidate: MerchantRuleCandidate;
+  categories: readonly CategoryRecord[];
+  excludeTransactionId?: string;
+  limit?: number;
+  maxTransactionsToScan?: number;
+  transactions: readonly TransactionRecord[];
+}): MerchantRuleImpactPreview {
+  const categoryName = categories.find((category) => category.id === candidate.categoryId)?.name ?? "Uncategorized";
+  const scanned = [...transactions]
+    .filter((transaction) => transaction.id !== excludeTransactionId)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.merchant.localeCompare(b.merchant) || a.id.localeCompare(b.id))
+    .slice(0, maxTransactionsToScan);
+  const matched = scanned.filter((transaction) => transactionMatchesCandidate(candidate, transaction));
+  const rows = matched.map((transaction): MerchantRuleImpactTransaction => {
+    const suggestedRecurring = candidate.isRecurring ?? transaction.recurring;
+    const wouldChange =
+      transaction.merchant !== candidate.normalizedMerchantName ||
+      transaction.categoryId !== candidate.categoryId ||
+      transaction.intent !== candidate.intent ||
+      transaction.recurring !== suggestedRecurring;
+
+    return {
+      amount: transaction.amount,
+      currentCategoryName: transaction.category,
+      currentIntent: transaction.intent,
+      currentRecurring: transaction.recurring,
+      date: transaction.date,
+      merchantName: transaction.merchant,
+      suggestedCategoryName: categoryName,
+      suggestedIntent: candidate.intent,
+      suggestedRecurring,
+      transactionId: transaction.id,
+      wouldChange
+    };
+  });
+
+  return {
+    changedCount: rows.filter((row) => row.wouldChange).length,
+    matchedCount: rows.length,
+    matchedTotalAmount: rows.reduce((sum, row) => sum + row.amount, 0),
+    proposedCategoryName: categoryName,
+    proposedIntent: candidate.intent,
+    proposedMerchantName: candidate.normalizedMerchantName,
+    proposedRecurring: candidate.isRecurring,
+    reviewOpenCount: matched.filter((transaction) =>
+      transaction.reviewItems.some((review) => review.status === "open")
+    ).length,
+    scannedCount: scanned.length,
+    transactions: rows.slice(0, limit)
   };
 }
 
