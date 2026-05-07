@@ -1,5 +1,6 @@
 import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import type { AuditEventRow, CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
+import { summarizeTransactionReimbursement } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import {
   getReviewReasonCopy,
@@ -17,10 +18,10 @@ import {
   BarChart3,
   CheckCircle2,
   CircleDollarSign,
+  HandCoins,
   Pencil,
   ShieldCheck,
   TriangleAlert,
-  UsersRound,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
@@ -43,8 +44,8 @@ interface ReviewQueueViewProps {
 
 interface ReviewTotals {
   openItems: number;
-  peerToPeerItems: number;
-  peerToPeerTotal: number;
+  reimbursementOutstanding: number;
+  reimbursableOpenAmount: number;
   trustedSpending: number;
   unresolvedSpending: number;
   unresolvedTransactions: number;
@@ -98,12 +99,17 @@ function uniqueOpenTransactions(reviewItems: ReviewQueueItem[]) {
 function calculateTotals(reviewItems: ReviewQueueItem[], transactions: TransactionRecord[]): ReviewTotals {
   const openTransactions = uniqueOpenTransactions(reviewItems);
   const openTransactionIds = new Set(openTransactions.map((transaction) => transaction.id));
-  const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
 
   return {
     openItems: reviewItems.length,
-    peerToPeerItems: peerToPeerItems.length,
-    peerToPeerTotal: peerToPeerItems.reduce((sum, item) => sum + Math.abs(item.transaction.amount), 0),
+    reimbursementOutstanding: openTransactions.reduce((sum, transaction) => {
+      const reimbursement = summarizeTransactionReimbursement(transaction);
+      return sum + reimbursement.outstandingAmount;
+    }, 0),
+    reimbursableOpenAmount: openTransactions.reduce((sum, transaction) => {
+      const reimbursement = summarizeTransactionReimbursement(transaction);
+      return sum + reimbursement.reimbursableAmount;
+    }, 0),
     trustedSpending: transactions
       .filter((transaction) => !openTransactionIds.has(transaction.id))
       .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
@@ -111,6 +117,26 @@ function calculateTotals(reviewItems: ReviewQueueItem[], transactions: Transacti
       .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
     unresolvedTransactions: openTransactions.length
   };
+}
+
+function ReimbursementContext({ transaction }: { transaction: TransactionRecord }) {
+  const reimbursement = summarizeTransactionReimbursement(transaction);
+  if (reimbursement.state === "none") return null;
+
+  return (
+    <div className={styles.reimbursementContext}>
+      <CircleDollarSign size={14} aria-hidden />
+      <div>
+        <strong>
+          {formatMoney(reimbursement.outstandingAmount)} outstanding reimbursement
+        </strong>
+        <span>
+          {formatMoney(reimbursement.reimbursableAmount)} is marked reimbursable and is excluded from trusted spending.
+          {reimbursement.receivedAmount > 0 ? ` ${formatMoney(reimbursement.receivedAmount)} has already been received.` : ""}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function groupedReviewItems(reviewItems: ReviewQueueItem[]) {
@@ -350,6 +376,7 @@ function ReviewCard({ categories, item }: { categories: CategoryRecord[]; item: 
       </div>
 
       <SuggestionRows item={item} />
+      <ReimbursementContext transaction={item.transaction} />
       <RawContext item={item} />
 
       <div className={styles.cardActions}>
@@ -430,10 +457,10 @@ export function ReviewQueueView({
           tone={totals.unresolvedSpending > 0 ? "warn" : undefined}
         />
         <SummaryCard
-          detail="Peer-to-peer open"
-          icon={UsersRound}
-          value={`${totals.peerToPeerItems.toLocaleString("en-US")} / ${formatMoney(totals.peerToPeerTotal)}`}
-          tone={totals.peerToPeerItems > 0 ? "warn" : undefined}
+          detail="Reimbursements open"
+          icon={HandCoins}
+          value={`${formatMoney(totals.reimbursementOutstanding)} / ${formatMoney(totals.reimbursableOpenAmount)}`}
+          tone={totals.reimbursementOutstanding > 0 ? "warn" : undefined}
         />
       </section>
 

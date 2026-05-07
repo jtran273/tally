@@ -15,7 +15,7 @@ Ledger keeps those concepts separate:
 - **Raw provider data** answers: what did Plaid send?
 - **Enriched transaction data** answers: what should the user trust this transaction to mean?
 - **Review items** answer: what still needs human judgment?
-- **Splits and recurring records** answer: how should activity affect budget and planning views?
+- **Splits, reimbursements, and recurring records** answer: how should activity affect budget and planning views?
 
 This separation is the core of the product. It lets the app preserve evidence, explain calculations, and avoid treating uncertain imported data as final truth.
 
@@ -84,6 +84,7 @@ The review queue flags transactions that need judgment, including:
 - recurring candidates.
 
 Users can accept suggestions, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits.
+Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
 
 ### Edit Enriched Records
 
@@ -113,7 +114,7 @@ The CSV export uses the current transaction filters and returns enriched finance
 | `/dashboard` | Net worth, account totals, spending summary, insights, recurring context, review count |
 | `/transactions` | Searchable and filterable enriched transaction table |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
-| `/review` | Queue for transactions that need human review |
+| `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
 | `/recurring` | Recurring expense candidates and confirmed recurring rows |
 | `/accounts` | Accounts grouped by cash, credit, investments, and retirement |
 | `/settings` | Plaid connection, manual sync, disconnect, and provider status |

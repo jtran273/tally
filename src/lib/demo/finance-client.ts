@@ -214,6 +214,25 @@ const transactionSplits: TransactionSplitRow[] = ledgerData.txns.flatMap((transa
   }))
 );
 
+const reimbursementRecords: ReimbursementRecordRow[] = transactionSplits
+  .filter((split) => split.intent === "reimbursable")
+  .map((split) => ({
+    counterparty: split.label.replace(/^covered for\s+/i, "") || null,
+    created_at: NOW,
+    due_date: isoDaysFromBase(12),
+    enriched_transaction_id: split.enriched_transaction_id,
+    expected_amount: split.amount,
+    id: `demo-reimbursement-${split.id}`,
+    notes: "Demo reimbursement tracked from a reimbursable split.",
+    received_amount: 0,
+    received_at: null,
+    received_transaction_id: null,
+    split_id: split.id,
+    status: "expected",
+    updated_at: NOW,
+    user_id: DEMO_USER_ID
+  }));
+
 const recurringExpenses: RecurringExpenseRow[] = ledgerData.recurring.map((expense) => ({
   account_id: accounts.find((account) => account.type === "credit")?.id ?? null,
   amount: expense.amount,
@@ -300,7 +319,7 @@ const rows = {
   plaid_items: plaidItems,
   raw_transactions: rawTransactions,
   recurring_expenses: recurringExpenses,
-  reimbursement_records: [] as ReimbursementRecordRow[],
+  reimbursement_records: reimbursementRecords,
   review_items: reviewItems,
   transaction_splits: transactionSplits
 } satisfies { [Table in FinanceTableName]: TableRow<Table>[] };

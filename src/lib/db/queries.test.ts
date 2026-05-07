@@ -43,6 +43,7 @@ function transaction(
     plaidTransactionId: `plaid-${input.id}`,
     rawTransactionId: `raw-${input.id}`,
     recurring: false,
+    reimbursements: [],
     reviewedAt: null,
     reviewItems,
     reviewReason: reviewItems.find((item) => item.status === "open")?.reason ?? null,

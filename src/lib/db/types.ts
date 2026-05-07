@@ -347,6 +347,20 @@ export interface TransactionSplitRecord {
   notes: string | null;
 }
 
+export interface ReimbursementRecord {
+  id: string;
+  transactionId: string;
+  splitId: string | null;
+  receivedTransactionId: string | null;
+  counterparty: string | null;
+  expectedAmount: number;
+  receivedAmount: number;
+  status: ReimbursementStatus;
+  dueDate: string | null;
+  receivedAt: string | null;
+  notes: string | null;
+}
+
 export interface ReviewItemRecord {
   id: string;
   transactionId: string;
@@ -386,6 +400,7 @@ export interface TransactionRecord {
   note: string;
   recurring: boolean;
   splits: TransactionSplitRecord[];
+  reimbursements: ReimbursementRecord[];
   reviewedAt: string | null;
 }
 

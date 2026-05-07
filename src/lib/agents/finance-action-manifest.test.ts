@@ -40,6 +40,7 @@ function transaction(input: Partial<TransactionRecord> = {}): TransactionRecord 
     plaidTransactionId: null,
     rawTransactionId: `raw-${id}`,
     recurring: false,
+    reimbursements: [],
     reviewedAt: null,
     reviewItems: [],
     reviewReason: null,

@@ -49,6 +49,7 @@ function transaction(
     plaidTransactionId: null,
     rawTransactionId: `raw-${input.id}`,
     recurring: false,
+    reimbursements: [],
     reviewedAt: null,
     reviewItems: [],
     reviewReason: null,

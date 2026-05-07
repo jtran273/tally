@@ -78,8 +78,8 @@ Core tables:
 - `enriched_transactions`: editable app-facing merchant, category, intent, notes, review state, and confidence.
 - `review_items`: open/resolved/dismissed review tasks generated from heuristics and suggestions.
 - `transaction_splits`: split allocations for peer-to-peer or shared spending.
+- `reimbursement_records`: expected/requested/received reimbursement tracking for reimbursable split portions.
 - `recurring_expenses`: confirmed, pending, paused, or dismissed recurring rows.
-- `reimbursement_records`: expected/requested/received reimbursement tracking.
 - `insights`: persisted insight cards.
 - `merchant_rules`: reusable merchant/category/intent rules for future automation.
 - `audit_events`: material changes to labels, review state, recurring rows, and related records.
@@ -128,7 +128,7 @@ Review items are created for transactions that need user attention, including:
 - missing categories,
 - recurring candidates.
 
-Users can accept suggestions, dismiss review items, edit transactions, or allocate peer-to-peer splits. Material changes write audit events.
+Users can accept suggestions, dismiss review items, edit transactions, or allocate peer-to-peer splits. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
 
 ## Recurring Flow
 
