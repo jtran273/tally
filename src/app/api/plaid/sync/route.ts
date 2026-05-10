@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       ? summarizeSyncRun([await syncPlaidItem({
         client: writeClient,
         itemId: parsed.itemId,
+        throwOnError: false,
         userId: context.user.id
       })])
       : await syncPlaidConnections(writeClient, context.user.id);

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildPlaidConnectionsStatusSummary,
+  formatPlaidSyncResultMessage,
   getPlaidConnectionIssue,
+  getPlaidSyncResultErrorDetails,
   type PlaidConnectionStatusInput
 } from "./status";
 
@@ -59,5 +61,29 @@ test("Plaid connection summary distinguishes empty and never-synced states", () 
   assert.equal(
     buildPlaidConnectionsStatusSummary([connection({ lastSuccessfulSyncAt: null })]).status,
     "never_synced"
+  );
+});
+
+test("Plaid sync result messages include safe API error details", () => {
+  const sync = {
+    accountsUpserted: 0,
+    enrichedTransactionsInserted: 0,
+    enrichedTransactionsUpdated: 0,
+    failed: 2,
+    items: [
+      { errorCode: "PLAID_CONFIGURATION_ERROR", errorMessage: "Plaid configuration is incomplete." },
+      { errorCode: "PLAID_CONFIGURATION_ERROR", errorMessage: "Plaid configuration is incomplete." }
+    ],
+    rawTransactionsUpserted: 0,
+    status: "failed" as const
+  };
+
+  assert.equal(
+    getPlaidSyncResultErrorDetails(sync),
+    "PLAID_CONFIGURATION_ERROR: Plaid configuration is incomplete."
+  );
+  assert.equal(
+    formatPlaidSyncResultMessage(sync),
+    "Sync incomplete: 0 accounts, 0 raw transactions, 0 enriched transactions, 2 failures. PLAID_CONFIGURATION_ERROR: Plaid configuration is incomplete."
   );
 });

@@ -2054,6 +2054,16 @@ kbd {
   color: var(--warn);
 }
 
+.plaid-sync-attempt {
+  align-items: flex-start;
+  line-height: 1.4;
+}
+
+.plaid-sync-attempt svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .plaid-connection-list {
   display: flex;
   flex-direction: column;
@@ -2715,6 +2725,15 @@ kbd {
 
   .plaid-status {
     align-self: flex-start;
+  }
+
+  .plaid-actions,
+  .plaid-actions .btn {
+    width: 100%;
+  }
+
+  .plaid-actions .btn {
+    justify-content: center;
   }
 
   .plaid-disconnect {

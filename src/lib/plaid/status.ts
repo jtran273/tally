@@ -25,6 +25,21 @@ export interface PlaidConnectionsStatusSummary {
   total: number;
 }
 
+export interface PlaidSyncResultItemInput {
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface PlaidSyncResultInput {
+  accountsUpserted: number;
+  enrichedTransactionsInserted: number;
+  enrichedTransactionsUpdated: number;
+  failed: number;
+  items: readonly PlaidSyncResultItemInput[];
+  rawTransactionsUpserted: number;
+  status: "succeeded" | "partial" | "failed";
+}
+
 const REPAIR_ERROR_CODES = new Set([
   "ITEM_LOGIN_REQUIRED",
   "ITEM_LOCKED",
@@ -133,4 +148,21 @@ export function buildPlaidConnectionsStatusSummary(
     syncable,
     total
   };
+}
+
+export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): string | null {
+  const details = sync.items
+    .filter((item) => item.errorCode || item.errorMessage)
+    .map((item) => [item.errorCode, item.errorMessage].filter(Boolean).join(": "));
+
+  return details.length > 0 ? [...new Set(details)].join("; ") : null;
+}
+
+export function formatPlaidSyncResultMessage(sync: PlaidSyncResultInput) {
+  const enrichedTransactions = sync.enrichedTransactionsInserted + sync.enrichedTransactionsUpdated;
+  const resultLabel = sync.status === "succeeded" ? "Sync complete" : "Sync incomplete";
+  const errorDetails = getPlaidSyncResultErrorDetails(sync);
+  const summary = `${sync.accountsUpserted} accounts, ${sync.rawTransactionsUpserted} raw transactions, ${enrichedTransactions} enriched transactions, ${sync.failed} failures.`;
+
+  return errorDetails ? `${resultLabel}: ${summary} ${errorDetails}` : `${resultLabel}: ${summary}`;
 }

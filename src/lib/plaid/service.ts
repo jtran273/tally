@@ -2053,11 +2053,13 @@ export async function syncPlaidItem({
   client,
   itemId,
   source = "manual",
+  throwOnError = true,
   userId
 }: {
   client: FinanceSupabaseClient;
   itemId: string;
   source?: PlaidSyncRunSource;
+  throwOnError?: boolean;
   userId: string;
 }): Promise<PlaidSyncItemSummary> {
   const item = await loadPlaidItemForSync(client, userId, itemId);
@@ -2096,7 +2098,7 @@ export async function syncPlaidItem({
   await persistPlaidSyncRunItem({ client, item, run, startedAt, summary, userId });
   await finalizePlaidSyncRun(client, run, runSummary);
 
-  if (syncError) throw syncError;
+  if (syncError && throwOnError) throw syncError;
   return summary;
 }
 

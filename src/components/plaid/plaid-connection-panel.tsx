@@ -1,7 +1,13 @@
 "use client";
 
 import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench } from "lucide-react";
-import { buildPlaidConnectionsStatusSummary, type PlaidConnectionIssue } from "@/lib/plaid/status";
+import {
+  buildPlaidConnectionsStatusSummary,
+  formatPlaidSyncResultMessage,
+  getPlaidSyncResultErrorDetails,
+  type PlaidConnectionIssue
+} from "@/lib/plaid/status";
+import { useRouter } from "next/navigation";
 import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -83,6 +89,14 @@ interface DisconnectResponse {
 
 type RequestState = "idle" | "loading" | "exchanging" | "syncing";
 
+interface SyncAttemptState {
+  completedAt: string | null;
+  errorDetails: string | null;
+  message: string;
+  startedAt: string;
+  status: "pending" | "succeeded" | "partial" | "failed";
+}
+
 function formatConnectedDate(value: string) {
   return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
@@ -102,16 +116,12 @@ function formatEnvironment(environment: PlaidEnvironment) {
   return environment === "production" ? "Production" : "Sandbox";
 }
 
-function getEnrichedTransactionCount(summary: SyncItemSummary | SyncRunSummary) {
+function getEnrichedTransactionCount(summary: SyncItemSummary) {
   return summary.enrichedTransactionsInserted + summary.enrichedTransactionsUpdated;
 }
 
 function formatSyncItemMessage(summary: SyncItemSummary) {
   return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
-}
-
-function formatSyncRunMessage(summary: SyncRunSummary) {
-  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions, ${getEnrichedTransactionCount(summary)} enriched transactions, ${summary.failed} failures.`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -126,6 +136,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export function PlaidConnectionPanel() {
+  const router = useRouter();
   const [connections, setConnections] = useState<PlaidConnectionSummary[]>([]);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [environment, setEnvironment] = useState<PlaidEnvironment>("sandbox");
@@ -136,6 +147,7 @@ export function PlaidConnectionPanel() {
   const [repairConnectionId, setRepairConnectionId] = useState<string | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("loading");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [syncAttempt, setSyncAttempt] = useState<SyncAttemptState | null>(null);
 
   const connectedInstitutionCount = useMemo(
     () => new Set(connections.map((connection) => connection.institutionName)).size,
@@ -184,13 +196,22 @@ export function PlaidConnectionPanel() {
   }, []);
 
   const syncConnections = useCallback(async (connectionId?: string) => {
+    const startedAt = new Date().toISOString();
     setRequestState("syncing");
     setError(null);
     setSuccessMessage(null);
+    setSyncAttempt({
+      completedAt: null,
+      errorDetails: null,
+      message: connectionId ? "Syncing this institution now." : "Syncing connected institutions now.",
+      startedAt,
+      status: "pending"
+    });
 
     try {
       const data = await fetch("/api/plaid/sync", {
         body: connectionId ? JSON.stringify({ connectionId }) : undefined,
+        cache: "no-store",
         headers: connectionId ? { "Content-Type": "application/json" } : undefined,
         method: "POST"
       }).then((response) =>
@@ -199,18 +220,36 @@ export function PlaidConnectionPanel() {
 
       setConnections(data.connections);
       setEnvironment(data.environment);
-      const message = formatSyncRunMessage(data.sync);
+      const completedAt = new Date().toISOString();
+      const message = formatPlaidSyncResultMessage(data.sync);
+      const errorDetails = getPlaidSyncResultErrorDetails(data.sync);
+      setSyncAttempt({
+        completedAt,
+        errorDetails,
+        message,
+        startedAt,
+        status: data.sync.status
+      });
       if (data.sync.failed > 0) {
-        setError(`Sync incomplete. ${message}`);
+        setError(message);
       } else {
         setSuccessMessage(message);
       }
+      router.refresh();
     } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.");
+      const message = syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.";
+      setSyncAttempt({
+        completedAt: new Date().toISOString(),
+        errorDetails: null,
+        message,
+        startedAt,
+        status: "failed"
+      });
+      setError(message);
     } finally {
       setRequestState("idle");
     }
-  }, []);
+  }, [router]);
 
   const exchangePublicToken = useCallback(async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
     setRequestState("exchanging");
@@ -243,12 +282,13 @@ export function PlaidConnectionPanel() {
       );
       if (data.syncError) setError(data.syncError);
       setLinkToken(null);
+      router.refresh();
     } catch (exchangeError) {
       setError(exchangeError instanceof Error ? exchangeError.message : "Unable to finish the Plaid connection.");
     } finally {
       setRequestState("idle");
     }
-  }, []);
+  }, [router]);
 
   const { open, ready } = usePlaidLink({
     onExit: (linkError) => {
@@ -330,6 +370,7 @@ export function PlaidConnectionPanel() {
 
       setConnections(data.connections);
       setSuccessMessage(`${data.connection.institutionName} disconnected. Historical transactions were preserved.`);
+      router.refresh();
     } catch (disconnectError) {
       setError(disconnectError instanceof Error ? disconnectError.message : "Unable to disconnect Plaid institution.");
     } finally {
@@ -382,9 +423,20 @@ export function PlaidConnectionPanel() {
         </div>
         <div className="setting-metric">
           <div className="setting-metric-value sync-date">{formatSyncDate(lastSyncAt)}</div>
-          <div className="settings-row-sub">Last sync</div>
+          <div className="settings-row-sub">Last successful sync</div>
         </div>
       </div>
+
+      {syncAttempt ? (
+        <div className={`plaid-alert plaid-sync-attempt ${syncAttempt.status === "pending" ? "warning" : syncAttempt.status === "succeeded" ? "success" : "error"}`}>
+          {syncAttempt.status === "pending" ? <RefreshCw size={14} /> : syncAttempt.status === "succeeded" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          <span>
+            {syncAttempt.message} Started {formatSyncDate(syncAttempt.startedAt)}
+            {syncAttempt.completedAt ? `; completed ${formatSyncDate(syncAttempt.completedAt)}` : ""}.
+            {syncAttempt.errorDetails ? ` Latest API error: ${syncAttempt.errorDetails}` : ""}
+          </span>
+        </div>
+      ) : null}
 
       {environment === "production" ? (
         <div className="plaid-alert warning">
