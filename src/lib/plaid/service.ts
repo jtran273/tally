@@ -963,6 +963,21 @@ async function fetchTransactionSyncUpdates(
   return updates;
 }
 
+function emptyTransactionSyncUpdates(initialCursor: string | null) {
+  return {
+    accounts: [] as AccountBase[],
+    added: [] as Transaction[],
+    modified: [] as Transaction[],
+    nextCursor: initialCursor,
+    removed: [] as RemovedTransaction[]
+  };
+}
+
+export function isSkippablePlaidTransactionsError(error: unknown) {
+  const code = getSafePlaidError(error).code;
+  return code === "INVALID_PRODUCT" || code === "PRODUCT_NOT_ENABLED" || code === "PRODUCT_NOT_READY";
+}
+
 async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initialCursor: string | null) {
   try {
     return await fetchTransactionSyncUpdates(accessToken, initialCursor);
@@ -972,6 +987,19 @@ async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initial
     }
 
     return fetchTransactionSyncUpdates(accessToken, initialCursor);
+  }
+}
+
+async function fetchTransactionSyncUpdatesForImport(accessToken: string, initialCursor: string | null) {
+  try {
+    return await fetchTransactionSyncUpdatesWithRetry(accessToken, initialCursor);
+  } catch (error) {
+    if (!isSkippablePlaidTransactionsError(error)) {
+      throw error;
+    }
+
+    console.warn("plaid_transactions_sync_skipped", getSafePlaidError(error));
+    return emptyTransactionSyncUpdates(initialCursor);
   }
 }
 
@@ -1889,8 +1917,8 @@ async function syncLoadedPlaidItem(
   const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
   const syncedAt = new Date().toISOString();
   const snapshotDate = syncedAt.slice(0, 10);
-  const transactionUpdates = await fetchTransactionSyncUpdatesWithRetry(accessToken, item.transaction_cursor);
-  const [itemAccounts, balanceAccounts] = await Promise.all([
+  const [transactionUpdates, itemAccounts, balanceAccounts] = await Promise.all([
+    fetchTransactionSyncUpdatesForImport(accessToken, item.transaction_cursor),
     fetchItemAccounts(accessToken),
     fetchBalanceAccounts(accessToken)
   ]);

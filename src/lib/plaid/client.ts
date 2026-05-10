@@ -1,8 +1,8 @@
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
-import { getPlaidConfig } from "./config";
+import { getPlaidCredentialConfig } from "./config";
 
 export function getPlaidClient() {
-  const config = getPlaidConfig();
+  const config = getPlaidCredentialConfig();
 
   return new PlaidApi(new Configuration({
     baseOptions: {

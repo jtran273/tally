@@ -12,6 +12,8 @@ export interface PlaidConfig {
   secret: string;
 }
 
+export type PlaidCredentialConfig = Omit<PlaidConfig, "redirectUri">;
+
 export type PlaidEnvironment = "sandbox" | "production";
 
 const SUPPORTED_PLAID_ENVIRONMENTS = new Set<PlaidEnvironment>(["sandbox", "production"]);
@@ -70,19 +72,25 @@ export function getPlaidRuntimeEnvironment(): PlaidEnvironment {
   return getPlaidEnvironment();
 }
 
-export function getPlaidConfig(): PlaidConfig {
+export function getPlaidCredentialConfig(): PlaidCredentialConfig {
   const clientId = process.env.PLAID_CLIENT_ID?.trim();
   const environment = getPlaidEnvironment();
   const secret = getPlaidSecret(environment);
-  const redirectUri = buildRedirectUri();
 
   if (!clientId || !secret) {
     throw new PlaidConfigurationError("Missing Plaid server environment variables.");
   }
 
-  if (environment === "production") {
+  return { clientId, environment, secret };
+}
+
+export function getPlaidConfig(): PlaidConfig {
+  const credentialConfig = getPlaidCredentialConfig();
+  const redirectUri = buildRedirectUri();
+
+  if (credentialConfig.environment === "production") {
     assertProductionRedirectUri(redirectUri);
   }
 
-  return { clientId, environment, redirectUri, secret };
+  return { ...credentialConfig, redirectUri };
 }

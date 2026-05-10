@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { getPlaidConfig, PlaidConfigurationError } from "./config";
+import { getPlaidCredentialConfig, PlaidConfigurationError } from "./config";
 
 const TOKEN_VERSION = "v1";
 const TOKEN_ALGORITHM = "aes-256-gcm";
@@ -15,7 +15,7 @@ function hashKey(...parts: string[]) {
 }
 
 function getLegacyTokenKey() {
-  const config = getPlaidConfig();
+  const config = getPlaidCredentialConfig();
 
   return hashKey(
     "personal-finance-os:plaid-access-token:v1",
@@ -38,11 +38,11 @@ function getPrimaryTokenKey() {
   return getLegacyTokenKey();
 }
 
-function getDecryptionKeys() {
-  const primary = getPrimaryTokenKey();
-  const legacy = getLegacyTokenKey();
-
-  return primary.equals(legacy) ? [primary] : [primary, legacy];
+function getDecryptionKeyCandidates() {
+  return [
+    getPrimaryTokenKey,
+    getLegacyTokenKey
+  ];
 }
 
 function encode(value: Buffer) {
@@ -71,8 +71,9 @@ export function decryptPlaidAccessToken(ciphertext: string) {
 
   let lastError: unknown;
 
-  for (const key of getDecryptionKeys()) {
+  for (const getKey of getDecryptionKeyCandidates()) {
     try {
+      const key = getKey();
       const decipher = createDecipheriv(TOKEN_ALGORITHM, key, decode(iv));
       decipher.setAuthTag(decode(tag));
 

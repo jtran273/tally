@@ -3,6 +3,7 @@ import test from "node:test";
 import { AccountType as PlaidAccountType, type AccountBase } from "plaid";
 import {
   getRemovedPlaidTransactionIdsToDelete,
+  isSkippablePlaidTransactionsError,
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
   shouldRefreshImportedEnrichment,
@@ -110,6 +111,35 @@ test("imported enrichment refresh preserves manual and reviewed overrides", () =
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "plaid" }), false);
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "rule" }), false);
   assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "manual" }), false);
+});
+
+test("transactions product availability errors can be skipped while importing accounts", () => {
+  assert.equal(
+    isSkippablePlaidTransactionsError({
+      response: {
+        data: {
+          error_code: "PRODUCT_NOT_ENABLED",
+          error_type: "INVALID_REQUEST",
+          request_id: "request-id"
+        },
+        status: 400
+      }
+    }),
+    true
+  );
+  assert.equal(
+    isSkippablePlaidTransactionsError({
+      response: {
+        data: {
+          error_code: "ITEM_LOGIN_REQUIRED",
+          error_type: "ITEM_ERROR",
+          request_id: "request-id"
+        },
+        status: 400
+      }
+    }),
+    false
+  );
 });
 
 test("sync run summary marks partial failures and excludes provider ids", () => {

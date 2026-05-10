@@ -159,6 +159,19 @@ Check:
 - `transaction_cursor` is not corrupt,
 - Vercel logs for safe Plaid error code.
 
+If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Ledger should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
+
+### Sync fails with PLAID_CONFIGURATION_ERROR for every item
+
+Check:
+
+- `PLAID_CLIENT_ID` is set,
+- `PLAID_ENV` matches the Plaid app/environment that created the stored access tokens,
+- the selected scoped secret is present (`PLAID_PRODUCTION_SECRET` for production or `PLAID_SANDBOX_SECRET` for sandbox),
+- `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production.
+
+Manual and scheduled sync do not need Plaid Link redirect configuration, but Link token creation still does. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately.
+
 ### Connection needs repair
 
 Common repairable item errors include `ITEM_LOGIN_REQUIRED`, `INVALID_CREDENTIALS`, `ITEM_LOCKED`, and `USER_PERMISSION_REVOKED`.
