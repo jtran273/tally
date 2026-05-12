@@ -6,14 +6,19 @@ import type {
   ReviewQueueItem,
   TransactionRecord
 } from "@/lib/db";
-import type { AccountGroup, AccountBalanceTotals, BalanceTrendPoint, SyncSummary } from "@/lib/finance/balances";
+import type {
+  AccountGroup,
+  AccountBalanceTotals,
+  BalanceTrendPoint,
+  BalanceTrendScope,
+  SyncSummary
+} from "@/lib/finance/balances";
 import type { CategoryBreakdownSummary, CategoryCleanupAction, SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
 import type { DashboardInsightCard } from "@/lib/insights";
 import {
   Clock3,
   CreditCard,
   Database,
-  Inbox,
   Landmark,
   ShieldCheck,
   Sparkles,
@@ -34,6 +39,7 @@ import type { RecurringCandidate } from "@/lib/recurring";
 
 interface DashboardViewProps {
   accounts: AccountRecord[];
+  balanceTrends: Record<BalanceTrendScope, BalanceTrendPoint[]>;
   budgetGuardrails: BudgetGuardrailSummary;
   categoryBreakdown: CategoryBreakdownSummary;
   cashflowRunway: MonthlyCashflowRunwaySummary;
@@ -50,7 +56,6 @@ interface DashboardViewProps {
   spendingSummary: SpendingInsightSummary;
   syncSummary: SyncSummary;
   totals: AccountBalanceTotals;
-  trend: BalanceTrendPoint[];
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -80,6 +85,16 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 type TrendRangeKey = "1M" | "3M" | "6M" | "1Y" | "ALL";
+
+interface BalanceViewOption {
+  description: string;
+  icon: LucideIcon;
+  key: BalanceTrendScope;
+  label: string;
+  positiveIsGood: boolean;
+  tone?: "negative" | "positive";
+  value: number;
+}
 
 const trendRangeOptions: { days: number | null; key: TrendRangeKey; label: string }[] = [
   { days: 31, key: "1M", label: "1M" },
@@ -190,6 +205,14 @@ function pointDelta(trend: readonly BalanceTrendPoint[], index: number) {
   return { amount, percent };
 }
 
+function deltaToneClass(amount: number, positiveIsGood: boolean) {
+  if (amount === 0) return undefined;
+
+  const isPositiveMove = amount > 0;
+  const isGoodMove = positiveIsGood ? isPositiveMove : !isPositiveMove;
+  return isGoodMove ? styles.positive : styles.negative;
+}
+
 function filterTrendByRange(trend: readonly BalanceTrendPoint[], rangeKey: TrendRangeKey) {
   const range = trendRangeOptions.find((option) => option.key === rangeKey);
   if (!range?.days || trend.length < 2) return [...trend];
@@ -221,7 +244,17 @@ function monthProgressLabel(summary: MonthlyCashflowRunwaySummary) {
   return `Day ${summary.monthElapsedDays} of ${summary.monthTotalDays}`;
 }
 
-function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: BalanceTrendPoint[] }) {
+function TrendChart({
+  positiveIsGood,
+  snapshotCount,
+  trend,
+  valueLabel
+}: {
+  positiveIsGood: boolean;
+  snapshotCount: number;
+  trend: BalanceTrendPoint[];
+  valueLabel: string;
+}) {
   const [rangeKey, setRangeKey] = useState<TrendRangeKey>("6M");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,6 +273,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
   const selectedTrend = useMemo(() => filterTrendByRange(trend, rangeKey), [rangeKey, trend]);
   const delta = latestTrendDelta(selectedTrend);
   const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
+  const deltaClassName = delta ? deltaToneClass(delta.amount, positiveIsGood) : undefined;
   const hasSnapshotTrend = trend.some((point) => point.source === "snapshot");
   const hasTransactionTrend = trend.some((point) => point.source === "transaction");
 
@@ -285,11 +319,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
   const activePoint = selectedTrend[selectedIndex];
   const activeCoords = points[selectedIndex];
   const activeDelta = pointDelta(selectedTrend, selectedIndex);
-  const activeDeltaClass = activeDelta
-    ? activeDelta.amount < 0
-      ? styles.negative
-      : styles.positive
-    : undefined;
+  const activeDeltaClass = activeDelta ? deltaToneClass(activeDelta.amount, positiveIsGood) : undefined;
   const gridLines = [
     { label: max, y: padding.top },
     { label: min + range / 2, y: padding.top + plotHeight / 2 },
@@ -326,7 +356,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
           ))}
         </div>
         <div className={styles.trendSummary}>
-          <span className={delta ? delta.amount < 0 ? styles.negative : styles.positive : undefined}>
+          <span className={deltaClassName}>
             <DeltaIcon size={14} aria-hidden />
             {delta ? (
               <>
@@ -367,7 +397,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
       </div>
 
       <div className={styles.trend} ref={containerRef}>
-        <svg aria-label="Net worth balance trend" viewBox={`0 0 ${width} ${height}`}>
+        <svg aria-label={`${valueLabel} balance trend`} viewBox={`0 0 ${width} ${height}`}>
         <defs>
           <linearGradient id="dashboardTrendFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.16" />
@@ -406,7 +436,7 @@ function TrendChart({ snapshotCount, trend }: { snapshotCount: number; trend: Ba
           const isActive = index === selectedIndex;
           return (
           <g
-            aria-label={`${formatLongDate(point.date)} net worth ${formatMoney(point.netWorth)}`}
+            aria-label={`${formatLongDate(point.date)} ${valueLabel.toLowerCase()} ${formatMoney(point.netWorth)}`}
             className={styles.trendPoint}
             key={`${point.date}-${index}`}
             onClick={() => setActiveIndex(index)}
@@ -1047,6 +1077,7 @@ function InsightsPanel({ insights }: { insights: DashboardInsightCard[] }) {
 
 export function DashboardView({
   accounts,
+  balanceTrends,
   budgetGuardrails,
   categoryBreakdown,
   cashflowRunway,
@@ -1062,9 +1093,49 @@ export function DashboardView({
   snapshotCount,
   spendingSummary,
   syncSummary,
-  totals,
-  trend
+  totals
 }: DashboardViewProps) {
+  const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("netWorth");
+  const cashMinusLiabilities = totals.cash - totals.liabilities;
+  const balanceViews: BalanceViewOption[] = [
+    {
+      description: "All assets minus credit card balances.",
+      icon: Landmark,
+      key: "netWorth",
+      label: "Net worth",
+      positiveIsGood: true,
+      value: totals.netWorth
+    },
+    {
+      description: "Checking, savings, and other cash accounts.",
+      icon: Database,
+      key: "cash",
+      label: "Cash",
+      positiveIsGood: true,
+      value: totals.cash
+    },
+    {
+      description: "Credit card balances owed.",
+      icon: CreditCard,
+      key: "liabilities",
+      label: "Liabilities",
+      positiveIsGood: false,
+      tone: "negative",
+      value: totals.liabilities
+    },
+    {
+      description: "Cash accounts after subtracting liabilities.",
+      icon: WalletCards,
+      key: "cashMinusLiabilities",
+      label: "Cash - liabilities",
+      positiveIsGood: true,
+      tone: cashMinusLiabilities < 0 ? "negative" : "positive",
+      value: cashMinusLiabilities
+    }
+  ];
+  const selectedBalanceView = balanceViews.find((option) => option.key === balanceViewKey) ?? balanceViews[0];
+  const selectedBalanceTone = selectedBalanceView.tone ?? (selectedBalanceView.value < 0 ? "negative" : undefined);
+
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
@@ -1095,11 +1166,14 @@ export function DashboardView({
         </div>
       ) : (
         <>
-          <section className={styles.hero}>
+          <section aria-label="Balance dashboard" className={styles.hero}>
             <div className={styles.heroTop}>
-              <div>
-                <span className={styles.eyebrow}>Net worth</span>
-                <h2>{formatMoney(totals.netWorth)}</h2>
+              <div className={styles.heroIdentity}>
+                <span className={styles.eyebrow}>{selectedBalanceView.label}</span>
+                <h2 className={selectedBalanceTone ? styles[selectedBalanceTone] : undefined}>
+                  {formatMoney(selectedBalanceView.value)}
+                </h2>
+                <p className={styles.heroDescription}>{selectedBalanceView.description}</p>
               </div>
               <div className={`${styles.syncPill} ${styles[`sync-${syncSummary.status}`]}`}>
                 <Clock3 size={13} aria-hidden />
@@ -1107,14 +1181,46 @@ export function DashboardView({
                 <span>{formatRelativeTime(syncSummary.latestSyncedAt)}</span>
               </div>
             </div>
-            <TrendChart snapshotCount={snapshotCount} trend={trend} />
+            <div className={styles.balanceViewControls} aria-label="Balance view">
+              {balanceViews.map((option) => {
+                const Icon = option.icon;
+                const optionTone = option.tone ?? (option.value < 0 ? "negative" : undefined);
+                return (
+                  <button
+                    aria-label={`${option.label} balance view`}
+                    aria-pressed={balanceViewKey === option.key}
+                    className={[
+                      styles.balanceViewButton,
+                      balanceViewKey === option.key ? styles.balanceViewActive : ""
+                    ].filter(Boolean).join(" ")}
+                    key={option.key}
+                    onClick={() => setBalanceViewKey(option.key)}
+                    type="button"
+                  >
+                    <span className={styles.balanceViewLabel}>
+                      <Icon size={13} aria-hidden />
+                      {option.label}
+                    </span>
+                    <strong className={optionTone ? styles[optionTone] : undefined}>
+                      {formatMoney(option.value, true)}
+                    </strong>
+                  </button>
+                );
+              })}
+            </div>
+            <TrendChart
+              positiveIsGood={selectedBalanceView.positiveIsGood}
+              snapshotCount={snapshotCount}
+              trend={balanceTrends[selectedBalanceView.key]}
+              valueLabel={selectedBalanceView.label}
+            />
           </section>
 
           <section className={styles.summaryGrid} aria-label="Balance summary">
             <SummaryCard detail={`${accounts.length} linked rows`} icon={Landmark} label="Assets" value={formatMoney(totals.assets)} />
             <SummaryCard detail="Checking and savings" icon={Database} label="Cash" value={formatMoney(totals.cash)} />
-            <SummaryCard detail="Cards reduce net worth" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.credit)} />
-            <SummaryCard detail={`${reviewItems.length} open review items`} icon={Inbox} label="Review" value={reviewItems.length.toLocaleString("en-US")} />
+            <SummaryCard detail="Credit card balances owed" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.liabilities)} />
+            <SummaryCard detail="Cash after card balances" icon={WalletCards} label="Cash - liabilities" tone={cashMinusLiabilities >= 0 ? "positive" : "negative"} value={formatMoney(cashMinusLiabilities)} />
           </section>
 
           <section className={styles.summaryGrid} aria-label="Monthly cashflow summary">

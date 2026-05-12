@@ -1,6 +1,7 @@
 import type { AccountRecord, AccountType, BalanceSnapshotRecord, TransactionIntent, TransactionStatus } from "@/lib/db";
 
 export type AccountGroupKey = "cash" | "credit" | "investments" | "retirement";
+export type BalanceTrendScope = "netWorth" | "cash" | "liabilities" | "cashMinusLiabilities";
 export type TrendSource = "current" | "snapshot" | "transaction";
 export type SyncState = "fresh" | "stale" | "never";
 
@@ -42,6 +43,7 @@ interface BalanceLike {
 }
 
 interface BalanceTrendTransaction {
+  accountId?: string;
   amount: number;
   date: string;
   intent: TransactionIntent;
@@ -85,6 +87,29 @@ export function balanceContribution({ balance, type }: BalanceLike): number {
   }
 
   return balance;
+}
+
+export function accountIncludedInBalanceScope(account: Pick<BalanceLike, "type">, scope: BalanceTrendScope) {
+  if (scope === "netWorth") return true;
+  if (scope === "cash") return account.type === "depository";
+  if (scope === "liabilities") return account.type === "credit";
+  return account.type === "depository" || account.type === "credit";
+}
+
+export function balanceContributionForScope(account: BalanceLike, scope: BalanceTrendScope): number {
+  if (!accountIncludedInBalanceScope(account, scope)) return 0;
+
+  if (scope === "liabilities") return Math.abs(account.balance);
+  if (scope === "cashMinusLiabilities" && account.type === "credit") return -Math.abs(account.balance);
+
+  return scope === "netWorth" ? balanceContribution(account) : account.balance;
+}
+
+export function calculateAccountScopeTotal(
+  accounts: readonly AccountRecord[],
+  scope: BalanceTrendScope
+) {
+  return accounts.reduce((sum, account) => sum + balanceContributionForScope(account, scope), 0);
 }
 
 export function calculateAccountTotals(accounts: readonly AccountRecord[]): AccountBalanceTotals {
@@ -137,13 +162,17 @@ export function buildBalanceTrend(
     asOfDate?: string;
     maxPoints?: number;
     minSnapshotTrendDays?: number;
+    scope?: BalanceTrendScope;
     transactionLookbackDays?: number;
     transactions?: readonly BalanceTrendTransaction[];
   } = {}
 ): BalanceTrendPoint[] {
-  if (accounts.length === 0) return [];
+  const scope = options.scope ?? "netWorth";
+  const scopedAccounts = accounts.filter((account) => accountIncludedInBalanceScope(account, scope));
 
-  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  if (scopedAccounts.length === 0) return [];
+
+  const accountById = new Map(scopedAccounts.map((account) => [account.id, account]));
   const totalsByDate = new Map<string, number>();
   const asOfDate = options.asOfDate ?? new Date().toISOString().slice(0, 10);
   const maxPoints = options.maxPoints ?? 366;
@@ -155,7 +184,7 @@ export function buildBalanceTrend(
     totalsByDate.set(
       snapshot.snapshotDate,
       (totalsByDate.get(snapshot.snapshotDate) ?? 0) +
-        balanceContribution({ balance: snapshot.currentBalance, type: account.type })
+        balanceContributionForScope({ balance: snapshot.currentBalance, type: account.type }, scope)
     );
   });
 
@@ -163,10 +192,11 @@ export function buildBalanceTrend(
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, netWorth]) => ({ date, netWorth, source: "snapshot" as const }));
 
-  const transactionTrend = buildTransactionDerivedTrend(accounts, options.transactions ?? [], {
+  const transactionTrend = buildTransactionDerivedTrend(scopedAccounts, options.transactions ?? [], {
     asOfDate,
     lookbackDays: options.transactionLookbackDays ?? DEFAULT_TRANSACTION_LOOKBACK_DAYS,
-    maxPoints
+    maxPoints,
+    scope
   });
 
   if (points.length > 0) {
@@ -176,7 +206,7 @@ export function buildBalanceTrend(
     if (asOfDate && points[points.length - 1].date < asOfDate) {
       points.push({
         date: asOfDate,
-        netWorth: calculateAccountTotals(accounts).netWorth,
+        netWorth: calculateAccountScopeTotal(scopedAccounts, scope),
         source: "current"
       });
     }
@@ -197,7 +227,7 @@ export function buildBalanceTrend(
   return [
     {
       date: asOfDate,
-      netWorth: calculateAccountTotals(accounts).netWorth,
+      netWorth: calculateAccountScopeTotal(scopedAccounts, scope),
       source: "current"
     }
   ];
@@ -224,15 +254,19 @@ function trendSpanDays(points: readonly BalanceTrendPoint[]) {
 function buildTransactionDerivedTrend(
   accounts: readonly AccountRecord[],
   transactions: readonly BalanceTrendTransaction[],
-  options: { asOfDate: string; lookbackDays: number; maxPoints: number }
+  options: { asOfDate: string; lookbackDays: number; maxPoints: number; scope: BalanceTrendScope }
 ) {
-  const currentNetWorth = calculateAccountTotals(accounts).netWorth;
+  if (options.scope !== "netWorth" && options.scope !== "cash") return [];
+
+  const currentNetWorth = calculateAccountScopeTotal(accounts, options.scope);
   const cutoffDate = addDays(options.asOfDate, -options.lookbackDays);
   const deltasByDate = new Map<string, number>();
+  const accountIds = new Set(accounts.map((account) => account.id));
 
   transactions.forEach((transaction) => {
     if (transaction.status === "pending" || transaction.intent === "transfer") return;
     if (transaction.date < cutoffDate || transaction.date > options.asOfDate) return;
+    if (options.scope === "cash" && (!transaction.accountId || !accountIds.has(transaction.accountId))) return;
 
     deltasByDate.set(
       transaction.date,

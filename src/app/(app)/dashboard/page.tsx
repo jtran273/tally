@@ -18,7 +18,8 @@ import {
   buildBalanceTrend,
   calculateAccountTotals,
   groupAccounts,
-  summarizeSync
+  summarizeSync,
+  type BalanceTrendScope
 } from "@/lib/finance/balances";
 import { buildBudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import { buildMonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
@@ -92,25 +93,39 @@ export default async function DashboardPage() {
   }
 
   const now = new Date();
+  const asOfDate = now.toISOString().slice(0, 10);
   const totals = calculateAccountTotals(accounts);
   const groups = groupAccounts(accounts);
-  const trend = buildBalanceTrend(accounts, snapshots, {
-    asOfDate: now.toISOString().slice(0, 10),
+  const trendOptions = {
+    asOfDate,
     maxPoints: 366,
     transactions: trendTransactions
+  };
+  const trend = buildBalanceTrend(accounts, snapshots, {
+    ...trendOptions,
+    scope: "netWorth"
   });
-  const spendingSummary = buildSpendingInsightSummary(trendTransactions, {
-    asOfDate: now.toISOString().slice(0, 10)
-  });
-  const categoryBreakdown = buildCategoryBreakdown(trendTransactions, {
-    asOfDate: now.toISOString().slice(0, 10)
-  });
-  const budgetGuardrails = buildBudgetGuardrailSummary(trendTransactions, {
-    asOfDate: now.toISOString().slice(0, 10)
-  });
+  const balanceTrends = {
+    cash: buildBalanceTrend(accounts, snapshots, {
+      ...trendOptions,
+      scope: "cash"
+    }),
+    cashMinusLiabilities: buildBalanceTrend(accounts, snapshots, {
+      ...trendOptions,
+      scope: "cashMinusLiabilities"
+    }),
+    liabilities: buildBalanceTrend(accounts, snapshots, {
+      ...trendOptions,
+      scope: "liabilities"
+    }),
+    netWorth: trend
+  } satisfies Record<BalanceTrendScope, typeof trend>;
+  const spendingSummary = buildSpendingInsightSummary(trendTransactions, { asOfDate });
+  const categoryBreakdown = buildCategoryBreakdown(trendTransactions, { asOfDate });
+  const budgetGuardrails = buildBudgetGuardrailSummary(trendTransactions, { asOfDate });
   const cashflowRunway = buildMonthlyCashflowRunwaySummary({
     accounts,
-    asOfDate: now.toISOString().slice(0, 10),
+    asOfDate,
     now,
     recurringCandidates,
     recurringExpenses,
@@ -131,23 +146,23 @@ export default async function DashboardPage() {
   return (
     <DashboardView
       accounts={accounts}
+      balanceTrends={balanceTrends}
       budgetGuardrails={budgetGuardrails}
       categoryBreakdown={categoryBreakdown}
+      cashflowRunway={cashflowRunway}
       dataError={dataError}
       groups={groups}
       insightCards={insightCards}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
       recentTransactions={recentTransactions}
-      recurringExpenses={recurringExpenses}
       recurringCandidates={recurringCandidates}
+      recurringExpenses={recurringExpenses}
       reviewItems={reviewItems}
       snapshotCount={snapshots.length}
       spendingSummary={spendingSummary}
       syncSummary={summarizeSync(accounts)}
       totals={totals}
-      trend={trend}
-      cashflowRunway={cashflowRunway}
     />
   );
 }

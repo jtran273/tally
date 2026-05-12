@@ -85,6 +85,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+.heroIdentity {
+  min-width: 0;
+}
+
+.heroDescription {
+  max-width: 520px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .card h2 {
   margin-top: 5px;
   font-size: 21px;
@@ -129,6 +141,64 @@
   margin-top: 12px;
   color: var(--accent);
   font-size: 13px;
+}
+
+.balanceViewControls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.balanceViewButton {
+  display: flex;
+  min-width: 0;
+  min-height: 76px;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.balanceViewButton:hover,
+.balanceViewButton:focus-visible,
+.balanceViewActive {
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--line));
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface));
+  color: var(--ink);
+  outline: none;
+}
+
+.balanceViewLabel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.balanceViewLabel svg {
+  flex: 0 0 auto;
+}
+
+.balanceViewButton strong {
+  display: block;
+  min-width: 0;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
 .trendPanel {
@@ -1133,6 +1203,10 @@
     grid-template-columns: 1fr;
   }
 
+  .balanceViewControls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .trend {
     margin-inline: -4px;
   }
@@ -1163,6 +1237,10 @@
 }
 
 @media (max-width: 480px) {
+  .balanceViewControls {
+    grid-template-columns: 1fr;
+  }
+
   .transactionRow,
   .spendRow,
   .cleanupRow,

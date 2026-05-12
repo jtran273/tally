@@ -50,7 +50,7 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText("Net worth", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible();
 });
 
 for (const route of responsiveRoutes) {
@@ -73,6 +73,25 @@ test("dashboard trend range controls update the change-over-time view", async ({
 
   const chart = page.locator("svg[aria-label='Net worth balance trend']");
   await expect(chart).toBeVisible();
+
+  const cashView = page.getByRole("button", { exact: true, name: "Cash balance view" });
+  await cashView.click();
+  await expect(cashView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Cash balance trend']")).toBeVisible();
+
+  const liabilitiesView = page.getByRole("button", { exact: true, name: "Liabilities balance view" });
+  await liabilitiesView.click();
+  await expect(liabilitiesView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Liabilities balance trend']")).toBeVisible();
+
+  const cashMinusLiabilitiesView = page.getByRole("button", { exact: true, name: "Cash - liabilities balance view" });
+  await cashMinusLiabilitiesView.click();
+  await expect(cashMinusLiabilitiesView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Cash - liabilities balance trend']")).toBeVisible();
+
+  const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
+  await netWorthView.click();
+  await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
 
   const oneYear = page.getByRole("button", { name: "1Y" });
   await oneYear.click();

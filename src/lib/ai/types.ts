@@ -34,10 +34,19 @@ export interface AiSuggestionProviderDescriptor {
   version: string;
 }
 
+export interface UserCorrectionExample {
+  merchant: string;
+  categoryName: string;
+  intent: TransactionIntent;
+  recurring?: boolean | null;
+}
+
 export interface TransactionSuggestionRequest {
   rawTransaction: RawTransactionSuggestionFields;
   categories?: readonly CategoryRecord[];
   merchantRules?: readonly MerchantRuleRow[];
+  userCorrections?: readonly UserCorrectionExample[];
+  cacheKey?: string;
 }
 
 export interface SuggestionField<TValue> {

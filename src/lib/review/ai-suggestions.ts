@@ -1,5 +1,5 @@
 import type { TransactionSuggestionService } from "@/lib/ai/suggestion-service";
-import type { TransactionAiSuggestion } from "@/lib/ai/types";
+import type { TransactionAiSuggestion, UserCorrectionExample } from "@/lib/ai/types";
 import type {
   CategoryRecord,
   EnrichedTransactionRow,
@@ -18,6 +18,7 @@ export interface ReviewAiSuggestionItem {
 }
 
 export interface AttachAiReviewSuggestionsOptions {
+  cacheKey?: string;
   categories: readonly CategoryRecord[];
   concurrency?: number;
   maxSuggestions?: number;
@@ -25,6 +26,7 @@ export interface AttachAiReviewSuggestionsOptions {
   rawRows: readonly RawTransactionRow[];
   suggestionService: Pick<TransactionSuggestionService, "suggestTransaction">;
   transactions: readonly EnrichedTransactionRow[];
+  userCorrections?: readonly UserCorrectionExample[];
 }
 
 export interface ReviewAiSuggestionUpdate<TItem extends ReviewAiSuggestionItem> {
@@ -67,13 +69,15 @@ async function mapWithConcurrency<TInput, TOutput>(
 export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSuggestionItem>(
   reviewItems: readonly TItem[],
   {
+    cacheKey,
     categories,
     concurrency = DEFAULT_AI_REVIEW_SUGGESTION_CONCURRENCY,
     maxSuggestions = DEFAULT_MAX_AI_REVIEW_SUGGESTIONS,
     merchantRules,
     rawRows,
     suggestionService,
-    transactions
+    transactions,
+    userCorrections
   }: AttachAiReviewSuggestionsOptions
 ): Promise<ReviewAiSuggestionUpdate<TItem>[]> {
   const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
@@ -96,9 +100,11 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
   >(candidates, safeConcurrency, async ({ item, raw }) => {
     try {
       const suggestion = await suggestionService.suggestTransaction({
+        cacheKey,
         categories,
         merchantRules,
-        rawTransaction: raw
+        rawTransaction: raw,
+        userCorrections
       });
       const updatedItem = {
         ...item,

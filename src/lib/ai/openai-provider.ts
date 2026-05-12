@@ -9,7 +9,9 @@ import type {
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5-nano";
-const OPENAI_PROVIDER_VERSION = "openai-suggestions-v1";
+const OPENAI_PROVIDER_VERSION = "openai-suggestions-v2";
+const OPENAI_REQUEST_TIMEOUT_MS = 25_000;
+const MERCHANT_RULE_SHORT_CIRCUIT_CONFIDENCE = 0.85;
 
 export const OPENAI_AI_SUGGESTION_PROVIDER: AiSuggestionProviderDescriptor = {
   id: "openai-transaction-review",
@@ -83,13 +85,19 @@ export function createOpenAiSuggestionAdapter(options: OpenAiSuggestionAdapterOp
   const suggestWithProvider = async (request: TransactionSuggestionRequest) => {
     const baseline = await fallback.suggestTransaction(request);
 
+    // Token-saving short-circuit: if a saved merchant rule already produced a
+    // high-confidence answer, the OpenAI call would only echo it. Skip it.
+    if (
+      baseline.category.source === "merchant-rule" &&
+      baseline.confidence >= MERCHANT_RULE_SHORT_CIRCUIT_CONFIDENCE
+    ) {
+      return baseline;
+    }
+
     try {
       return await suggestTransactionWithOpenAi({ apiKey, baseline, model, request });
     } catch (error) {
-      console.warn("openai_suggestion_failed", {
-        error: sanitizeOpenAiError(error),
-        model
-      });
+      console.warn(`openai_suggestion_failed model=${model}: ${sanitizeOpenAiError(error)}`);
       return baseline;
     }
   };
@@ -179,57 +187,72 @@ async function callOpenAi({
   model: string;
   request: TransactionSuggestionRequest;
 }): Promise<OpenAiSuggestionPayload> {
-  const response = await fetch(OPENAI_RESPONSES_URL, {
-    body: JSON.stringify({
-      input: [
-        {
-          content: [
-            {
-              text: buildPrompt(request, baseline),
-              type: "input_text"
-            }
-          ],
-          role: "user"
-        }
-      ],
-      max_output_tokens: 1200,
-      model,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "transaction_suggestion",
-          description: "A concise transaction cleanup suggestion for a personal finance ledger.",
-          strict: false,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            required: ["merchantName", "categoryName", "intent", "recurring", "confidence", "reason", "signals"],
-            properties: {
-              merchantName: { type: "string" },
-              categoryName: { type: "string" },
-              intent: { enum: ["business", "personal", "reimbursable", "shared", "transfer"], type: "string" },
-              recurring: { type: "boolean" },
-              confidence: { maximum: 1, minimum: 0, type: "number" },
-              reason: { type: "string" },
-              signals: {
-                type: "array",
-                items: { type: "string" },
-                maxItems: 5
-              }
-            }
+  const isReasoningModel = /^(o\d|gpt-5)/i.test(model);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_REQUEST_TIMEOUT_MS);
+
+  const body: Record<string, unknown> = {
+    input: [
+      {
+        content: [{ text: buildSystemPrompt(request), type: "input_text" }],
+        role: "system"
+      },
+      {
+        content: [{ text: buildUserPrompt(request, baseline), type: "input_text" }],
+        role: "user"
+      }
+    ],
+    max_output_tokens: isReasoningModel ? 4000 : 600,
+    model,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "transaction_suggestion",
+        description: "A concise transaction cleanup suggestion for a personal finance ledger.",
+        strict: false,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["merchantName", "categoryName", "intent", "recurring", "confidence", "reason"],
+          properties: {
+            merchantName: { type: "string" },
+            categoryName: { type: "string" },
+            intent: { enum: ["business", "personal", "reimbursable", "shared", "transfer"], type: "string" },
+            recurring: { type: "boolean" },
+            confidence: { maximum: 1, minimum: 0, type: "number" },
+            reason: { type: "string" }
           }
         }
       }
-    }),
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
+    }
+  };
+
+  if (isReasoningModel) {
+    body.reasoning = { effort: "minimal" };
+  }
+
+  if (request.cacheKey) {
+    body.prompt_cache_key = request.cacheKey;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_RESPONSES_URL, {
+      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
-    throw new Error(`OpenAI suggestion request failed with ${response.status}.`);
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(`OpenAI suggestion request failed with ${response.status}: ${errorBody.slice(0, 200)}`);
   }
 
   const data = await response.json() as OpenAiResponseBody;
@@ -247,47 +270,67 @@ async function callOpenAi({
   return parsed && typeof parsed === "object" ? parsed : {};
 }
 
-function buildPrompt(request: TransactionSuggestionRequest, baseline: TransactionAiSuggestion) {
-  const raw = request.rawTransaction;
-  const categories = (request.categories ?? []).map((category) => category.name).slice(0, 80);
-  const merchantRules = (request.merchantRules ?? []).filter((rule) => rule.enabled).map((rule) => ({
-    merchantPattern: rule.merchant_pattern,
-    normalizedMerchantName: rule.normalized_merchant_name,
-    categoryId: rule.category_id,
-    intent: rule.intent,
-    recurring: rule.is_recurring,
-    minAmount: rule.min_amount,
-    maxAmount: rule.max_amount
-  })).slice(0, 30);
+function buildSystemPrompt(request: TransactionSuggestionRequest) {
+  const categoryList = (request.categories ?? [])
+    .map((category) => category.name)
+    .filter((name) => name && name.toLowerCase() !== "uncategorized")
+    .slice(0, 60);
 
+  const merchantRules = (request.merchantRules ?? [])
+    .filter((rule) => rule.enabled)
+    .slice(0, 20)
+    .map((rule) => {
+      const parts = [
+        `${rule.merchant_pattern} → ${rule.normalized_merchant_name ?? "(merchant)"}`,
+        rule.intent ?? "(intent)"
+      ];
+      if (rule.is_recurring !== null) parts.push(rule.is_recurring ? "recurring" : "one-time");
+      return `- ${parts.join(", ")}`;
+    });
+
+  const examples = (request.userCorrections ?? [])
+    .slice(0, 15)
+    .map((c) => {
+      const recurring = c.recurring === true ? ", recurring" : c.recurring === false ? ", one-time" : "";
+      return `- "${c.merchant}" → ${c.categoryName}, ${c.intent}${recurring}`;
+    });
+
+  const sections = [
+    "You categorize personal bank transactions. Return ONE JSON object matching the schema.",
+    "",
+    "Rules:",
+    "- Pick categoryName from the user's category list verbatim. If nothing fits, return 'Uncategorized'.",
+    "- intent ∈ {personal, business, shared, reimbursable, transfer}. Default to personal unless evidence says otherwise.",
+    "- merchantName: human-friendly normalization (e.g. 'AMZN MKTP US*ABC' → 'Amazon').",
+    "- recurring: true only for clearly repeating subscriptions/bills.",
+    "- confidence ∈ [0,1]. ≥0.85 = sure (auto-apply). 0.7–0.85 = likely. <0.7 = user should review.",
+    "- reason: ONE short sentence (< 80 chars) citing the evidence you used.",
+    "",
+    `Available categories: ${categoryList.join(", ") || "Uncategorized"}`
+  ];
+
+  if (merchantRules.length > 0) {
+    sections.push("", "Saved merchant rules (user's saved automations):", ...merchantRules);
+  }
+
+  if (examples.length > 0) {
+    sections.push("", "User's recent label corrections (treat as ground truth for similar merchants):", ...examples);
+  }
+
+  return sections.join("\n");
+}
+
+function buildUserPrompt(request: TransactionSuggestionRequest, baseline: TransactionAiSuggestion) {
+  const raw = request.rawTransaction;
   return [
-    "Review this already-enriched Plaid transaction and return a concise JSON suggestion.",
-    "Use only the transaction fields, category list, merchant rules, and deterministic baseline below.",
-    "Do not invent vendors, accounts, or user intent. Prefer the baseline when evidence is weak.",
-    "This suggestion is advisory only and will require explicit human acceptance before persistence.",
-    JSON.stringify({
-      rawTransaction: {
-        id: raw.id,
-        name: raw.name,
-        merchant_name: raw.merchant_name,
-        amount: raw.amount,
-        iso_currency_code: raw.iso_currency_code,
-        payment_channel: raw.payment_channel,
-        plaid_category: raw.plaid_category,
-        transaction_type: raw.transaction_type
-      },
-      availableCategories: categories,
-      merchantRules,
-      deterministicBaseline: {
-        merchantName: baseline.merchantCleanup.value.normalized,
-        categoryName: baseline.category.value.name,
-        intent: baseline.intent.value,
-        recurring: baseline.recurring?.value,
-        confidence: baseline.confidence,
-        reason: baseline.reason,
-        signals: baseline.signals
-      }
-    })
+    "Categorize this transaction:",
+    `- name: ${raw.name}`,
+    `- merchant: ${raw.merchant_name ?? "(none)"}`,
+    `- amount: ${raw.amount} ${raw.iso_currency_code}`,
+    `- channel: ${raw.payment_channel ?? "(unknown)"}`,
+    `- plaid_category: ${raw.plaid_category ?? "(none)"}`,
+    "",
+    `Heuristic suggestion (use only if you have no better signal): ${baseline.category.value.name}, ${baseline.intent.value}, confidence ${baseline.confidence.toFixed(2)}.`
   ].join("\n");
 }
 
