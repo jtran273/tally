@@ -126,6 +126,64 @@ OpenClaw handoff payloads should use this envelope:
 
 OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. The current `/agent-inbox` UI derives proposals from open review items and stored review suggestions; a persistent generic proposal store is still future work. If a future integration adds an apply endpoint, it must be separate from this manifest, same-origin protected, user scoped, audited, and named as an approval action rather than an agent action.
 
+## Reimbursement Clarification Requests
+
+Ambiguous reimbursements should use Plaid/bank activity, enriched transaction context, deterministic heuristics, and optional LLM reasoning as the v1 product path. CSV exports or manual imports may be useful for historical backfill or evidence reconciliation, but they are not required for the automated v1 clarification flow.
+
+When Ledger has a candidate reimbursement match that needs James's judgment, OpenClaw should receive a compact `assistant_clarification_request` object. The object is a question request, not an approval to mutate finance rows:
+
+```json
+{
+  "object": "assistant_clarification_request",
+  "id": "clarify-reimbursement-candidate-123",
+  "answerType": "reimbursement_clarification",
+  "candidateId": "candidate-123",
+  "transactionId": "tx-dinner",
+  "questionFingerprint": "merchant-date-counterparty-window",
+  "priority": "medium",
+  "confidence": 0.74,
+  "accountingImpactAmount": 48,
+  "context": {
+    "amount": -96,
+    "currency": "USD",
+    "date": "2026-05-10",
+    "merchant": "Taco Guild",
+    "suggestedCounterparty": "Ryan"
+  },
+  "question": "Was $48.00 of Taco Guild on 2026-05-10 Ryan's share to reimburse?",
+  "approvalRequired": true,
+  "audit": {
+    "writesAllowed": false,
+    "evidence": ["Dinner charge followed by same-day Venmo credit."]
+  }
+}
+```
+
+Clarification routing should follow these rules:
+
+- Ask only when confidence is at least medium and the answer would meaningfully change accounting, such as moving a material split from owned spending to reimbursable.
+- Stay silent for low-confidence matches, low-value matches, or candidates with no accounting impact.
+- Queue in the app instead of interrupting when a similar open `questionFingerprint` already exists.
+- Queue in the app instead of interrupting when James already has too many open clarification requests.
+- Keep the question concise and answerable without opening Ledger whenever possible.
+
+Example OpenClaw question:
+
+```text
+Was $48.00 of Taco Guild on 2026-05-10 Ryan's share to reimburse?
+```
+
+Answer normalization should accept terse replies:
+
+| Reply | Normalized answer | Meaning |
+| --- | --- | --- |
+| `yes` | `confirm-reimbursement` | Use the suggested reimbursement interpretation. |
+| `Ryan dinner` | `counterparty`, `["Ryan"]` | Treat Ryan as the counterparty and keep the answer as evidence text. |
+| `not reimbursement` | `not-reimbursement` | Suppress this candidate as reimbursable spending. |
+| `split between Alex and Sam` | `split-counterparties`, `["Alex", "Sam"]` | Draft a split across those counterparties for later approval. |
+
+After James answers, Ledger should store learning as auditable feedback tied to the candidate and target transaction. The persisted record should include the normalized answer kind, counterparties when supplied, original question id, question fingerprint, model or heuristic source, confidence at ask time, raw answer text, created/answered timestamps, and whether the answer produced an approved split, reimbursement record, merchant rule, or suppression rule. Feedback can improve future matching and batching, but it must not directly apply transaction splits, reimbursement records, merchant rules, or review resolutions without an approval action that re-reads the target row, shows the diff, scopes by `user_id`, and writes an `audit_events` row.
+
 ## Audit Requirements
 
 The proposal-only manifest does not write `audit_events` because it does not mutate finance data. Any later approval action that applies a proposal must write an audit event with:

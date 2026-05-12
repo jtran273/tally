@@ -165,6 +165,10 @@ Manual AI suggestions are advisory and require explicit user acceptance. When `E
 
 The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. The agent inbox at `/agent-inbox` is a proposal-first surface over open review items and stored review suggestions. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Approvals reuse the explicit review acceptance action so writes stay user-initiated and audit-backed; dismissals reuse the standard review dismissal path.
 
+Ambiguous reimbursement clarification is modeled as an agent-safe question request, not a mutation. `src/lib/agents/clarifications.ts` decides whether a reimbursement candidate should interrupt James, stay silent, or remain queued in the app based on confidence, accounting impact, open-question batching, and value thresholds. The resulting `assistant_clarification_request` carries minimized transaction context, a single question, evidence strings, and `writesAllowed: false`. Answers become feedback for future reimbursement matching and suppression, but any split, reimbursement record, merchant rule, or review resolution still needs an explicit approval path that re-reads user-owned rows and writes audit events.
+
+CSV exports and any future manual imports are optional backfill or reconciliation tools. They are not required in the v1 automated clarification path, which should rely on Plaid/bank data, Ledger heuristics, optional LLM reasoning, and OpenClaw asking only when the answer changes accounting meaningfully.
+
 ## Settings Flow
 
 Settings is deliberately narrow. The route renders Plaid Link connection, sync, repair, and disconnect controls plus the session sign-out action. Category management, review decisions, recurring work, AI suggestions, and dashboard finance summaries live on their own workflow pages instead of in Settings. Setup-state helpers remain in `src/lib/settings` for tests and future onboarding surfaces.

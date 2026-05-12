@@ -92,6 +92,8 @@ Users can accept ready suggestions one at a time, generate a suggestion for one 
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
 
+Ambiguous reimbursement matches should become concise clarification requests only when the answer would materially change accounting and the system has at least medium confidence. The v1 path is seamless bank data plus Ledger/OpenClaw reasoning: Plaid imports activity, Ledger drafts a compact clarification request, and OpenClaw asks one short question only when needed. CSV exports or future manual imports can support optional historical backfill, but they are not required for automated v1 reimbursement clarification.
+
 ### Agent Inbox
 
 The `/agent-inbox` route remains available as a secondary proposal/audit queue for finance-agent recommendations. It derives sanitized proposals from open review items and stored suggestions; it is not a separate autonomous mutation store. The primary workflow is `/review`; the main navigation points there so high-confidence automation stays out of the way and only exceptions need attention.
@@ -126,6 +128,8 @@ The recurring page also builds a deterministic next-30-day cashflow calendar fro
 ### Export
 
 The CSV export uses the current transaction filters and returns enriched finance data plus safe raw Plaid context. It does not export Plaid access tokens, service-role keys, auth headers, or provider secrets.
+
+CSV or manual import workflows are optional backfill tools, not the core reimbursement workflow. The main product path should continue to rely on connected bank data, review-safe AI or heuristic suggestions, and explicit user approval before writes.
 
 ## App Pages
 
