@@ -91,6 +91,7 @@ Plaid import automatically applies high-confidence, ordinary merchant/category/i
 Users can accept ready suggestions one at a time, generate a suggestion for one review item, dismiss non-peer-to-peer review items, edit a transaction inline, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows require an explanation and split allocation before leaving review.
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
+Ledger can also rank likely peer-to-peer reimbursement inflows against outstanding shared or reimbursable expenses. These matches are deterministic suggestions only: linking a Venmo, Zelle, Cash App, or PayPal inflow to a reimbursement record requires explicit user confirmation, and suggestion generation does not mutate Plaid raw rows, enriched transactions, or reimbursement records.
 
 ### Agent Inbox
 

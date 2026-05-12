@@ -141,6 +141,8 @@ Review reason copy and ordering live in `src/lib/review/reasons.ts`; the Transac
 
 Users can accept ready suggestions individually, dismiss non-peer-to-peer review items, request one AI suggestion at a time, edit the enriched transaction inline, or resolve peer-to-peer items with structured split allocation. Peer-to-peer items remain manual-only and require an explanation before they leave the queue. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
 
+`src/lib/finance/reimbursement-matching.ts` provides a pure deterministic helper for ranking possible reimbursement inflows against outstanding reimbursable expenses. It filters out transfers, payroll-like income, negative transactions, and inflows already linked to reimbursement records, then returns app-owned transaction ids, confidence, score, and human-readable reasons. It is advisory only: no raw Plaid rows are mutated, no reimbursement link is written, and any future linking action must require user confirmation through an audited write path.
+
 Accepted AI cleanups and review-page manual edits can upsert reusable merchant rules for future imports when the normalized merchant, category, and intent are specific enough. Rule creation writes audit events and still keeps raw Plaid rows immutable. The review page also auto-resolves stale `missing-category` review items when the enriched transaction already has an exact category match.
 
 ## Recurring Flow

@@ -112,6 +112,8 @@ After a Vercel deployment:
 11. Check browser devtools for blocked CSP resources.
 12. Check Vercel logs for safe, non-secret errors only.
 
+When validating reimbursement matching, confirm suggestions are read-only and show only safe app-owned transaction ids, amounts, dates, merchants, confidence, and reasons. A suggested Venmo, Zelle, Cash App, or PayPal inflow must not be linked automatically, must not expose raw Plaid payloads or provider ids, and must not mutate `raw_transactions`, `enriched_transactions`, or `reimbursement_records` without explicit user confirmation.
+
 ## Plaid Connection Check
 
 Use `/settings` for connection health, sync status, repair actions, and disconnect controls. Confirm the intended Plaid environment in Vercel environment variables and the Plaid dashboard; Settings does not display the environment.
