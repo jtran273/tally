@@ -15,7 +15,7 @@ import {
   type BalanceTrendScope
 } from "@/lib/finance/balances";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
-import { buildCategoryBreakdown } from "@/lib/finance/spending";
+import { buildCategoryBreakdownsByMonth } from "@/lib/finance/spending";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +88,7 @@ export default async function DashboardPage() {
     cashAvailable: totals.cash,
     transactions: trendTransactions
   });
-  const categoryBreakdown = buildCategoryBreakdown(trendTransactions, { asOfDate });
+  const categoryBreakdowns = buildCategoryBreakdownsByMonth(trendTransactions, { asOfDate, monthCount: 6 });
   const balanceTransactions = trendTransactions.map((transaction) => ({
     accountId: transaction.accountId,
     accountName: transaction.accountName,
@@ -107,7 +107,7 @@ export default async function DashboardPage() {
       asOfDate={asOfDate}
       balanceTransactions={balanceTransactions}
       balanceTrends={balanceTrends}
-      categoryBreakdown={categoryBreakdown}
+      categoryBreakdowns={categoryBreakdowns}
       dataError={dataError}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}

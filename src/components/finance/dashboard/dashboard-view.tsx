@@ -45,7 +45,7 @@ interface DashboardViewProps {
   asOfDate: string;
   balanceTransactions: DashboardBalanceTransaction[];
   balanceTrends: Record<BalanceTrendScope, BalanceTrendPoint[]>;
-  categoryBreakdown: CategoryBreakdownSummary;
+  categoryBreakdowns: CategoryBreakdownSummary[];
   dataError?: string;
   isConfigured: boolean;
   isSignedIn: boolean;
@@ -294,7 +294,9 @@ function TrendChart({
   accounts,
   anchorDate,
   positiveIsGood,
+  rangeKey,
   scope,
+  setRangeKey,
   snapshotCount,
   transactions,
   trend,
@@ -303,13 +305,14 @@ function TrendChart({
   accounts: AccountRecord[];
   anchorDate: string;
   positiveIsGood: boolean;
+  rangeKey: TrendRangeKey;
   scope: BalanceTrendScope;
+  setRangeKey: (key: TrendRangeKey) => void;
   snapshotCount: number;
   transactions: DashboardBalanceTransaction[];
   trend: BalanceTrendPoint[];
   valueLabel: string;
 }) {
-  const [rangeKey, setRangeKey] = useState<TrendRangeKey>("6M");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activityMode, setActivityMode] = useState<ActivityMode>("change");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -604,23 +607,49 @@ function formatPercentDelta(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function CategorySpendingPanel({ breakdown }: { breakdown: CategoryBreakdownSummary }) {
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
+
+function formatMonthLabel(fromDate: string) {
+  return monthLabelFormatter.format(new Date(`${fromDate}T12:00:00`));
+}
+
+function CategorySpendingPanel({ breakdowns }: { breakdowns: CategoryBreakdownSummary[] }) {
+  const [monthIndex, setMonthIndex] = useState(0);
+  const safeIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
+  const breakdown = breakdowns[safeIndex] ?? { fromDate: "", toDate: "", totalAmount: 0, rows: [] };
   const rows = breakdown.rows;
   const maxAmount = rows[0]?.amount ?? 0;
-  const periodLabel = `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)}`;
+  const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "—";
+  const isCurrentMonth = safeIndex === 0;
+  const periodLabel = isCurrentMonth
+    ? `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)} (so far)`
+    : `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)}`;
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
       <div className={styles.categoryPanelHead}>
-        <div>
+        <div className={styles.categoryHeadIdentity}>
           <span className={styles.eyebrow}><Tags size={13} aria-hidden /> Spending by category</span>
           <h3 className={styles.categoryHeadline}>{formatMoney(breakdown.totalAmount)}</h3>
-          <p className={styles.categorySubtitle}>{periodLabel} · {rows.length} {rows.length === 1 ? "category" : "categories"}</p>
+          <p className={styles.categorySubtitle}>{monthLabel} · {periodLabel} · {rows.length} {rows.length === 1 ? "category" : "categories"}</p>
+        </div>
+        <div className={styles.categoryMonthPicker} aria-label="Month">
+          {breakdowns.map((option, index) => (
+            <button
+              aria-pressed={index === safeIndex}
+              className={`${styles.categoryMonthButton} ${index === safeIndex ? styles.categoryMonthActive : ""}`}
+              key={option.fromDate || index}
+              onClick={() => setMonthIndex(index)}
+              type="button"
+            >
+              {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+            </button>
+          ))}
         </div>
       </div>
 
       {rows.length === 0 ? (
-        <div className={styles.categoryEmpty}>No spending recorded for this month yet.</div>
+        <div className={styles.categoryEmpty}>No spending recorded for {monthLabel}.</div>
       ) : (
         <div className={styles.categoryRows}>
           {rows.map((row) => {
@@ -640,6 +669,7 @@ function CategorySpendingPanel({ breakdown }: { breakdown: CategoryBreakdownSumm
                   to: breakdown.toDate
                 })}
                 key={row.id ?? row.label}
+                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
               >
                 <div className={styles.categoryRowHead}>
                   <strong>{row.label}</strong>
@@ -749,7 +779,7 @@ export function DashboardView({
   asOfDate,
   balanceTransactions,
   balanceTrends,
-  categoryBreakdown,
+  categoryBreakdowns,
   dataError,
   isConfigured,
   isSignedIn,
@@ -759,6 +789,7 @@ export function DashboardView({
   totals
 }: DashboardViewProps) {
   const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("netWorth");
+  const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("6M");
   const cashMinusLiabilities = totals.cash - totals.liabilities;
   const balanceViews: BalanceViewOption[] = [
     {
@@ -877,7 +908,9 @@ export function DashboardView({
             anchorDate={asOfDate}
             key={selectedBalanceView.key}
             positiveIsGood={selectedBalanceView.positiveIsGood}
+            rangeKey={trendRangeKey}
             scope={selectedBalanceView.key}
+            setRangeKey={setTrendRangeKey}
             snapshotCount={snapshotCount}
             transactions={balanceTransactions}
             trend={balanceTrends[selectedBalanceView.key]}
@@ -887,7 +920,7 @@ export function DashboardView({
       )}
 
       {accounts.length > 0 ? <LiabilitiesDuePanel summary={liabilitiesDue} /> : null}
-      {accounts.length > 0 ? <CategorySpendingPanel breakdown={categoryBreakdown} /> : null}
+      {accounts.length > 0 ? <CategorySpendingPanel breakdowns={categoryBreakdowns} /> : null}
     </div>
   );
 }

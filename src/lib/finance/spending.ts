@@ -417,24 +417,19 @@ export interface CategoryBreakdownSummary {
   rows: CategoryBreakdownRow[];
 }
 
-export function buildCategoryBreakdown(
+function buildCategoryBreakdownForRange(
   transactions: readonly TransactionRecord[],
-  options: { asOfDate?: string } = {}
+  fromDate: string,
+  toDate: string,
+  previousFrom: string,
+  previousTo: string
 ): CategoryBreakdownSummary {
-  const asOfDate = options.asOfDate ?? transactions.reduce(
-    (latest, transaction) => transaction.date > latest ? transaction.date : latest,
-    isoDate(new Date())
-  );
-  const fromDate = monthStart(asOfDate);
-  const previousFrom = previousMonthStart(asOfDate);
-  const previousTo = previousMonthEnd(asOfDate);
-
   const currentRows = new Map<string, { id: string | null; label: string; amount: number; count: number; openReviewCount: number }>();
   const previousAmounts = new Map<string, number>();
   let totalAmount = 0;
 
   transactions.forEach((transaction) => {
-    if (transaction.date < previousFrom || transaction.date > asOfDate) return;
+    if (transaction.date < previousFrom || transaction.date > toDate) return;
     const amount = transactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
@@ -466,7 +461,65 @@ export function buildCategoryBreakdown(
     };
   }).sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
 
-  return { fromDate, toDate: asOfDate, totalAmount, rows };
+  return { fromDate, toDate, totalAmount, rows };
+}
+
+function monthBoundsFor(asOfDate: string, monthOffset: number) {
+  const date = parseIsoDate(monthStart(asOfDate));
+  const targetStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset, 1, 12));
+  const targetEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset + 1, 0, 12));
+  const previousStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset - 1, 1, 12));
+  const previousEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset, 0, 12));
+  return {
+    fromDate: isoDate(targetStart),
+    toDate: isoDate(targetEnd),
+    previousFrom: isoDate(previousStart),
+    previousTo: isoDate(previousEnd)
+  };
+}
+
+export function buildCategoryBreakdown(
+  transactions: readonly TransactionRecord[],
+  options: { asOfDate?: string } = {}
+): CategoryBreakdownSummary {
+  const asOfDate = options.asOfDate ?? transactions.reduce(
+    (latest, transaction) => transaction.date > latest ? transaction.date : latest,
+    isoDate(new Date())
+  );
+  const fromDate = monthStart(asOfDate);
+  const previousFrom = previousMonthStart(asOfDate);
+  const previousTo = previousMonthEnd(asOfDate);
+
+  return buildCategoryBreakdownForRange(transactions, fromDate, asOfDate, previousFrom, previousTo);
+}
+
+/**
+ * Build breakdowns for the last `monthCount` calendar months, newest first.
+ * The current month uses asOfDate as toDate; older months use the month end.
+ */
+export function buildCategoryBreakdownsByMonth(
+  transactions: readonly TransactionRecord[],
+  options: { asOfDate?: string; monthCount?: number } = {}
+): CategoryBreakdownSummary[] {
+  const asOfDate = options.asOfDate ?? transactions.reduce(
+    (latest, transaction) => transaction.date > latest ? transaction.date : latest,
+    isoDate(new Date())
+  );
+  const monthCount = Math.max(1, Math.min(12, options.monthCount ?? 6));
+
+  const results: CategoryBreakdownSummary[] = [];
+  for (let offset = 0; offset < monthCount; offset += 1) {
+    const bounds = monthBoundsFor(asOfDate, offset);
+    const toDate = offset === 0 ? asOfDate : bounds.toDate;
+    results.push(buildCategoryBreakdownForRange(
+      transactions,
+      bounds.fromDate,
+      toDate,
+      bounds.previousFrom,
+      bounds.previousTo
+    ));
+  }
+  return results;
 }
 
 export function buildSpendingInsightSummary(
