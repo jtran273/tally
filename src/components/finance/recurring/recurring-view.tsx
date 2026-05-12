@@ -1,5 +1,5 @@
 import type { RecurringExpenseRecord } from "@/lib/db";
-import type { UpcomingCashflowTimelineSummary } from "@/lib/finance/cashflow";
+import { monthlyRecurringEquivalent, type UpcomingCashflowTimelineSummary } from "@/lib/finance/cashflow";
 import type { RecurringCandidate } from "@/lib/recurring";
 import {
   BadgeAlert,
@@ -49,14 +49,6 @@ function formatDate(value: string | null) {
 
 function formatConfidence(value: number | null | undefined) {
   return value === null || value === undefined ? "Unknown" : `${Math.round(value * 100)}%`;
-}
-
-function monthlyEquivalent(amount: number, cadence: RecurringExpenseRecord["cadence"] | RecurringCandidate["cadence"]) {
-  if (cadence === "weekly") return amount * 52 / 12;
-  if (cadence === "biweekly") return amount * 26 / 12;
-  if (cadence === "quarterly") return amount / 3;
-  if (cadence === "annual") return amount / 12;
-  return amount;
 }
 
 function daysUntil(date: string | null) {
@@ -184,7 +176,7 @@ function TrackedTable({
                 </div>
                 <div className={styles.amountCell}>
                   <strong>{formatMoney(expense.amount)}</strong>
-                  <span>monthly {formatMoney(monthlyEquivalent(expense.amount, expense.cadence))}</span>
+                  <span>monthly {formatMoney(monthlyRecurringEquivalent(expense.amount, expense.cadence))}</span>
                 </div>
               </div>
             );
@@ -234,7 +226,7 @@ function CandidateTable({ candidates }: { candidates: RecurringCandidate[] }) {
               </div>
               <div className={styles.amountCell}>
                 <strong>{formatMoney(candidate.amount)}</strong>
-                <span>monthly {formatMoney(monthlyEquivalent(candidate.amount, candidate.cadence))}</span>
+                <span>monthly {formatMoney(monthlyRecurringEquivalent(candidate.amount, candidate.cadence))}</span>
               </div>
               <div className={styles.actionCell}>
                 <RecurringCandidateActions
@@ -331,11 +323,11 @@ export function RecurringView({
   });
   const commitmentExpenses = recurringExpenses.filter((expense) => expense.status === "active" || expense.status === "pending");
   const monthlyTotal = commitmentExpenses.reduce(
-    (sum, expense) => sum + monthlyEquivalent(expense.amount, expense.cadence),
+    (sum, expense) => sum + monthlyRecurringEquivalent(expense.amount, expense.cadence),
     0
   );
   const candidateMonthlyTotal = additionalCandidates.reduce(
-    (sum, candidate) => sum + monthlyEquivalent(candidate.amount, candidate.cadence),
+    (sum, candidate) => sum + monthlyRecurringEquivalent(candidate.amount, candidate.cadence),
     0
   );
   const needsAttention = recurringExpenses.filter(needsTrackedAttention).length +
