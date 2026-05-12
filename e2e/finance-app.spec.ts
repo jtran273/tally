@@ -71,18 +71,19 @@ test("app shell navigation and global search reach the primary workspace routes"
 
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   const routes = [
-    { heading: "Transactions", label: "Transactions" },
-    { heading: "Review queue", label: "Review" },
-    { heading: "Recurring", label: "Recurring" },
-    { heading: "Accounts", label: "Accounts" },
-    { heading: "Settings", label: "Settings" },
-    { heading: "Dashboard", label: "Dashboard" }
+    { heading: "Transactions", label: "Transactions", path: "/transactions" },
+    { heading: "Review queue", label: "Review", path: "/review" },
+    { heading: "Recurring", label: "Recurring", path: "/recurring" },
+    { heading: "Accounts", label: "Accounts", path: "/accounts" },
+    { heading: "Settings", label: "Settings", path: "/settings" },
+    { heading: "Dashboard", label: "Dashboard", path: "/dashboard" }
   ] as const;
 
   for (const route of routes) {
     const link = nav.getByRole("link", { exact: true, name: route.label });
     await link.click();
-    await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`${route.path}$`), { timeout: 15_000 });
+    await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible({ timeout: 15_000 });
     await expect(link).toHaveAttribute("aria-current", "page");
     await expectNoSensitiveFinanceText(page);
   }
