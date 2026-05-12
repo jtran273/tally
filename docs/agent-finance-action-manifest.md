@@ -33,6 +33,7 @@ Supported summary actions:
 
 | Action | Purpose | Source helpers |
 | --- | --- | --- |
+| `read.weekly_planning_context` | Build a bounded, AI-readable weekly planning packet for proactive budget assistants. | `buildWeeklyPlanningContext()`, `buildSpendingInsightSummary()`, `buildUpcomingCashflowTimeline()`, `buildReimbursementReportingSummary()` |
 | `read.review_queue_summary` | Count open review items, top reasons, largest unresolved examples. | `listReviewItems()` |
 | `read.spending_summary` | Summarize spending by category/intent over a bounded date range. | `listTransactions()`, `transactionSpendingAmount()` |
 | `read.stale_sync_summary` | Report fresh/stale/never-synced account counts and limited account examples. | `listAccounts()`, `summarizeSync()` |
@@ -45,6 +46,22 @@ Read summaries may include:
 - enriched transaction fields that are already app-facing.
 
 Read summaries must not include forbidden fields listed below.
+
+### Weekly Planning Context
+
+`read.weekly_planning_context` is the v1 OpenClaw/assistant planning payload. It is a read-only snapshot, not an action runner. It composes existing deterministic summaries for:
+
+- the current seven-day planning window and prior seven-day comparison,
+- owned spending, trusted versus open-review spending, grouped category/intent totals, and reimbursement-aware totals,
+- non-transfer income and upcoming projected recurring income,
+- upcoming recurring bills and projected cash from the existing cashflow timeline,
+- open review queue counts/examples,
+- fresh/stale/never-synced account counts,
+- transfers as a separate informational signal.
+
+Transfers are excluded from spending and income planning by default. The planning context may include transfer count/net/outflow totals only as a separate signal so an assistant can explain why card payments or account moves were not counted as spend.
+
+The context must pass the same recursive forbidden-field check before handoff. It must not include Plaid ids, raw payloads, access tokens, auth headers, cookies, service-role secrets, transaction cursors, location/payment metadata, or personal notes. Google Calendar data is not required or included in v1.
 
 ### Proposal-Only Mutations
 
@@ -117,8 +134,10 @@ OpenClaw handoff payloads should use this envelope:
   "userScoped": true,
   "source": "ledger",
   "mode": "proposal-only",
-  "actions": ["read.review_queue_summary", "propose.review_suggestions"],
-  "summary": {},
+  "actions": ["read.weekly_planning_context", "propose.review_suggestions"],
+  "summary": {
+    "weeklyPlanning": {}
+  },
   "proposals": [],
   "forbiddenFieldCheck": "passed"
 }
@@ -141,4 +160,4 @@ The proposal-only manifest does not write `audit_events` because it does not mut
 
 Initial manifest version: `2026-05-06`.
 
-Changes that add new read summaries may be additive under the same approval model. Changes that add mutation execution require a new manifest version and security review.
+Changes that add new read summaries, including `read.weekly_planning_context`, may be additive under the same approval model. Changes that add mutation execution require a new manifest version and security review.

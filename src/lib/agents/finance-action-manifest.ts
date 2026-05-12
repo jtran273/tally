@@ -8,11 +8,13 @@ import type {
 import { accountSyncState, summarizeSync, type SyncSummary } from "@/lib/finance/balances";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
+import type { WeeklyPlanningContext } from "./weekly-planning-context";
 
 export const FINANCE_ACTION_MANIFEST_VERSION = "2026-05-06" as const;
 export const FINANCE_ACTION_MANIFEST_MODE = "proposal-only" as const;
 
 export const financeReadActionIds = [
+  "read.weekly_planning_context",
   "read.review_queue_summary",
   "read.spending_summary",
   "read.stale_sync_summary"
@@ -164,6 +166,7 @@ export interface FinanceAgentManifestEnvelope {
   proposals: FinanceProposal[];
   source: "ledger";
   summary: Partial<{
+    weeklyPlanning: WeeklyPlanningContext;
     reviewQueue: ReviewQueueSummary;
     spending: SpendingSummary;
     staleSync: StaleSyncSummary;
@@ -197,6 +200,12 @@ function sumReasonCounts(items: readonly ReviewQueueItem[]) {
 
 export function listFinanceAgentCapabilities(): FinanceAgentCapability[] {
   return [
+    {
+      action: "read.weekly_planning_context",
+      approvalRequired: false,
+      description: "Read a bounded, AI-safe weekly planning context composed from deterministic finance summaries.",
+      kind: "read"
+    },
     {
       action: "read.review_queue_summary",
       approvalRequired: false,
