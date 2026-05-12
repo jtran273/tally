@@ -1,6 +1,7 @@
 import type {
   AccountRecord,
   CategoryRecord,
+  ReviewReason,
   ReviewStatus,
   TransactionIntent,
   TransactionListFilters,
@@ -26,6 +27,18 @@ export const transactionReviewOptions: Array<{ label: string; value: ReviewStatu
   { value: "dismissed", label: "Dismissed" }
 ];
 
+export const transactionReviewReasonOptions: Array<{ label: string; value: ReviewReason | "all" }> = [
+  { value: "all", label: "All review reasons" },
+  { value: "venmo", label: "Peer-to-peer" },
+  { value: "large", label: "Large charge" },
+  { value: "transfer-pair", label: "Transfer pair" },
+  { value: "new-recurring", label: "New recurring" },
+  { value: "low-confidence", label: "Low confidence" },
+  { value: "missing-category", label: "Missing category" },
+  { value: "unclear-transfer", label: "Unclear transfer" },
+  { value: "recurring-candidate", label: "Recurring candidate" }
+];
+
 export const transactionQualityOptions: Array<{ label: string; value: TransactionQualityFilter }> = [
   { value: "all", label: "All quality states" },
   { value: "needs-cleanup", label: "Needs category cleanup" },
@@ -41,6 +54,7 @@ export interface TransactionFilterState {
   categoryId: string;
   intent: TransactionIntent | "all";
   reviewStatus: ReviewStatus | "all";
+  reviewReason: ReviewReason | "all";
   quality: TransactionQualityFilter;
   month: string;
   fromDate: string;
@@ -55,6 +69,7 @@ export interface TransactionFilterState {
 
 const transactionIntents = new Set(transactionIntentOptions.map((option) => option.value));
 const reviewStatuses = new Set(transactionReviewOptions.map((option) => option.value));
+const reviewReasons = new Set(transactionReviewReasonOptions.map((option) => option.value));
 const qualityStates = new Set(transactionQualityOptions.map((option) => option.value));
 const DEFAULT_LIMIT = 250;
 
@@ -127,6 +142,7 @@ function deriveState(input: Omit<TransactionFilterState, "isDateRangeInverted" |
       input.categoryId !== "all" ||
       input.intent !== "all" ||
       input.reviewStatus !== "all" ||
+      input.reviewReason !== "all" ||
       input.quality !== "all" ||
       input.month ||
       input.fromDate ||
@@ -142,6 +158,7 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
   const requestedCategoryId = cleanText(params.category, 80);
   const requestedIntent = cleanText(params.intent, 24);
   const requestedReviewStatus = cleanText(params.review, 24);
+  const requestedReviewReason = cleanText(params.reason, 32);
   const requestedQuality = cleanText(params.quality, 24);
   const requestedMonth = cleanText(params.month, 7);
   const requestedFromDate = cleanText(params.from, 10);
@@ -162,6 +179,9 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
       : "all",
     reviewStatus: reviewStatuses.has(requestedReviewStatus as ReviewStatus | "all")
       ? requestedReviewStatus as ReviewStatus | "all"
+      : "all",
+    reviewReason: reviewReasons.has(requestedReviewReason as ReviewReason | "all")
+      ? requestedReviewReason as ReviewReason | "all"
       : "all",
     quality: qualityStates.has(requestedQuality as TransactionQualityFilter)
       ? requestedQuality as TransactionQualityFilter
@@ -197,6 +217,7 @@ export function toTransactionListFilters(filters: TransactionFilterState): Trans
     accountIds: filters.accountId === "all" ? undefined : [filters.accountId],
     categoryIds: filters.categoryId === "all" ? undefined : [filters.categoryId],
     intent: filters.intent,
+    reviewReason: filters.reviewReason,
     reviewStatus: filters.reviewStatus,
     quality: filters.quality,
     fromDate: filters.effectiveFromDate,
@@ -218,6 +239,7 @@ export function transactionFiltersToSearchParams(filters: TransactionFilterState
   if (filters.categoryId !== "all") params.set("category", filters.categoryId);
   if (filters.intent !== "all") params.set("intent", filters.intent);
   if (filters.reviewStatus !== "all") params.set("review", filters.reviewStatus);
+  if (filters.reviewReason !== "all") params.set("reason", filters.reviewReason);
   if (filters.quality !== "all") params.set("quality", filters.quality);
   if (filters.excludeTransfers) params.set("exclude_transfers", "1");
   params.set("limit", String(filters.limit));

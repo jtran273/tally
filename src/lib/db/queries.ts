@@ -23,6 +23,7 @@ import type {
   ReviewItemRecord,
   ReviewItemRow,
   ReviewQueueItem,
+  ReviewReason,
   ReviewStatus,
   TransactionIntent,
   TransactionRecord,
@@ -100,6 +101,7 @@ export interface TransactionListFilters {
   fromDate?: string;
   toDate?: string;
   recurring?: boolean;
+  reviewReason?: ReviewReason | "all";
   reviewStatus?: ReviewStatus | "all";
   quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
@@ -355,7 +357,7 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
 
 export function filterTransactionRecordsForList(
   transactions: readonly TransactionRecord[],
-  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "quality" | "reviewStatus" | "search"> = {}
+  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {}
 ) {
   const search = normalizeSearchText(filters.search ?? "");
   const searched = search
@@ -369,7 +371,12 @@ export function filterTransactionRecordsForList(
       transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
     )
     : transferFiltered;
-  const qualityFiltered = reviewFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
+  const reasonFiltered = filters.reviewReason && filters.reviewReason !== "all"
+    ? reviewFiltered.filter((transaction) =>
+      transaction.reviewItems.some((review) => review.reason === filters.reviewReason)
+    )
+    : reviewFiltered;
+  const qualityFiltered = reasonFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
 
   return slicePage(qualityFiltered, filters.limit, filters.offset);
 }

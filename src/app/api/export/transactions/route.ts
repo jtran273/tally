@@ -48,6 +48,9 @@ function exportFilename(filters: TransactionFilterState) {
   if (filters.reviewStatus !== "all") {
     parts.push(`review-${filters.reviewStatus}`);
   }
+  if (filters.reviewReason !== "all") {
+    parts.push(`reason-${filters.reviewReason}`);
+  }
 
   return `${parts.join("-")}.csv`;
 }

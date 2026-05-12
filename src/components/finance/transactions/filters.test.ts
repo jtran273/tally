@@ -49,6 +49,7 @@ test("parseTransactionFilters sanitizes input and combines month/date bounds", (
     month: "2026-05",
     q: "  Lyft  ",
     quality: "needs-cleanup",
+    reason: "low-confidence",
     review: "open",
     to: "2026-05-20"
   });
@@ -58,6 +59,7 @@ test("parseTransactionFilters sanitizes input and combines month/date bounds", (
   assert.equal(filters.categoryId, category.id);
   assert.equal(filters.intent, "business");
   assert.equal(filters.reviewStatus, "open");
+  assert.equal(filters.reviewReason, "low-confidence");
   assert.equal(filters.quality, "needs-cleanup");
   assert.equal(filters.effectiveFromDate, "2026-05-12");
   assert.equal(filters.effectiveToDate, "2026-05-20");
@@ -73,12 +75,14 @@ test("parseTransactionFilters rejects invalid options and inverted ranges", () =
     limit: "999",
     month: "2026-05",
     quality: "bad",
+    reason: "bad",
     review: "unknown",
     to: "2026-05-05"
   });
 
   assert.equal(filters.intent, "all");
   assert.equal(filters.reviewStatus, "all");
+  assert.equal(filters.reviewReason, "all");
   assert.equal(filters.quality, "all");
   assert.equal(filters.limit, 250);
   assert.equal(filters.effectiveFromDate, "2026-06-01");
@@ -110,6 +114,7 @@ test("toTransactionListFilters and export href preserve the same filter fields",
       limit: "100",
       q: "ride shares",
       quality: "low-confidence",
+      reason: "low-confidence",
       review: "open",
       to: "2026-05-31"
     }),
@@ -124,6 +129,7 @@ test("toTransactionListFilters and export href preserve the same filter fields",
     fromDate: "2026-05-01",
     intent: "personal",
     limit: 100,
+    reviewReason: "low-confidence",
     reviewStatus: "open",
     quality: "low-confidence",
     search: "ride shares",
@@ -132,6 +138,6 @@ test("toTransactionListFilters and export href preserve the same filter fields",
 
   assert.equal(
     transactionFiltersHref("/api/export/transactions", filters),
-    "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&intent=personal&review=open&quality=low-confidence&exclude_transfers=1&limit=100"
+    "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&intent=personal&review=open&reason=low-confidence&quality=low-confidence&exclude_transfers=1&limit=100"
   );
 });

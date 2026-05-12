@@ -1,18 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { filterTransactionRecordsForList, transactionMatchesSearch } from "./queries";
-import type { ReviewItemRecord, ReviewStatus, TransactionIntent, TransactionRecord } from "./types";
+import type { ReviewItemRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "./types";
 
 const userId = "11111111-1111-1111-1111-111111111111";
 
-function review(id: string, transactionId: string, status: ReviewStatus): ReviewItemRecord {
+function review(
+  id: string,
+  transactionId: string,
+  status: ReviewStatus,
+  reason: ReviewReason = "low-confidence"
+): ReviewItemRecord {
   return {
     aiSuggestion: {},
     confidence: 0.71,
     createdAt: "2026-05-06T12:00:00.000Z",
     explanation: "Fixture review item",
     id,
-    reason: "low-confidence",
+    reason,
     resolutionNote: null,
     resolvedAt: null,
     status,
@@ -78,7 +83,7 @@ export const transactionFilterFixture = [
   transaction({
     id: "tx-grocery",
     merchant: "Grocery Mart",
-    reviewItems: [review("review-grocery", "tx-grocery", "resolved")]
+    reviewItems: [review("review-grocery", "tx-grocery", "resolved", "large")]
   }),
   transaction({
     category: "Uncategorized",
@@ -152,6 +157,14 @@ test("transaction list filters compose review, transfer exclusion, limit, and of
   );
   assert.deepEqual(
     filterTransactionRecordsForList(transactionFilterFixture, { reviewStatus: "open" }).map((item) => item.id),
+    ["tx-rideshare"]
+  );
+  assert.deepEqual(
+    filterTransactionRecordsForList(transactionFilterFixture, { reviewReason: "large" }).map((item) => item.id),
+    ["tx-grocery"]
+  );
+  assert.deepEqual(
+    filterTransactionRecordsForList(transactionFilterFixture, { reviewReason: "low-confidence", reviewStatus: "open" }).map((item) => item.id),
     ["tx-rideshare"]
   );
   assert.deepEqual(
