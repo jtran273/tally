@@ -252,35 +252,34 @@ export function ReviewQueueView({
       {!canShowQueue ? null : reviewItems.length === 0 ? (
         <EmptyQueue />
       ) : (
-        <div className={styles.queueLayout}>
-          <div className={styles.reviewGroups}>
-            {peerToPeerItems.length > 0 ? (
-              <section className={styles.reviewGroup}>
-                <div className={styles.reviewGroupHead}>
-                  <h2>Peer-to-peer ({peerToPeerItems.length})</h2>
-                </div>
-                <div className={styles.cardStack}>
-                  {peerToPeerItems.map((item) => (
-                    <ReviewCard categories={categories} item={item} key={item.id} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
+        <div className={styles.reviewGroups}>
+          {peerToPeerItems.length > 0 ? (
+            <section className={styles.reviewGroup}>
+              <div className={styles.reviewGroupHead}>
+                <h2>Peer-to-peer ({peerToPeerItems.length})</h2>
+                <span>Venmo, Zelle, Cash App and PayPal hide the real merchant — explain each one.</span>
+              </div>
+              <div className={styles.cardStack}>
+                {peerToPeerItems.map((item) => (
+                  <ReviewCard categories={categories} item={item} key={item.id} />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-            {aiItems.length > 0 ? (
-              <section className={styles.reviewGroup}>
-                <div className={styles.reviewGroupHead}>
-                  <h2>AI was uncertain ({aiItems.length})</h2>
-                  <span>Confidence below auto-apply threshold. Review and accept or relabel.</span>
-                </div>
-                <div className={styles.cardStack}>
-                  {aiItems.map((item) => (
-                    <ReviewCard categories={categories} item={item} key={item.id} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </div>
+          {aiItems.length > 0 ? (
+            <section className={styles.reviewGroup}>
+              <div className={styles.reviewGroupHead}>
+                <h2>AI was uncertain ({aiItems.length})</h2>
+                <span>Confidence below the auto-apply threshold. Accept or relabel.</span>
+              </div>
+              <div className={styles.cardStack}>
+                {aiItems.map((item) => (
+                  <ReviewCard categories={categories} item={item} key={item.id} />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
     </div>
