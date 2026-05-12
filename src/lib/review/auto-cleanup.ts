@@ -15,6 +15,7 @@ import { attachAiSuggestionsToReviewItems } from "./ai-suggestions";
 import { evaluateAutoCategorization } from "./auto-categorization";
 import { isPeerToPeerReview } from "./reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "./suggestions";
+import { loadRecentUserCorrections } from "./user-corrections";
 
 interface RunAiCleanupOptions {
   client: FinanceSupabaseClient;
@@ -41,9 +42,10 @@ export async function runAiReviewCleanup({
   limit = 40
 }: RunAiCleanupOptions): Promise<AiCleanupResult> {
   const safeLimit = Math.max(1, Math.min(80, Math.floor(limit)));
-  const [categories, merchantRules] = await Promise.all([
+  const [categories, merchantRules, userCorrections] = await Promise.all([
     listCategories(client, userId),
-    listMerchantRules(client, userId)
+    listMerchantRules(client, userId),
+    loadRecentUserCorrections(client, userId, 20)
   ]);
   const reviewRows = expectRows<ReviewItemRow>(
     await client
@@ -88,12 +90,14 @@ export async function runAiReviewCleanup({
     : [];
 
   const updates = await attachAiSuggestionsToReviewItems(reviewTargets, {
+    cacheKey: `user:${userId}`,
     categories,
     maxSuggestions: safeLimit,
     merchantRules,
     rawRows,
     suggestionService: createConfiguredTransactionSuggestionService(),
-    transactions
+    transactions,
+    userCorrections
   });
 
   const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
