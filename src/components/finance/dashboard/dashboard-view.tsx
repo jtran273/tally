@@ -7,7 +7,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { AccountGroup, AccountBalanceTotals, BalanceTrendPoint, SyncSummary } from "@/lib/finance/balances";
-import type { CategoryCleanupAction, SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
+import type { CategoryBreakdownSummary, CategoryCleanupAction, SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
 import type { DashboardInsightCard } from "@/lib/insights";
 import {
   Clock3,
@@ -35,6 +35,7 @@ import type { RecurringCandidate } from "@/lib/recurring";
 interface DashboardViewProps {
   accounts: AccountRecord[];
   budgetGuardrails: BudgetGuardrailSummary;
+  categoryBreakdown: CategoryBreakdownSummary;
   cashflowRunway: MonthlyCashflowRunwaySummary;
   dataError?: string;
   groups: AccountGroup[];
@@ -530,6 +531,69 @@ function SpendingTrendRows({
   );
 }
 
+function CategorySpendingPanel({ breakdown }: { breakdown: CategoryBreakdownSummary }) {
+  const rows = breakdown.rows;
+  const periodLabel = `${formatDate(breakdown.fromDate)} - ${formatDate(breakdown.toDate)}`;
+  const maxAmount = rows[0]?.amount ?? 0;
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.eyebrow}>Spending by category</div>
+          <h2>{formatMoney(breakdown.totalAmount)}</h2>
+        </div>
+        <span className={styles.compactValue}>
+          <Tags size={14} aria-hidden />
+          {rows.length} {rows.length === 1 ? "category" : "categories"}
+        </span>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className={styles.emptyMini}>No spending this month yet ({periodLabel}).</div>
+      ) : (
+        <div className={styles.categoryBreakdownRows}>
+          {rows.map((row) => {
+            const widthPercent = maxAmount > 0 ? Math.max(2, (row.amount / maxAmount) * 100) : 0;
+            const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
+            const deltaLabel = row.previousAmount > 0
+              ? `${formatSignedMoney(row.deltaAmount)} (${formatPercent(row.deltaPercent)})`
+              : "New this month";
+            return (
+              <Link
+                className={styles.categoryBreakdownRow}
+                href={transactionsHref({
+                  category: row.id ?? undefined,
+                  exclude_transfers: true,
+                  from: breakdown.fromDate,
+                  q: row.id ? undefined : row.label,
+                  to: breakdown.toDate
+                })}
+                key={row.id ?? row.label}
+              >
+                <div className={styles.categoryBreakdownHead}>
+                  <strong>{row.label}</strong>
+                  <strong>{formatMoney(row.amount)}</strong>
+                </div>
+                <div className={styles.categoryBreakdownBar} aria-hidden>
+                  <span style={{ width: `${widthPercent}%` }} />
+                </div>
+                <div className={styles.categoryBreakdownMeta}>
+                  <span>
+                    {row.percent.toFixed(1)}% · {row.count} {row.count === 1 ? "transaction" : "transactions"}
+                    {row.openReviewCount > 0 ? ` · ${row.openReviewCount} in review` : ""}
+                  </span>
+                  <span className={deltaTone}>{deltaLabel}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function cleanupReasonLabel(reason: CategoryCleanupAction["reasons"][number]) {
   if (reason === "open-review") return "Open review";
   if (reason === "low-confidence") return "Low confidence";
@@ -984,6 +1048,7 @@ function InsightsPanel({ insights }: { insights: DashboardInsightCard[] }) {
 export function DashboardView({
   accounts,
   budgetGuardrails,
+  categoryBreakdown,
   cashflowRunway,
   dataError,
   groups,
@@ -1061,6 +1126,7 @@ export function DashboardView({
 
           <AccountGroups groups={groups} />
           <SpendingPanel summary={spendingSummary} />
+          <CategorySpendingPanel breakdown={categoryBreakdown} />
 
           <div className={styles.contentGrid}>
             <CategoryCleanupPanel summary={spendingSummary} />

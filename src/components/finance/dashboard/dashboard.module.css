@@ -671,6 +671,71 @@
   font-size: 11.5px;
 }
 
+.categoryBreakdownRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.categoryBreakdownRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.categoryBreakdownRow:hover {
+  border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+}
+
+.categoryBreakdownHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.categoryBreakdownHead strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.categoryBreakdownHead strong:last-child {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.categoryBreakdownBar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+  overflow: hidden;
+}
+
+.categoryBreakdownBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.categoryBreakdownMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .guardrailRows {
   display: flex;
   flex-direction: column;

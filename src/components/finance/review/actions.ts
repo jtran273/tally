@@ -497,13 +497,61 @@ export async function editReviewTransactionAction(
 
     await updateTransactionEnrichment(client, userId, item.transaction.id, transactionPatch);
 
+    const editSuggestion: NormalizedReviewSuggestion = {
+      categoryId,
+      categoryName,
+      confidence: 1,
+      intent: requestedIntent,
+      merchantName,
+      recurring: transactionPatch.isRecurring,
+      signals: []
+    };
+    const rawTransaction = await getRawTransactionForReviewItem(client, userId, item);
+    const ruleCandidate = buildAcceptedAiMerchantRuleCandidate({
+      categories,
+      rawTransaction,
+      suggestion: editSuggestion,
+      transaction: {
+        amount: item.transaction.amount,
+        merchant_name: item.transaction.merchant
+      }
+    });
+    const merchantRule = ruleCandidate
+      ? await upsertMerchantRule(client, userId, {
+        categoryId: ruleCandidate.categoryId,
+        intent: ruleCandidate.intent,
+        isRecurring: ruleCandidate.isRecurring,
+        merchantPattern: ruleCandidate.merchantPattern,
+        normalizedMerchantName: ruleCandidate.normalizedMerchantName,
+        notes: `Learned from manual edit on ${new Date().toISOString().slice(0, 10)}.`,
+        priority: ruleCandidate.priority
+      })
+      : null;
+
+    if (merchantRule) {
+      await recordAuditEvent(client, userId, {
+        action: "merchant_rule.learned_from_edit",
+        actorId: userId,
+        afterData: merchantRule as unknown as Record<string, Json | undefined>,
+        beforeData: null,
+        entityId: merchantRule.id,
+        entityTable: "merchant_rules",
+        metadata: {
+          source: "review_inline_edit",
+          transactionId: item.transaction.id
+        }
+      });
+    }
+
     for (const target of itemsToResolve) {
       const resolved = await resolveReviewItem(
         client,
         userId,
         target.id,
         "resolved",
-        "Edited transaction in review queue and finalized."
+        merchantRule
+          ? "Edited transaction in review queue and saved merchant rule."
+          : "Edited transaction in review queue and finalized."
       );
       resolvedItems.push(resolved);
 

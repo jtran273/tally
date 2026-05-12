@@ -22,7 +22,7 @@ import {
 } from "@/lib/finance/balances";
 import { buildBudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import { buildMonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
-import { buildSpendingInsightSummary } from "@/lib/finance/spending";
+import { buildCategoryBreakdown, buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildDashboardInsightCards } from "@/lib/insights";
 import { detectRecurringCandidates, normalizeRecurringMerchant, type RecurringCandidate } from "@/lib/recurring";
 
@@ -102,6 +102,9 @@ export default async function DashboardPage() {
   const spendingSummary = buildSpendingInsightSummary(trendTransactions, {
     asOfDate: now.toISOString().slice(0, 10)
   });
+  const categoryBreakdown = buildCategoryBreakdown(trendTransactions, {
+    asOfDate: now.toISOString().slice(0, 10)
+  });
   const budgetGuardrails = buildBudgetGuardrailSummary(trendTransactions, {
     asOfDate: now.toISOString().slice(0, 10)
   });
@@ -129,6 +132,7 @@ export default async function DashboardPage() {
     <DashboardView
       accounts={accounts}
       budgetGuardrails={budgetGuardrails}
+      categoryBreakdown={categoryBreakdown}
       dataError={dataError}
       groups={groups}
       insightCards={insightCards}

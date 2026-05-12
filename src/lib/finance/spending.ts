@@ -398,6 +398,77 @@ export function transactionSplitRemaining(transaction: Pick<TransactionRecord, "
   return roundMoney(Math.abs(transaction.amount) - transactionSplitTotal(transaction));
 }
 
+export interface CategoryBreakdownRow {
+  id: string | null;
+  label: string;
+  amount: number;
+  count: number;
+  percent: number;
+  previousAmount: number;
+  deltaAmount: number;
+  deltaPercent: number;
+  openReviewCount: number;
+}
+
+export interface CategoryBreakdownSummary {
+  fromDate: string;
+  toDate: string;
+  totalAmount: number;
+  rows: CategoryBreakdownRow[];
+}
+
+export function buildCategoryBreakdown(
+  transactions: readonly TransactionRecord[],
+  options: { asOfDate?: string } = {}
+): CategoryBreakdownSummary {
+  const asOfDate = options.asOfDate ?? transactions.reduce(
+    (latest, transaction) => transaction.date > latest ? transaction.date : latest,
+    isoDate(new Date())
+  );
+  const fromDate = monthStart(asOfDate);
+  const previousFrom = previousMonthStart(asOfDate);
+  const previousTo = previousMonthEnd(asOfDate);
+
+  const currentRows = new Map<string, { id: string | null; label: string; amount: number; count: number; openReviewCount: number }>();
+  const previousAmounts = new Map<string, number>();
+  let totalAmount = 0;
+
+  transactions.forEach((transaction) => {
+    if (transaction.date < previousFrom || transaction.date > asOfDate) return;
+    const amount = transactionSpendingAmount(transaction);
+    if (amount <= 0) return;
+
+    const id = transaction.categoryId;
+    const label = transaction.category || "Uncategorized";
+    const key = id ?? label;
+
+    if (transaction.date >= fromDate) {
+      const current = currentRows.get(key) ?? { id, label, amount: 0, count: 0, openReviewCount: 0 };
+      current.amount = roundMoney(current.amount + amount);
+      current.count += 1;
+      if (hasOpenReview(transaction)) current.openReviewCount += 1;
+      currentRows.set(key, current);
+      totalAmount = roundMoney(totalAmount + amount);
+    } else if (transaction.date >= previousFrom && transaction.date <= previousTo) {
+      previousAmounts.set(key, roundMoney((previousAmounts.get(key) ?? 0) + amount));
+    }
+  });
+
+  const rows: CategoryBreakdownRow[] = [...currentRows.values()].map((row) => {
+    const previousAmount = previousAmounts.get(row.id ?? row.label) ?? 0;
+    const deltaAmount = roundMoney(row.amount - previousAmount);
+    return {
+      ...row,
+      deltaAmount,
+      deltaPercent: deltaPercent(row.amount, previousAmount),
+      percent: totalAmount > 0 ? Math.round((row.amount / totalAmount) * 1000) / 10 : 0,
+      previousAmount
+    };
+  }).sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
+
+  return { fromDate, toDate: asOfDate, totalAmount, rows };
+}
+
 export function buildSpendingInsightSummary(
   transactions: readonly TransactionRecord[],
   options: { asOfDate?: string } = {}
