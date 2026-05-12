@@ -97,6 +97,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isTransactionList = pathname === routeHref.transactions;
   const currentTransactionSearch = isTransactionList ? searchParams.get("q") ?? "" : "";
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const shouldRefocusSearchRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -112,6 +113,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     focusSearchInput();
   }, [focusSearchInput]);
 
+  const closeSearch = useCallback((options: { refocusTrigger?: boolean } = {}) => {
+    setIsSearchOpen(false);
+
+    if (options.refocusTrigger) {
+      requestAnimationFrame(() => searchTriggerRef.current?.focus());
+    }
+  }, []);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
@@ -123,6 +132,20 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [openSearch]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      closeSearch({ refocusTrigger: true });
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeSearch, isSearchOpen]);
 
   useEffect(() => {
     if (!shouldRefocusSearchRef.current) return;
@@ -212,6 +235,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label="Open transaction search"
               className="mobile-search-trigger"
               onClick={openSearch}
+              ref={searchTriggerRef}
               type="button"
             >
               <Search size={15} aria-hidden />
@@ -221,7 +245,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <button
                 aria-label="Close transaction search"
                 className="search-backdrop"
-                onClick={() => setIsSearchOpen(false)}
+                onClick={() => closeSearch()}
                 type="button"
               />
               <form
@@ -232,8 +256,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                 onSubmit={handleSearchSubmit}
               >
                 <Search size={14} aria-hidden />
+                <label className="sr-only" htmlFor="transaction-global-search">Search transactions</label>
                 <input
                   defaultValue={currentTransactionSearch}
+                  id="transaction-global-search"
                   key={`${pathname}:${currentTransactionSearch}`}
                   name="q"
                   placeholder="Search transactions, merchants, categories..."
@@ -244,7 +270,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   aria-label="Close search"
                   className="search-close"
-                  onClick={() => setIsSearchOpen(false)}
+                  onClick={() => closeSearch({ refocusTrigger: true })}
                   type="button"
                 >
                   <X size={15} aria-hidden />
