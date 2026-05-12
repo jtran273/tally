@@ -514,9 +514,16 @@ function getDefaultIntent(transaction: Transaction): TransactionIntent {
     : "personal";
 }
 
-function getDefaultConfidence(transaction: Transaction) {
+export function getDefaultConfidence(transaction: Transaction) {
   const confidence = transaction.personal_finance_category?.confidence_level;
-  return confidence ? PFC_CONFIDENCE[confidence] ?? 0.75 : 0.95;
+  if (confidence) return PFC_CONFIDENCE[confidence] ?? 0.75;
+
+  if (!transaction.category?.length) return 0.25;
+
+  const categoryName = getDefaultCategoryName(transaction).trim().toLowerCase();
+  if (!categoryName || categoryName === "uncategorized") return 0.25;
+
+  return 0.65;
 }
 
 function getMerchantName(transaction: Transaction) {

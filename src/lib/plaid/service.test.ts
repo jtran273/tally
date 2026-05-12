@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AccountType as PlaidAccountType, type AccountBase } from "plaid";
+import { AccountType as PlaidAccountType, type AccountBase, type Transaction } from "plaid";
 import {
+  getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
   isSkippablePlaidTransactionsError,
   mergePlaidAccountSourcesForSync,
@@ -140,6 +141,28 @@ test("transactions product availability errors can be skipped while importing ac
     }),
     false
   );
+});
+
+test("Plaid fallback category confidence stays reviewable when provider confidence is absent", () => {
+  const baseTransaction = {
+    amount: 12.34,
+    category: null,
+    personal_finance_category: null
+  } as Transaction;
+
+  assert.equal(getDefaultConfidence(baseTransaction), 0.25);
+  assert.equal(getDefaultConfidence({
+    ...baseTransaction,
+    category: ["Food and Drink", "Restaurants"]
+  }), 0.65);
+  assert.equal(getDefaultConfidence({
+    ...baseTransaction,
+    personal_finance_category: {
+      confidence_level: "VERY_HIGH",
+      detailed: "FOOD_AND_DRINK_RESTAURANT",
+      primary: "FOOD_AND_DRINK"
+    }
+  }), 0.98);
 });
 
 test("sync run summary marks partial failures and excludes provider ids", () => {
