@@ -85,7 +85,7 @@ The review queue flags transactions that need judgment, including:
 - missing categories,
 - recurring candidates.
 
-Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
+Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. OpenAI-backed automatic review cleanup is off by default to control token usage; users can generate AI suggestions manually from review items, or enable automatic OpenAI cleanup with `ENABLE_OPENAI_AUTO_REVIEW=true`. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
 Users can accept suggestions one at a time, bulk accept accept-ready AI suggestions after reviewing each preview row, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows stay out of bulk acceptance.
 When an accepted cleanup would create a merchant rule, the review card previews the deterministic impact on recent safe transaction context before acceptance, including matched rows, changed rows, and whether any matched transactions are still open in review. The preview uses app-owned transaction ids and enriched/raw merchant labels only, not provider ids.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
@@ -107,6 +107,8 @@ The transaction edit view lets the user change app-facing fields:
 - recurring status.
 
 Raw Plaid fields stay preserved for context and auditability.
+
+The transaction list also includes a merchant cleanup control for user-initiated repeated fixes, such as applying a food category to all McDonald's rows or moving Retail Wash rows into Auto / Car Maintenance. The cleanup updates matching enriched rows, writes audit events, and can save a merchant rule for future imports.
 
 ### Track Recurring Spending
 
@@ -201,6 +203,7 @@ PLAID_ENV=sandbox
 PLAID_REDIRECT_URI=http://localhost:3000/settings
 OPENAI_API_KEY=
 OPENAI_MODEL=
+ENABLE_OPENAI_AUTO_REVIEW=false
 ENABLE_DEMO_MODE=true
 CRON_SECRET=
 ```

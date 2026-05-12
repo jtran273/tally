@@ -187,7 +187,13 @@ export function TransactionTable({
                   <td data-label="Merchant">
                     <div className={styles.merchantCell}>
                       <div className={styles.merchantName}>
-                        <span className={styles.merchantText}>{transaction.merchant}</span>
+                        <Link
+                          className={styles.merchantEditLink}
+                          href={`/transactions/${transaction.id}`}
+                          title={`Edit ${transaction.merchant}`}
+                        >
+                          {transaction.merchant}
+                        </Link>
                         {transaction.status === "pending" ? (
                           <span className={`${styles.badge} ${styles.pendingBadge}`}>
                             <Clock3 size={11} aria-hidden />

@@ -136,7 +136,7 @@ Check:
 - `PLAID_CLIENT_ID` is set,
 - correct Plaid secret is set for `PLAID_ENV`,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production,
-- `PLAID_REDIRECT_URI` or `NEXT_PUBLIC_APP_URL` is valid,
+- `PLAID_REDIRECT_URI` or `NEXT_PUBLIC_APP_URL` is valid when using an OAuth redirect,
 - Plaid redirect URI is registered for production OAuth institutions.
 
 ### Public token exchange fails
@@ -172,7 +172,7 @@ Check:
 - existing legacy-encrypted access tokens can still decrypt after Plaid secret changes,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production before adding new production connections.
 
-Manual and scheduled sync do not need Plaid Link redirect configuration, but Link token creation still does. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately.
+Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
 
 ### Connection needs repair
 
@@ -280,6 +280,8 @@ The app works without `OPENAI_API_KEY` by using deterministic suggestions.
 If `OPENAI_API_KEY` is set:
 
 - provider status in Settings should show OpenAI is configured,
+- automatic OpenAI cleanup should stay off unless `ENABLE_OPENAI_AUTO_REVIEW=true`,
+- the review queue should let the user generate individual suggestions manually,
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,
 - raw provider secrets must stay server-only.

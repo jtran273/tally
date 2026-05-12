@@ -33,7 +33,7 @@ type QueryResult<Row> = { data: Row[] | Row | null; error: QueryError | null };
 const DAY_MS = 86_400_000;
 const NOW = BASE_DATE.toISOString();
 const EMPTY_JSON: Json = {};
-const DEFAULT_CATEGORY_NAMES = ["Education", "Entertainment"];
+const DEFAULT_CATEGORY_NAMES = ["Auto / Car Maintenance", "Education", "Entertainment"];
 
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

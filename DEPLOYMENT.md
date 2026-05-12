@@ -51,9 +51,10 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_PRODUCTION_SECRET` | Server only | Production yes | Used before `PLAID_SECRET` when `PLAID_ENV=production`. |
 | `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Keep stable. |
 | `PLAID_ENV` | Server only | Yes | `sandbox` or `production`. Use `sandbox` locally. |
-| `PLAID_REDIRECT_URI` | Server only | Production OAuth yes | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. |
+| `PLAID_REDIRECT_URI` | Server only | Production OAuth recommended | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. Local `http://localhost` redirects are ignored for production Link tokens because Plaid only permits them in Sandbox. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
+| `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import and review page load should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
 | `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled. Set `false` to hide the seeded demo entry. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
 | `CRON_SECRET` | Server only | Scheduled sync yes | Shared bearer secret for `/api/plaid/sync/scheduled`. Required before enabling Vercel Cron or another scheduler. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
@@ -120,6 +121,8 @@ Local OAuth redirects may require registering the local URI in Plaid. Non-OAuth 
 7. Start with one institution.
 8. Confirm import, manual sync, disconnect, and no duplicate transactions.
 
+For local desktop testing against Plaid Production, do not send `http://localhost` as the production redirect URI. Use a registered HTTPS tunnel/app URL, or omit the redirect URI and test from a normal desktop browser where Plaid can use a popup or new tab for OAuth institutions.
+
 ## OpenAI Setup
 
 The app runs without OpenAI by using deterministic suggestions.
@@ -128,8 +131,10 @@ To enable OpenAI suggestions:
 
 1. Set `OPENAI_API_KEY` in Vercel server environment.
 2. Optionally set `OPENAI_MODEL`.
-3. Deploy.
-4. Verify Settings shows OpenAI configured.
+3. Leave `ENABLE_OPENAI_AUTO_REVIEW=false` or unset for manual-only token usage.
+4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import and review page cleanup should call OpenAI.
+5. Deploy.
+6. Verify Settings shows OpenAI configured.
 
 OpenAI suggestions are advisory and do not write records autonomously.
 

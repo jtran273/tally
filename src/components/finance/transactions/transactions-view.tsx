@@ -3,6 +3,7 @@ import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { Database, Filter, HandCoins, Hourglass, Inbox } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
+import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
 import styles from "./transactions.module.css";
@@ -120,6 +121,7 @@ export function TransactionsView({
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />
+      <MerchantCleanupPanel categories={categories} defaultQuery={filters.search} />
 
       {filters.isDateRangeInverted ? (
         <div className={styles.notice} role="status">

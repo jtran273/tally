@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  getEnrichedTransactionRow,
   getReviewQueueItemById,
   listReviewItems,
   listCategories,
@@ -22,14 +23,17 @@ import {
   type TransactionSplitMutationInput,
   type TransactionSplitRecord
 } from "@/lib/db";
+import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
 import { buildAcceptedAiMerchantRuleCandidate } from "@/lib/merchant-rules";
 import { isSpendingIntent } from "@/lib/finance/spending";
+import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import {
   buildAcceptedReviewSuggestionPatch,
   hasReviewSuggestionValue,
   type NormalizedReviewSuggestion
 } from "@/lib/review/suggestions";
+import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
 import { getFinanceServerContext } from "@/lib/demo/server";
 
 export interface ReviewActionState {
@@ -437,6 +441,102 @@ export async function dismissReviewItemAction(
 
     revalidateReviewPaths(item.transaction.id);
     return { message: "Review item dismissed." };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
+export async function generateReviewSuggestionAction(
+  _state: ReviewActionState,
+  formData: FormData
+): Promise<ReviewActionState> {
+  try {
+    const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
+
+    const { client, userId } = await getFinanceContext();
+    const item = await getOpenReviewItem(client, userId, reviewItemId);
+
+    if (isPeerToPeerReview(item.reason)) {
+      return { error: "Use the peer-to-peer split form to explain this item." };
+    }
+
+    const [categories, merchantRules, transactionRow, rawTransaction, userCorrections] = await Promise.all([
+      listCategories(client, userId),
+      listMerchantRules(client, userId),
+      getEnrichedTransactionRow(client, userId, item.transaction.id),
+      getRawTransactionForReviewItem(client, userId, item),
+      loadRecentUserCorrections(client, userId, 20)
+    ]);
+
+    if (!transactionRow || !rawTransaction) {
+      return { error: "Unable to load the transaction context for this suggestion." };
+    }
+
+    const targets = [{
+      ai_suggestion: item.aiSuggestion,
+      confidence: item.confidence,
+      enriched_transaction_id: item.transaction.id,
+      id: item.id,
+      reason: item.reason,
+      status: item.status,
+      user_id: userId
+    }];
+    const updates = await attachAiSuggestionsToReviewItems(targets, {
+      cacheKey: `user:${userId}`,
+      categories,
+      concurrency: 1,
+      maxSuggestions: 1,
+      merchantRules,
+      rawRows: [rawTransaction],
+      suggestionService: createConfiguredTransactionSuggestionService(),
+      transactions: [transactionRow],
+      userCorrections
+    });
+    const suggestion = updates[0]?.item;
+
+    if (!suggestion) {
+      return { error: "Unable to generate a suggestion for this review item." };
+    }
+
+    const storedRows = expectRows<{ id: string }>(
+      await client
+        .from("review_items")
+        .update({
+          ai_suggestion: suggestion.ai_suggestion,
+          confidence: suggestion.confidence ?? null
+        })
+        .eq("user_id", userId)
+        .eq("id", item.id)
+        .eq("status", "open")
+        .select("id"),
+      "Store generated review suggestion"
+    );
+
+    if (storedRows.length === 0) {
+      return { error: "This review item is no longer open." };
+    }
+
+    await recordAuditEvent(client, userId, {
+      action: "review.suggestion_generated",
+      actorId: userId,
+      afterData: {
+        ...reviewItemAuditData(item),
+        aiSuggestion: suggestion.ai_suggestion,
+        confidence: suggestion.confidence
+      },
+      beforeData: reviewItemAuditData(item),
+      entityId: item.id,
+      entityTable: "review_items",
+      metadata: {
+        reason: item.reason,
+        source: "manual_review_action",
+        transactionId: item.transaction.id
+      }
+    });
+
+    revalidateReviewPaths(item.transaction.id);
+    return { message: "Suggestion generated." };
   } catch (error) {
     return errorState(error);
   }

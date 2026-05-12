@@ -17,6 +17,7 @@ export type PlaidCredentialConfig = Omit<PlaidConfig, "redirectUri">;
 export type PlaidEnvironment = "sandbox" | "production";
 
 const SUPPORTED_PLAID_ENVIRONMENTS = new Set<PlaidEnvironment>(["sandbox", "production"]);
+const LOCALHOST_NAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
 
 function getPlaidEnvironment(): PlaidEnvironment {
   const environment = process.env.PLAID_ENV?.trim().toLowerCase() || "sandbox";
@@ -36,14 +37,7 @@ function getPlaidSecret(environment: PlaidEnvironment) {
   return scopedSecret || process.env.PLAID_SECRET?.trim();
 }
 
-function buildRedirectUri(path = "/settings") {
-  const explicitRedirect = process.env.PLAID_REDIRECT_URI?.trim();
-  if (explicitRedirect) return explicitRedirect;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
-    || (process.env.VERCEL_URL?.trim() ? `https://${process.env.VERCEL_URL.trim()}` : null);
-  if (!appUrl) return null;
-
+function buildRedirectUriFromAppUrl(appUrl: string, path: string) {
   try {
     return new URL(path, appUrl).toString();
   } catch {
@@ -51,10 +45,35 @@ function buildRedirectUri(path = "/settings") {
   }
 }
 
-function assertProductionRedirectUri(redirectUri: string | null) {
-  if (!redirectUri) {
-    throw new PlaidConfigurationError("PLAID_REDIRECT_URI or NEXT_PUBLIC_APP_URL is required for Plaid production.");
+function getAppUrlCandidates() {
+  return [
+    process.env.NEXT_PUBLIC_APP_URL?.trim() || null,
+    process.env.VERCEL_URL?.trim() ? `https://${process.env.VERCEL_URL.trim()}` : null
+  ].filter((value): value is string => Boolean(value));
+}
+
+function buildRedirectUri(path = "/settings") {
+  const explicitRedirect = process.env.PLAID_REDIRECT_URI?.trim();
+  if (explicitRedirect) return explicitRedirect;
+
+  const appUrl = getAppUrlCandidates()[0];
+  return appUrl ? buildRedirectUriFromAppUrl(appUrl, path) : null;
+}
+
+function buildHttpsNextPublicAppRedirectUri(path = "/settings") {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!appUrl) return null;
+
+  const redirectUri = buildRedirectUriFromAppUrl(appUrl, path);
+  if (new URL(redirectUri).protocol === "https:") {
+    return redirectUri;
   }
+
+  return null;
+}
+
+function normalizeProductionLinkTokenRedirectUri(redirectUri: string | null) {
+  if (!redirectUri) return null;
 
   let parsed: URL;
   try {
@@ -63,9 +82,13 @@ function assertProductionRedirectUri(redirectUri: string | null) {
     throw new PlaidConfigurationError("Plaid redirect URI is invalid.");
   }
 
-  if (parsed.protocol !== "https:") {
-    throw new PlaidConfigurationError("Plaid production redirect URI must use HTTPS.");
+  if (parsed.protocol === "https:") return redirectUri;
+
+  if (parsed.protocol === "http:" && LOCALHOST_NAMES.has(parsed.hostname)) {
+    return buildHttpsNextPublicAppRedirectUri();
   }
+
+  throw new PlaidConfigurationError("Plaid production redirect URI must use HTTPS.");
 }
 
 export function getPlaidRuntimeEnvironment(): PlaidEnvironment {
@@ -95,7 +118,10 @@ export function getPlaidLinkTokenConfig(): PlaidConfig {
   const config = getPlaidConfig();
 
   if (config.environment === "production") {
-    assertProductionRedirectUri(config.redirectUri);
+    return {
+      ...config,
+      redirectUri: normalizeProductionLinkTokenRedirectUri(config.redirectUri)
+    };
   }
 
   return config;

@@ -12,6 +12,7 @@ export const DEFAULT_SYSTEM_CATEGORIES = [
   { color: "#0f766e", icon: "server", name: "Software / Hosting" },
   { color: "#16a34a", icon: "activity", name: "Health / Fitness" },
   { color: "#0284c7", icon: "car", name: "Transport / Rideshare" },
+  { color: "#2563eb", icon: "car-front", name: "Auto / Car Maintenance" },
   { color: "#7c3aed", icon: "plane", name: "Travel / Flights" },
   { color: "#65a30d", icon: "shopping-basket", name: "Groceries" },
   { color: "#71717a", icon: "repeat", name: "Transfer" },

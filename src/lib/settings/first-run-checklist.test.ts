@@ -7,6 +7,7 @@ import { buildFirstRunChecklist } from "./first-run-checklist";
 
 const aiFallback: AiProviderStatus = {
   activeKind: "mock",
+  autoReviewEnabled: false,
   configured: false,
   label: "Deterministic fallback",
   model: null,
@@ -15,6 +16,7 @@ const aiFallback: AiProviderStatus = {
 
 const aiOpenAi: AiProviderStatus = {
   activeKind: "openai",
+  autoReviewEnabled: false,
   configured: true,
   label: "OpenAI",
   model: "gpt-test",

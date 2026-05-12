@@ -29,7 +29,7 @@ import type {
   TransactionIntent
 } from "../db/types";
 import type { TransactionEnrichmentPatch } from "../db/queries";
-import { createConfiguredTransactionSuggestionService } from "../ai/server";
+import { createAutoReviewTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { evaluateAutoCategorization } from "../review/auto-categorization";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
@@ -1467,7 +1467,7 @@ async function insertGeneratedReviewItems(
     maxSuggestions: PLAID_IMPORT_AI_REVIEW_SUGGESTION_LIMIT,
     merchantRules: context.merchantRules,
     rawRows: context.rawRows,
-    suggestionService: createConfiguredTransactionSuggestionService(),
+    suggestionService: createAutoReviewTransactionSuggestionService(),
     transactions
   });
   const reviewItemsWithSuggestions = applyReviewSuggestionUpdates(reviewItems, aiUpdates);

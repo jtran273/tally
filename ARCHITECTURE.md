@@ -122,6 +122,8 @@ This split lets the app:
 - show raw Plaid context in the edit UI,
 - avoid treating unresolved activity as final budget truth.
 
+The `/transactions` surface supports explicit merchant cleanup for repeated label fixes. A user can match merchant/raw-name text, choose one saved category and intent, update matching enriched rows, and optionally persist a merchant rule so future Plaid imports receive the same app-facing category. The action records audit events and does not mutate raw Plaid rows.
+
 ## Review Flow
 
 Review items are created for transactions that need user attention, including:
@@ -150,7 +152,7 @@ Accepted AI cleanups can propose reusable merchant rules for future imports. Bef
 
 ## AI Suggestion Flow
 
-`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server.
+`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import and review page load is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; manual review actions can still request one suggestion at a time.
 
 AI suggestions are advisory. They do not autonomously edit finance records.
 

@@ -445,7 +445,9 @@ export function SettingsView({
           </div>
           <span className={`${styles.statusPill} ${aiProviderStatus.configured ? styles.statusReady : styles.statusFallback}`}>
             <BrainCircuit size={13} aria-hidden />
-            {aiProviderStatus.activeKind === "openai" ? "OpenAI ready" : "Fallback active"}
+            {aiProviderStatus.activeKind === "openai"
+              ? aiProviderStatus.autoReviewEnabled ? "OpenAI auto review" : "Manual AI ready"
+              : "Fallback active"}
           </span>
         </div>
         <div className={styles.settingList}>

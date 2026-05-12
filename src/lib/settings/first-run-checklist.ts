@@ -126,7 +126,9 @@ export function buildFirstRunChecklist(input: FirstRunChecklistInput): FirstRunC
       actionHref: "/review",
       actionLabel: "Review suggestions",
       detail: input.aiProviderStatus.configured
-        ? `${input.aiProviderStatus.label} is available for advisory cleanup suggestions.`
+        ? input.aiProviderStatus.autoReviewEnabled
+          ? `${input.aiProviderStatus.label} is available for automatic advisory cleanup suggestions.`
+          : `${input.aiProviderStatus.label} is available for manual suggestions; automatic cleanup is off to save tokens.`
         : "Optional: deterministic fallback suggestions are active until a server-side OpenAI key is configured.",
       group: "optional",
       id: "ai",

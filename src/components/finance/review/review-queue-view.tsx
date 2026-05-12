@@ -18,6 +18,7 @@ import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
 import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
+  aiAutoReviewEnabled: boolean;
   aiProviderKind: AiSuggestionProviderKind;
   categories: CategoryRecord[];
   dataError?: string;
@@ -78,6 +79,7 @@ function ReviewCard({
   const peerToPeer = isPeerToPeerReview(item.reason);
   const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
   const canDismiss = !peerToPeer;
+  const canSuggest = !peerToPeer;
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
@@ -149,7 +151,12 @@ function ReviewCard({
           />
         ) : (
           <>
-            <ReviewItemActions canAccept={canAccept} canDismiss={canDismiss} reviewItemId={item.id} />
+            <ReviewItemActions
+              canAccept={canAccept}
+              canDismiss={canDismiss}
+              canSuggest={canSuggest}
+              reviewItemId={item.id}
+            />
             <ReviewTransactionEditForm
               categories={categories}
               reviewItemId={item.id}
@@ -177,6 +184,7 @@ function EmptyQueue() {
 }
 
 export function ReviewQueueView({
+  aiAutoReviewEnabled,
   aiProviderKind,
   categories,
   dataError,
@@ -242,10 +250,14 @@ export function ReviewQueueView({
         </div>
       ) : null}
 
-      {canShowQueue && aiProviderKind !== "openai" ? (
+      {canShowQueue ? (
         <div className={styles.notice} role="status">
-          <Sparkles size={13} aria-hidden /> OpenAI is not configured. Set OPENAI_API_KEY to enable automatic
-          categorization. Falling back to deterministic merchant rules.
+          <Sparkles size={13} aria-hidden />
+          {aiProviderKind === "openai"
+            ? aiAutoReviewEnabled
+              ? "Automatic OpenAI cleanup is enabled. Suggestions stay advisory and high-confidence cleanup is audit-backed."
+              : "OpenAI is configured, but automatic cleanup is off to save tokens. Use Suggest with AI on only the review items that need it."
+            : "OpenAI is not configured. Review suggestions use deterministic merchant rules only."}
         </div>
       ) : null}
 
@@ -271,7 +283,7 @@ export function ReviewQueueView({
             <section className={styles.reviewGroup}>
               <div className={styles.reviewGroupHead}>
                 <h2>AI was uncertain ({aiItems.length})</h2>
-                <span>Confidence below the auto-apply threshold. Accept or relabel.</span>
+                <span>Generate a suggestion when useful, accept a ready one, or relabel manually.</span>
               </div>
               <div className={styles.cardStack}>
                 {aiItems.map((item) => (

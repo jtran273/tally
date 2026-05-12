@@ -168,6 +168,37 @@
   gap: 8px;
 }
 
+.cleanupPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.cleanupHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cleanupHeader > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cleanupForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(130px, 0.7fr) auto auto;
+  align-items: end;
+  gap: 10px;
+}
+
 .primaryButton,
 .secondaryButton {
   display: inline-flex;
@@ -373,6 +404,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.merchantEditLink {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchantEditLink:hover,
+.merchantEditLink:focus-visible {
+  color: var(--accent);
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .badge {
@@ -635,6 +683,15 @@
   font-size: 13px;
 }
 
+.formSuccess {
+  border: 1px solid color-mix(in oklab, var(--pos) 24%, var(--line));
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  color: var(--pos);
+  font-size: 13px;
+}
+
 .buttonRow {
   display: flex;
   flex-wrap: wrap;
@@ -679,7 +736,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .filters {
+  .filters,
+  .cleanupForm {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 }
@@ -687,6 +745,7 @@
 @media (max-width: 760px) {
   .summaryGrid,
   .filters,
+  .cleanupForm,
   .editGrid,
   .editPanel {
     grid-template-columns: 1fr;
@@ -704,6 +763,11 @@
   .filterActions {
     grid-column: auto;
     flex-wrap: wrap;
+  }
+
+  .cleanupHeader {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .primaryButton,

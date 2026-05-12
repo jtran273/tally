@@ -120,7 +120,7 @@ export default async function ReviewPage() {
       );
 
       let cleanupTouched = false;
-      if (aiStatus.activeKind === "openai") {
+      if (aiStatus.activeKind === "openai" && aiStatus.autoReviewEnabled) {
         try {
           const cleanup = await runAiReviewCleanup({
             client: context.client,
@@ -149,6 +149,7 @@ export default async function ReviewPage() {
   return (
     <ReviewQueueView
       aiProviderKind={aiStatus.activeKind}
+      aiAutoReviewEnabled={aiStatus.autoReviewEnabled}
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}

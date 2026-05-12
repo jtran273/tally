@@ -71,8 +71,12 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
 
-  const chart = page.locator("svg[aria-label='Net worth balance trend']");
+  let chart = page.locator("svg[aria-label='Cash - liabilities balance trend']");
   await expect(chart).toBeVisible();
+  const cashMinusLiabilitiesView = page.getByRole("button", { exact: true, name: "Cash - liabilities balance view" });
+  const balanceRangeControls = page.getByLabel("Balance trend range");
+  await expect(cashMinusLiabilitiesView).toHaveAttribute("aria-pressed", "true");
+  await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
 
   const cashView = page.getByRole("button", { exact: true, name: "Cash balance view" });
   await cashView.click();
@@ -84,7 +88,6 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(liabilitiesView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Liabilities balance trend']")).toBeVisible();
 
-  const cashMinusLiabilitiesView = page.getByRole("button", { exact: true, name: "Cash - liabilities balance view" });
   await cashMinusLiabilitiesView.click();
   await expect(cashMinusLiabilitiesView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Cash - liabilities balance trend']")).toBeVisible();
@@ -92,12 +95,14 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
   await netWorthView.click();
   await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Net worth balance trend']");
+  await expect(chart).toBeVisible();
 
-  const oneYear = page.getByRole("button", { name: "1Y" });
+  const oneYear = balanceRangeControls.getByRole("button", { name: "1Y" });
   await oneYear.click();
   await expect(oneYear).toHaveAttribute("aria-pressed", "true");
 
-  const oneMonth = page.getByRole("button", { name: "1M" });
+  const oneMonth = balanceRangeControls.getByRole("button", { name: "1M" });
   await oneMonth.click();
   await expect(oneMonth).toHaveAttribute("aria-pressed", "true");
 
@@ -105,19 +110,37 @@ test("dashboard trend range controls update the change-over-time view", async ({
   expect(chartBox?.width ?? 0).toBeGreaterThan(250);
   expect(chartBox?.height ?? 0).toBeGreaterThan(100);
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
-  await expect(page.getByText("Selected point")).toBeVisible();
-  await expect(page.getByText("Y-axis scale")).toBeVisible();
+  await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
+  await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
+  const categoryRange = page.getByLabel("Category trend range");
+  await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
+  await categoryRange.getByRole("button", { exact: true, name: "3M" }).click();
+  await expect(categoryRange.getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  const categoryMonthView = page.getByRole("button", { exact: true, name: "Month" });
+  await categoryMonthView.click();
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
+  const categoryTrendView = page.getByRole("button", { exact: true, name: "Trend" });
+  await categoryTrendView.click();
+  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
   const trendPoints = chart.locator("g[role='button']");
   const trendPointCount = await trendPoints.count();
   expect(trendPointCount).toBeGreaterThan(1);
-  await trendPoints.nth(Math.min(1, trendPointCount - 1)).click();
+  await trendPoints.nth(Math.min(1, trendPointCount - 1)).hover();
+  await expect(page.getByText("Selected point", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Selected balance transactions")).toBeVisible();
-  await expect(page.getByRole("button", { exact: true, name: "Point change" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Moved this point")).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "Up to date" }).click();
-  await expect(page.getByRole("button", { exact: true, name: "Up to date" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Up to selected date")).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "Point" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Transactions for selected point")).toBeVisible();
+  await trendPoints.nth(Math.min(2, trendPointCount - 1)).click();
+  await expect(page.getByText("Selected point", { exact: true })).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Up to point" }).click();
+  await expect(page.getByRole("button", { exact: true, name: "Up to point" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Transactions up to selected point")).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Clear point" }).click();
+  await expect(page.getByText("Transactions in selected period")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -165,7 +188,7 @@ test("settings reports AI provider status without exposing credentials", async (
   await page.goto("/settings");
 
   await expect(page.getByText("Suggestion status")).toBeVisible();
-  await expect(page.getByText(/OpenAI ready|Fallback active/)).toBeVisible();
+  await expect(page.getByText(/OpenAI auto review|Manual AI ready|Fallback active/)).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/sk-[A-Za-z0-9]/);
   await expectNoPageOverflow(page);
 });

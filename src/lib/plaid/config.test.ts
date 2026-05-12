@@ -56,13 +56,67 @@ test("Plaid runtime config does not require redirect URI validity for sync-only 
   });
 });
 
-test("Plaid Link token config still requires HTTPS redirect URI in production", () => {
+test("Plaid Link token config omits localhost HTTP redirect URI in production", () => {
   withPlaidEnv({
     NEXT_PUBLIC_APP_URL: undefined,
     PLAID_CLIENT_ID: "client-id",
     PLAID_ENV: "production",
     PLAID_PRODUCTION_SECRET: "production-secret",
     PLAID_REDIRECT_URI: "http://localhost:3000/settings",
+    PLAID_SANDBOX_SECRET: undefined,
+    PLAID_SECRET: undefined,
+    VERCEL_URL: undefined
+  }, () => {
+    const config = getPlaidLinkTokenConfig();
+
+    assert.equal(config.environment, "production");
+    assert.equal(config.redirectUri, null);
+  });
+});
+
+test("Plaid Link token config uses registered HTTPS app URL when local redirect is present in production", () => {
+  withPlaidEnv({
+    NEXT_PUBLIC_APP_URL: "https://ledger.example.com",
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "production",
+    PLAID_PRODUCTION_SECRET: "production-secret",
+    PLAID_REDIRECT_URI: "http://localhost:3000/settings",
+    PLAID_SANDBOX_SECRET: undefined,
+    PLAID_SECRET: undefined,
+    VERCEL_URL: "personal-finance-os-jtran273s-projects.vercel.app"
+  }, () => {
+    const config = getPlaidLinkTokenConfig();
+
+    assert.equal(config.environment, "production");
+    assert.equal(config.redirectUri, "https://ledger.example.com/settings");
+  });
+});
+
+test("Plaid Link token config does not use ephemeral Vercel URL as production redirect fallback", () => {
+  withPlaidEnv({
+    NEXT_PUBLIC_APP_URL: undefined,
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "production",
+    PLAID_PRODUCTION_SECRET: "production-secret",
+    PLAID_REDIRECT_URI: "http://localhost:3000/settings",
+    PLAID_SANDBOX_SECRET: undefined,
+    PLAID_SECRET: undefined,
+    VERCEL_URL: "personal-finance-random-jtran273s-projects.vercel.app"
+  }, () => {
+    const config = getPlaidLinkTokenConfig();
+
+    assert.equal(config.environment, "production");
+    assert.equal(config.redirectUri, null);
+  });
+});
+
+test("Plaid Link token config still rejects non-local HTTP redirect URI in production", () => {
+  withPlaidEnv({
+    NEXT_PUBLIC_APP_URL: undefined,
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "production",
+    PLAID_PRODUCTION_SECRET: "production-secret",
+    PLAID_REDIRECT_URI: "http://example.com/settings",
     PLAID_SANDBOX_SECRET: undefined,
     PLAID_SECRET: undefined,
     VERCEL_URL: undefined

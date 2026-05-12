@@ -10,7 +10,7 @@ import {
   type RawTransactionRow,
   type ReviewItemRow
 } from "@/lib/db";
-import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
+import { createAutoReviewTransactionSuggestionService } from "@/lib/ai/server";
 import { attachAiSuggestionsToReviewItems } from "./ai-suggestions";
 import { evaluateAutoCategorization } from "./auto-categorization";
 import { isPeerToPeerReview } from "./reasons";
@@ -95,7 +95,7 @@ export async function runAiReviewCleanup({
     maxSuggestions: safeLimit,
     merchantRules,
     rawRows,
-    suggestionService: createConfiguredTransactionSuggestionService(),
+    suggestionService: createAutoReviewTransactionSuggestionService(),
     transactions,
     userCorrections
   });

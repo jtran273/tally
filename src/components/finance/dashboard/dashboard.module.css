@@ -232,16 +232,16 @@
   outline: none;
 }
 
-.trendRangeActive,
-.activityModeActive {
+.trendControls .trendRangeActive,
+.activityModeControls .activityModeActive {
   background: var(--ink);
   color: var(--bg);
   font-weight: 600;
   outline: none;
 }
 
-.trendRangeActive:hover,
-.activityModeActive:hover {
+.trendControls .trendRangeActive:hover,
+.activityModeControls .activityModeActive:hover {
   background: var(--ink);
   color: var(--bg);
 }
@@ -268,30 +268,27 @@
   font-weight: 500;
 }
 
-.trendInspector {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.15fr) minmax(180px, 1fr) minmax(220px, 1.1fr);
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.trendInspector div {
+.chartInsight {
+  display: flex;
   min-width: 0;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  padding: 11px 12px;
-  background: var(--surface-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 24px;
+  margin-top: 12px;
 }
 
-.trendInspector span,
-.trendInspector em {
+.chartInsight div {
+  min-width: 0;
+}
+
+.chartInsight span {
   display: block;
   color: var(--muted);
   font-size: 11px;
-  font-style: normal;
+  text-transform: uppercase;
 }
 
-.trendInspector strong {
+.chartInsight strong {
   display: block;
   min-width: 0;
   margin-top: 3px;
@@ -299,13 +296,6 @@
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.trendInspector em {
-  margin-top: 4px;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -363,11 +353,22 @@
 }
 
 .trendScaleLabel,
-.trendDateLabel {
+.trendDateLabel,
+.selectedPointDateLabel,
+.selectedPointValueLabel {
   fill: var(--muted);
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.selectedPointDateLabel,
+.selectedPointValueLabel {
+  fill: var(--ink);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
 }
 
 .trendCrosshair {
@@ -436,8 +437,26 @@
   white-space: nowrap;
 }
 
+.textButton {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .textLink:hover {
   color: var(--ink);
+}
+
+.textButton:hover,
+.textButton:focus-visible {
+  color: var(--ink);
+  outline: none;
 }
 
 .activityRows {
@@ -515,16 +534,6 @@
   text-align: center;
 }
 
-@media (max-width: 860px) {
-  .trendInspector {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .trendInspector div:last-child {
-    grid-column: 1 / -1;
-  }
-}
-
 @media (max-width: 760px) {
   .hero {
     padding: 20px 18px;
@@ -554,12 +563,12 @@
   }
 
   .trendScaleLabel,
-  .trendDateLabel {
+  .trendDateLabel,
+  .selectedPointDateLabel,
+  .selectedPointValueLabel,
+  .categoryScaleLabel,
+  .categoryDateLabel {
     display: none;
-  }
-
-  .trendInspector {
-    grid-template-columns: 1fr;
   }
 
   .trendSummary,
@@ -773,8 +782,33 @@
 }
 
 .categoryEmpty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 18px;
   color: var(--muted);
   font-size: 13px;
+  text-align: center;
+}
+
+.categoryTrendChart {
+  min-width: 0;
+}
+
+.categoryTrendChart svg {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 22vw, 300px);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 62%, transparent), transparent 72%);
+}
+
+.categoryScaleLabel,
+.categoryDateLabel {
+  fill: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .categoryRows {
@@ -808,10 +842,28 @@
   min-width: 0;
 }
 
+.categoryLegendLabel {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.categoryLegendLabel span {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
 .categoryRowHead strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 13.5px;
   font-weight: 600;
   color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .categoryRowHead strong:last-child {
@@ -820,26 +872,30 @@
   font-weight: 500;
 }
 
-.categoryRowBar {
-  height: 6px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
-  overflow: hidden;
-}
-
-.categoryRowBar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-}
-
 .categoryRowMeta {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   color: var(--muted);
   font-size: 11.5px;
+}
+
+.categoryOtherRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--line-2);
+  padding: 10px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.categoryOtherRow strong {
+  color: var(--ink-2);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .categoryHeadIdentity {
@@ -854,8 +910,20 @@
   align-items: flex-start;
 }
 
+.categoryPanelActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.categoryModeControls,
+.categoryRangeControls,
 .categoryMonthPicker {
   display: inline-flex;
+  max-width: 100%;
   flex-wrap: wrap;
   gap: 4px;
   border: 1px solid var(--line);
@@ -864,11 +932,21 @@
   background: var(--surface-2);
 }
 
+.categoryRangeControls {
+  align-self: flex-start;
+}
+
+.categoryMonthPicker {
+  align-self: flex-start;
+}
+
+.categoryModeControls button,
+.categoryRangeControls button,
 .categoryMonthButton {
   min-width: 56px;
   border: 0;
   border-radius: 6px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -878,6 +956,10 @@
   white-space: nowrap;
 }
 
+.categoryModeControls button:hover,
+.categoryModeControls button:focus-visible,
+.categoryRangeControls button:hover,
+.categoryRangeControls button:focus-visible,
 .categoryMonthButton:hover,
 .categoryMonthButton:focus-visible {
   background: var(--surface);
@@ -885,8 +967,24 @@
   outline: none;
 }
 
+.categoryModeControls .categoryModeActive,
+.categoryRangeControls .categoryRangeActive,
 .categoryMonthActive {
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
+}
+
+.categoryRowBar {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+  overflow: hidden;
+}
+
+.categoryRowBar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
 }

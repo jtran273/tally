@@ -12,7 +12,7 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
-import type { CategoryBreakdownSummary } from "@/lib/finance/spending";
+import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
 import {
   Clock3,
   CreditCard,
@@ -33,10 +33,12 @@ export interface DashboardBalanceTransaction {
   accountName: string;
   amount: number;
   category: string;
+  categoryId: string | null;
   date: string;
   id: string;
   intent: TransactionIntent;
   merchant: string;
+  splits: { amount: number; intent: TransactionIntent }[];
   status: TransactionStatus;
 }
 
@@ -56,7 +58,8 @@ interface DashboardViewProps {
 }
 
 type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
-type ActivityMode = "change" | "through";
+type ActivityMode = "point" | "through";
+type CategoryViewMode = "trend" | "month";
 
 interface BalanceViewOption {
   description: string;
@@ -103,6 +106,8 @@ const trendRangeOptions: { days: number | null; key: TrendRangeKey; label: strin
   { days: null, key: "ALL", label: "All" }
 ];
 
+const DAY_MS = 86_400_000;
+
 function formatMoney(value: number, compact = false) {
   return (compact ? compactMoneyFormatter : moneyFormatter).format(value);
 }
@@ -118,6 +123,28 @@ function formatDate(value: string) {
 
 function formatLongDate(value: string) {
   return longDateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
+function parseIsoDate(value: string) {
+  return new Date(`${value}T12:00:00`);
+}
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDaysIso(value: string, days: number) {
+  const date = parseIsoDate(value);
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function rangeOptionForKey(rangeKey: TrendRangeKey) {
+  return trendRangeOptions.find((option) => option.key === rangeKey) ?? trendRangeOptions[0];
 }
 
 function transactionsHref(params: Record<string, boolean | number | string | undefined>) {
@@ -167,14 +194,14 @@ function filterTrendByRange(
   rangeKey: TrendRangeKey,
   anchorDate?: string
 ) {
-  const range = trendRangeOptions.find((option) => option.key === rangeKey);
+  const range = rangeOptionForKey(rangeKey);
   if (!range?.days || trend.length < 2) return [...trend];
 
   const anchorTime = anchorDate
-    ? new Date(`${anchorDate}T12:00:00`).getTime()
-    : new Date(`${trend[trend.length - 1].date}T12:00:00`).getTime();
+    ? parseIsoDate(anchorDate).getTime()
+    : parseIsoDate(trend[trend.length - 1].date).getTime();
   const cutoffTime = anchorTime - range.days * 24 * 60 * 60 * 1000;
-  const firstInRangeIndex = trend.findIndex((point) => new Date(`${point.date}T12:00:00`).getTime() >= cutoffTime);
+  const firstInRangeIndex = trend.findIndex((point) => parseIsoDate(point.date).getTime() >= cutoffTime);
 
   if (firstInRangeIndex <= 0) return [...trend];
   return trend.slice(firstInRangeIndex - 1);
@@ -257,6 +284,18 @@ function sortTransactionsByDate(transactions: DashboardBalanceTransaction[]) {
   });
 }
 
+function dashboardTransactionSpendingAmount(transaction: DashboardBalanceTransaction) {
+  if (transaction.amount >= 0) return 0;
+
+  if (transaction.splits.length > 0) {
+    return roundMoney(transaction.splits.reduce((sum, split) => (
+      isSpendingIntent(split.intent) ? sum + Math.abs(split.amount) : sum
+    ), 0));
+  }
+
+  return isSpendingIntent(transaction.intent) ? Math.abs(transaction.amount) : 0;
+}
+
 function TransactionRows({
   transactions
 }: {
@@ -314,7 +353,7 @@ function TrendChart({
   valueLabel: string;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [activityMode, setActivityMode] = useState<ActivityMode>("change");
+  const [activityMode, setActivityMode] = useState<ActivityMode>("point");
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(720);
 
@@ -382,30 +421,44 @@ function TrendChart({
       : `${line} L${points[points.length - 1][0].toFixed(1)},${height - padding.bottom} L${points[0][0].toFixed(1)},${height - padding.bottom} Z`;
   const start = selectedTrend[0];
   const end = selectedTrend[selectedTrend.length - 1];
-  const selectedIndex = activeIndex === null
-    ? selectedTrend.length - 1
-    : Math.min(activeIndex, selectedTrend.length - 1);
+  const hasSelectedPoint = activeIndex !== null;
+  const selectedIndex = hasSelectedPoint
+    ? Math.min(activeIndex, selectedTrend.length - 1)
+    : selectedTrend.length - 1;
   const previousPoint = selectedIndex > 0 ? selectedTrend[selectedIndex - 1] : null;
   const activePoint = selectedTrend[selectedIndex];
   const activeCoords = points[selectedIndex];
   const activeDelta = pointDelta(selectedTrend, selectedIndex);
   const activeDeltaClass = activeDelta ? deltaToneClass(activeDelta.amount, positiveIsGood) : undefined;
-  const pointTransactions = sortTransactionsForPoint(
+  const periodTransactions = sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= end.date)
+  ).slice(0, 10);
+  const pointTransactions = hasSelectedPoint ? sortTransactionsForPoint(
     scopedTransactions.filter((transaction) => (
       previousPoint
         ? transaction.date > previousPoint.date && transaction.date <= activePoint.date
-        : transaction.date <= activePoint.date
+        : transaction.date >= start.date && transaction.date <= activePoint.date
     )),
     activeDelta?.amount ?? null
-  ).slice(0, 8);
-  const throughTransactions = sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => transaction.date <= activePoint.date)
-  ).slice(0, 8);
-  const visibleTransactions = activityMode === "change" ? pointTransactions : throughTransactions;
+  ).slice(0, 10) : periodTransactions;
+  const throughTransactions = hasSelectedPoint ? sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= activePoint.date)
+  ).slice(0, 10) : periodTransactions;
+  const visibleTransactions = !hasSelectedPoint
+    ? periodTransactions
+    : activityMode === "point"
+      ? pointTransactions
+      : throughTransactions;
+  const activityFromDate = !hasSelectedPoint
+    ? start.date
+    : activityMode === "point"
+      ? previousPoint ? addDaysIso(previousPoint.date, 1) : start.date
+      : start.date;
+  const activityToDate = hasSelectedPoint ? activePoint.date : end.date;
   const activityHref = transactionsHref({
     exclude_transfers: true,
-    from: activityMode === "change" ? previousPoint?.date : undefined,
-    to: activePoint.date
+    from: activityFromDate,
+    to: activityToDate
   });
   const gridLines = [
     { label: max, y: padding.top },
@@ -422,6 +475,31 @@ function TrendChart({
     : activePoint.source === "transaction"
       ? "Estimated from posted transactions"
       : "Current persisted balance";
+  const selectedPeriodDeltaLabel = delta
+    ? `${formatSignedMoney(delta.amount)} (${delta.percent >= 0 ? "+" : ""}${delta.percent.toFixed(1)}%)`
+    : "No change yet";
+  const selectedPointDeltaLabel = activeDelta
+    ? `${formatSignedMoney(activeDelta.amount)} (${activeDelta.percent >= 0 ? "+" : ""}${activeDelta.percent.toFixed(1)}%)`
+    : "Range start";
+  const selectedPointX = activeCoords
+    ? Math.min(Math.max(activeCoords[0], padding.left + 48), width - padding.right - 48)
+    : 0;
+  const selectedPointValueX = activeCoords
+    ? compactChart
+      ? Math.min(Math.max(activeCoords[0] + 8, padding.left + 54), width - padding.right - 54)
+      : padding.left - 8
+    : 0;
+  const selectedPointValueAnchor = compactChart
+    ? activeCoords && activeCoords[0] > width * 0.76 ? "end" : "start"
+    : "end";
+  const selectedPointValueY = activeCoords
+    ? Math.max(padding.top + 12, activeCoords[1] - 10)
+    : 0;
+  const activityTitle = !hasSelectedPoint
+    ? "Transactions in selected period"
+    : activityMode === "point"
+      ? "Transactions for selected point"
+      : "Transactions up to selected point";
 
   return (
     <div className={styles.trendPanel}>
@@ -457,29 +535,20 @@ function TrendChart({
         </div>
       </div>
 
-      <div className={styles.trendInspector} aria-live="polite">
+      <div className={styles.chartInsight} aria-live="polite">
         <div>
-          <span>Selected point</span>
-          <strong>{formatLongDate(activePoint.date)}</strong>
-          <em>{formatMoney(activePoint.netWorth)}</em>
+          <span>{hasSelectedPoint ? "Selected point" : "Selected period"}</span>
+          <strong>{hasSelectedPoint ? formatLongDate(activePoint.date) : `${formatLongDate(start.date)} - ${formatLongDate(end.date)}`}</strong>
         </div>
         <div>
-          <span>Point change</span>
-          <strong className={activeDeltaClass}>
-            {activeDelta ? (
-              <>
-                {formatSignedMoney(activeDelta.amount)} ({activeDelta.percent >= 0 ? "+" : ""}{activeDelta.percent.toFixed(1)}%)
-              </>
-            ) : (
-              "Range start"
-            )}
+          <span>{hasSelectedPoint ? activeSourceLabel : "Period change"}</span>
+          <strong className={hasSelectedPoint ? activeDeltaClass : deltaClassName}>
+            {hasSelectedPoint ? selectedPointDeltaLabel : selectedPeriodDeltaLabel}
           </strong>
-          <em>{activeSourceLabel}</em>
         </div>
         <div>
-          <span>Y-axis scale</span>
-          <strong>{formatMoney(min, true)} to {formatMoney(max, true)}</strong>
-          <em>{formatLongDate(start.date)} to {formatLongDate(end.date)}</em>
+          <span>Balance</span>
+          <strong>{formatMoney(hasSelectedPoint ? activePoint.netWorth : end.netWorth)}</strong>
         </div>
       </div>
 
@@ -509,18 +578,27 @@ function TrendChart({
           ))}
           {area ? <path d={area} fill="url(#dashboardTrendFill)" /> : null}
           <path d={line} fill="none" stroke="var(--accent)" strokeLinecap="round" strokeWidth="2" />
-          {activeCoords ? (
-            <line
-              className={styles.trendCrosshair}
-              x1={activeCoords[0]}
-              x2={activeCoords[0]}
-              y1={padding.top}
-              y2={height - padding.bottom}
-            />
+          {hasSelectedPoint && activeCoords ? (
+            <>
+              <line
+                className={styles.trendCrosshair}
+                x1={padding.left}
+                x2={width - padding.right}
+                y1={activeCoords[1]}
+                y2={activeCoords[1]}
+              />
+              <line
+                className={styles.trendCrosshair}
+                x1={activeCoords[0]}
+                x2={activeCoords[0]}
+                y1={padding.top}
+                y2={height - padding.bottom}
+              />
+            </>
           ) : null}
           {points.map(([x, y], index) => {
             const point = selectedTrend[index];
-            const isActive = index === selectedIndex;
+            const isActive = hasSelectedPoint && index === selectedIndex;
             return (
               <g
                 aria-label={`${formatLongDate(point.date)} ${valueLabel.toLowerCase()} ${formatMoney(point.netWorth)}`}
@@ -552,6 +630,26 @@ function TrendChart({
               </g>
             );
           })}
+          {hasSelectedPoint && activeCoords ? (
+            <>
+              <text
+                className={styles.selectedPointValueLabel}
+                textAnchor={selectedPointValueAnchor}
+                x={selectedPointValueX}
+                y={selectedPointValueY}
+              >
+                {formatMoney(activePoint.netWorth, true)}
+              </text>
+              <text
+                className={styles.selectedPointDateLabel}
+                textAnchor="middle"
+                x={selectedPointX}
+                y={height - 8}
+              >
+                {formatDate(activePoint.date)}
+              </text>
+            </>
+          ) : null}
           <text className={styles.trendDateLabel} x={padding.left} y={height - 8}>{formatDate(start.date)}</text>
           <text className={styles.trendDateLabel} textAnchor="end" x={width - padding.right} y={height - 8}>{formatDate(end.date)}</text>
         </svg>
@@ -572,27 +670,38 @@ function TrendChart({
         <div className={styles.activityHead}>
           <div>
             <span className={styles.eyebrow}>Transactions</span>
-            <h3>{activityMode === "change" ? "Moved this point" : "Up to selected date"}</h3>
+            <h3>{activityTitle}</h3>
           </div>
           <div className={styles.activityActions}>
-            <div className={styles.activityModeControls} aria-label="Transaction scope">
+            {hasSelectedPoint ? (
+              <div className={styles.activityModeControls} aria-label="Transaction scope">
+                <button
+                  aria-pressed={activityMode === "point"}
+                  className={activityMode === "point" ? styles.activityModeActive : undefined}
+                  onClick={() => setActivityMode("point")}
+                  type="button"
+                >
+                  Point
+                </button>
+                <button
+                  aria-pressed={activityMode === "through"}
+                  className={activityMode === "through" ? styles.activityModeActive : undefined}
+                  onClick={() => setActivityMode("through")}
+                  type="button"
+                >
+                  Up to point
+                </button>
+              </div>
+            ) : null}
+            {hasSelectedPoint ? (
               <button
-                aria-pressed={activityMode === "change"}
-                className={activityMode === "change" ? styles.activityModeActive : undefined}
-                onClick={() => setActivityMode("change")}
+                className={styles.textButton}
+                onClick={() => setActiveIndex(null)}
                 type="button"
               >
-                Point change
+                Clear point
               </button>
-              <button
-                aria-pressed={activityMode === "through"}
-                className={activityMode === "through" ? styles.activityModeActive : undefined}
-                onClick={() => setActivityMode("through")}
-                type="button"
-              >
-                Up to date
-              </button>
-            </div>
+            ) : null}
             <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
           </div>
         </div>
@@ -602,93 +711,404 @@ function TrendChart({
   );
 }
 
+const categoryTrendPalette = ["#2f6f4e", "#2f5f8f", "#9a6b1f", "#7a4f9f", "#b55353"];
+
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
+
+interface CategoryTrendPoint {
+  amount: number;
+  date: string;
+}
+
+interface CategoryTrendSeries {
+  color: string;
+  count: number;
+  id: string | null;
+  label: string;
+  pendingAmount: number;
+  points: CategoryTrendPoint[];
+  total: number;
+}
+
 function formatPercentDelta(value: number) {
   if (!Number.isFinite(value)) return "0.0%";
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
-
 function formatMonthLabel(fromDate: string) {
   return monthLabelFormatter.format(new Date(`${fromDate}T12:00:00`));
 }
 
-function CategorySpendingPanel({ breakdowns }: { breakdowns: CategoryBreakdownSummary[] }) {
+function dateRange(fromDate: string, toDate: string) {
+  const dates: string[] = [];
+  const start = parseIsoDate(fromDate);
+  const end = parseIsoDate(toDate);
+
+  for (let time = start.getTime(); time <= end.getTime(); time += DAY_MS) {
+    dates.push(isoDate(new Date(time)));
+  }
+
+  return dates.length > 0 ? dates : [toDate];
+}
+
+function categoryRangeBounds(
+  transactions: readonly DashboardBalanceTransaction[],
+  rangeKey: TrendRangeKey,
+  anchorDate: string
+) {
+  const range = rangeOptionForKey(rangeKey);
+  if (range.days) {
+    return {
+      fromDate: addDaysIso(anchorDate, -(range.days - 1)),
+      toDate: anchorDate
+    };
+  }
+
+  const firstTransactionDate = transactions.reduce<string | null>(
+    (earliest, transaction) => {
+      if (dashboardTransactionSpendingAmount(transaction) <= 0) return earliest;
+      return earliest === null || transaction.date < earliest ? transaction.date : earliest;
+    },
+    null
+  );
+
+  return {
+    fromDate: firstTransactionDate ?? anchorDate,
+    toDate: anchorDate
+  };
+}
+
+function buildCategoryTrend(
+  transactions: readonly DashboardBalanceTransaction[],
+  fromDate: string,
+  toDate: string
+) {
+  const grouped = new Map<string, {
+    byDate: Map<string, number>;
+    count: number;
+    id: string | null;
+    label: string;
+    pendingAmount: number;
+    total: number;
+  }>();
+  let totalAmount = 0;
+  let totalCount = 0;
+  let pendingAmount = 0;
+
+  transactions.forEach((transaction) => {
+    if (transaction.date < fromDate || transaction.date > toDate) return;
+
+    const amount = dashboardTransactionSpendingAmount(transaction);
+    if (amount <= 0) return;
+
+    const key = transaction.categoryId ?? transaction.category;
+    const group = grouped.get(key) ?? {
+      byDate: new Map<string, number>(),
+      count: 0,
+      id: transaction.categoryId,
+      label: transaction.category,
+      pendingAmount: 0,
+      total: 0
+    };
+
+    group.byDate.set(transaction.date, roundMoney((group.byDate.get(transaction.date) ?? 0) + amount));
+    group.count += 1;
+    group.total = roundMoney(group.total + amount);
+    if (transaction.status === "pending") group.pendingAmount = roundMoney(group.pendingAmount + amount);
+    grouped.set(key, group);
+
+    totalAmount = roundMoney(totalAmount + amount);
+    totalCount += 1;
+    if (transaction.status === "pending") pendingAmount = roundMoney(pendingAmount + amount);
+  });
+
+  const dates = dateRange(fromDate, toDate);
+  const series: CategoryTrendSeries[] = [...grouped.values()]
+    .sort((left, right) => right.total - left.total || left.label.localeCompare(right.label))
+    .slice(0, 5)
+    .map((group, index) => {
+      let cumulative = 0;
+      return {
+        color: categoryTrendPalette[index % categoryTrendPalette.length],
+        count: group.count,
+        id: group.id,
+        label: group.label,
+        pendingAmount: group.pendingAmount,
+        points: dates.map((date) => {
+          cumulative = roundMoney(cumulative + (group.byDate.get(date) ?? 0));
+          return { amount: cumulative, date };
+        }),
+        total: group.total
+      };
+    });
+
+  const maxAmount = Math.max(1, ...series.flatMap((row) => row.points.map((point) => point.amount)));
+
+  return {
+    dates,
+    maxAmount,
+    pendingAmount,
+    series,
+    totalAmount,
+    totalCount
+  };
+}
+
+function CategorySpendingPanel({
+  asOfDate,
+  breakdowns,
+  rangeKey,
+  setRangeKey,
+  transactions
+}: {
+  asOfDate: string;
+  breakdowns: CategoryBreakdownSummary[];
+  rangeKey: TrendRangeKey;
+  setRangeKey: (key: TrendRangeKey) => void;
+  transactions: DashboardBalanceTransaction[];
+}) {
+  const [viewMode, setViewMode] = useState<CategoryViewMode>("trend");
   const [monthIndex, setMonthIndex] = useState(0);
-  const safeIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
-  const breakdown = breakdowns[safeIndex] ?? { fromDate: "", toDate: "", totalAmount: 0, rows: [] };
-  const rows = breakdown.rows;
-  const maxAmount = rows[0]?.amount ?? 0;
-  const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "—";
-  const isCurrentMonth = safeIndex === 0;
-  const periodLabel = isCurrentMonth
-    ? `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)} (so far)`
-    : `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)}`;
+  const { fromDate, toDate } = useMemo(
+    () => categoryRangeBounds(transactions, rangeKey, asOfDate),
+    [asOfDate, rangeKey, transactions]
+  );
+  const trend = useMemo(
+    () => buildCategoryTrend(transactions, fromDate, toDate),
+    [fromDate, toDate, transactions]
+  );
+  const width = 720;
+  const height = 248;
+  const padding = { bottom: 32, left: 58, right: 22, top: 18 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const rangeLabel = rangeKey === "ALL" ? "All time" : rangeKey;
+  const topTotal = roundMoney(trend.series.reduce((sum, row) => sum + row.total, 0));
+  const otherAmount = roundMoney(trend.totalAmount - topTotal);
+  const yLabels = [
+    { label: trend.maxAmount, y: padding.top },
+    { label: trend.maxAmount / 2, y: padding.top + plotHeight / 2 },
+    { label: 0, y: padding.top + plotHeight }
+  ];
+  const pointX = (index: number) => (
+    trend.dates.length === 1
+    ? padding.left + plotWidth
+      : padding.left + (index / (trend.dates.length - 1)) * plotWidth
+  );
+  const pointY = (amount: number) => padding.top + plotHeight - (amount / trend.maxAmount) * plotHeight;
+  const safeMonthIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
+  const breakdown = breakdowns[safeMonthIndex] ?? { fromDate: "", rows: [], toDate: "", totalAmount: 0 };
+  const monthRows = breakdown.rows;
+  const maxMonthAmount = monthRows[0]?.amount ?? 0;
+  const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "Month";
+  const monthPeriodLabel = breakdown.fromDate
+    ? safeMonthIndex === 0
+      ? `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)} so far`
+      : `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)}`
+    : "No monthly period";
+  const panelAmount = viewMode === "trend" ? trend.totalAmount : breakdown.totalAmount;
+  const panelSubtitle = viewMode === "trend"
+    ? `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
+    : `${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
+  const openTransactionsHref = viewMode === "trend"
+    ? transactionsHref({ exclude_transfers: true, from: fromDate, to: toDate })
+    : transactionsHref({ exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
       <div className={styles.categoryPanelHead}>
         <div className={styles.categoryHeadIdentity}>
           <span className={styles.eyebrow}><Tags size={13} aria-hidden /> Spending by category</span>
-          <h3 className={styles.categoryHeadline}>{formatMoney(breakdown.totalAmount)}</h3>
-          <p className={styles.categorySubtitle}>{monthLabel} · {periodLabel} · {rows.length} {rows.length === 1 ? "category" : "categories"}</p>
+          <h3 className={styles.categoryHeadline}>{formatMoney(panelAmount)}</h3>
+          <p className={styles.categorySubtitle}>{panelSubtitle}</p>
         </div>
-        <div className={styles.categoryMonthPicker} aria-label="Month">
-          {breakdowns.map((option, index) => (
+        <div className={styles.categoryPanelActions}>
+          <div className={styles.categoryModeControls} aria-label="Category spending view">
             <button
-              aria-pressed={index === safeIndex}
-              className={`${styles.categoryMonthButton} ${index === safeIndex ? styles.categoryMonthActive : ""}`}
-              key={option.fromDate || index}
-              onClick={() => setMonthIndex(index)}
+              aria-pressed={viewMode === "trend"}
+              className={viewMode === "trend" ? styles.categoryModeActive : undefined}
+              onClick={() => setViewMode("trend")}
               type="button"
             >
-              {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+              Trend
             </button>
-          ))}
+            <button
+              aria-pressed={viewMode === "month"}
+              className={viewMode === "month" ? styles.categoryModeActive : undefined}
+              onClick={() => setViewMode("month")}
+              type="button"
+            >
+              Month
+            </button>
+          </div>
+          <Link
+            className={styles.textLink}
+            href={openTransactionsHref}
+          >
+            Open transactions
+          </Link>
         </div>
       </div>
 
-      {rows.length === 0 ? (
-        <div className={styles.categoryEmpty}>No spending recorded for {monthLabel}.</div>
-      ) : (
-        <div className={styles.categoryRows}>
-          {rows.map((row) => {
-            const widthPercent = maxAmount > 0 ? Math.max(2, (row.amount / maxAmount) * 100) : 0;
-            const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
-            const deltaLabel = row.previousAmount > 0
-              ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
-              : "New this month";
-            return (
+      {viewMode === "trend" ? (
+        <div className={styles.categoryRangeControls} aria-label="Category trend range">
+          {trendRangeOptions.map((option) => (
+            <button
+              aria-pressed={rangeKey === option.key}
+              className={rangeKey === option.key ? styles.categoryRangeActive : undefined}
+              key={option.key}
+              onClick={() => setRangeKey(option.key)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {viewMode === "trend" && trend.series.length === 0 ? (
+        <div className={styles.categoryEmpty}>No spending recorded in this selected period.</div>
+      ) : viewMode === "trend" ? (
+        <>
+          <div className={styles.categoryTrendChart}>
+            <svg aria-label="Category spending trend" viewBox={`0 0 ${width} ${height}`}>
+              {yLabels.map(({ label, y }) => (
+                <g key={`${label}-${y}`}>
+                  <line
+                    stroke="var(--line-2)"
+                    strokeDasharray="4 6"
+                    strokeWidth="1"
+                    x1={padding.left}
+                    x2={width - padding.right}
+                    y1={y}
+                    y2={y}
+                  />
+                  <text className={styles.categoryScaleLabel} x="4" y={y + 4}>
+                    {formatMoney(label, true)}
+                  </text>
+                </g>
+              ))}
+              {trend.series.map((row) => {
+                const path = row.points.map((point, index) => {
+                  const command = index === 0 ? "M" : "L";
+                  return `${command}${pointX(index).toFixed(1)},${pointY(point.amount).toFixed(1)}`;
+                }).join(" ");
+                const finalPoint = row.points[row.points.length - 1];
+                return (
+                  <g key={row.id ?? row.label}>
+                    <path d={path} fill="none" stroke={row.color} strokeLinecap="round" strokeWidth="2.5" />
+                    <circle
+                      cx={pointX(row.points.length - 1)}
+                      cy={pointY(finalPoint.amount)}
+                      fill="var(--surface)"
+                      r="4"
+                      stroke={row.color}
+                      strokeWidth="2"
+                    >
+                      <title>{`${row.label}: ${formatMoney(row.total)}`}</title>
+                    </circle>
+                  </g>
+                );
+              })}
+              <text className={styles.categoryDateLabel} x={padding.left} y={height - 8}>{formatDate(fromDate)}</text>
+              <text className={styles.categoryDateLabel} textAnchor="end" x={width - padding.right} y={height - 8}>{formatDate(toDate)}</text>
+            </svg>
+          </div>
+
+          <div className={styles.categoryRows}>
+            {trend.series.map((row) => (
               <Link
                 className={styles.categoryRow}
                 href={transactionsHref({
                   category: row.id ?? undefined,
                   exclude_transfers: true,
-                  from: breakdown.fromDate,
+                  from: fromDate,
                   q: row.id ? undefined : row.label,
-                  to: breakdown.toDate
+                  to: toDate
                 })}
                 key={row.id ?? row.label}
-                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
               >
                 <div className={styles.categoryRowHead}>
-                  <strong>{row.label}</strong>
-                  <strong>{formatMoney(row.amount)}</strong>
-                </div>
-                <div className={styles.categoryRowBar} aria-hidden>
-                  <span style={{ width: `${widthPercent}%` }} />
+                  <span className={styles.categoryLegendLabel}>
+                    <span style={{ background: row.color }} />
+                    <strong>{row.label}</strong>
+                  </span>
+                  <strong>{formatMoney(row.total)}</strong>
                 </div>
                 <div className={styles.categoryRowMeta}>
-                  <span>
-                    {row.percent.toFixed(1)}% · {row.count} {row.count === 1 ? "transaction" : "transactions"}
-                    {row.openReviewCount > 0 ? ` · ${row.openReviewCount} in review` : ""}
-                  </span>
-                  <span className={deltaTone}>{deltaLabel}</span>
+                  <span>{row.count} {row.count === 1 ? "transaction" : "transactions"}</span>
+                  {row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
                 </div>
               </Link>
-            );
-          })}
-        </div>
+            ))}
+            {otherAmount > 0 ? (
+              <div className={styles.categoryOtherRow}>
+                <span>Other categories</span>
+                <strong>{formatMoney(otherAmount)}</strong>
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className={styles.categoryMonthPicker} aria-label="Month">
+            {breakdowns.map((option, index) => (
+              <button
+                aria-pressed={index === safeMonthIndex}
+                className={`${styles.categoryMonthButton} ${index === safeMonthIndex ? styles.categoryMonthActive : ""}`}
+                key={option.fromDate || index}
+                onClick={() => setMonthIndex(index)}
+                type="button"
+              >
+                {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+              </button>
+            ))}
+          </div>
+
+          {monthRows.length === 0 ? (
+            <div className={styles.categoryEmpty}>No spending recorded for {monthLabel}.</div>
+          ) : (
+            <div className={styles.categoryRows}>
+              {monthRows.map((row) => {
+                const widthPercent = maxMonthAmount > 0 ? Math.max(2, (row.amount / maxMonthAmount) * 100) : 0;
+                const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
+                const deltaLabel = row.previousAmount > 0
+                  ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
+                  : "New this month";
+                return (
+                  <Link
+                    className={styles.categoryRow}
+                    href={transactionsHref({
+                      category: row.id ?? undefined,
+                      exclude_transfers: true,
+                      from: breakdown.fromDate,
+                      q: row.id ? undefined : row.label,
+                      to: breakdown.toDate
+                    })}
+                    key={row.id ?? row.label}
+                    title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+                  >
+                    <div className={styles.categoryRowHead}>
+                      <strong>{row.label}</strong>
+                      <strong>{formatMoney(row.amount)}</strong>
+                    </div>
+                    <div className={styles.categoryRowBar} aria-hidden>
+                      <span style={{ width: `${widthPercent}%` }} />
+                    </div>
+                    <div className={styles.categoryRowMeta}>
+                      <span>
+                        {row.percent.toFixed(1)}% - {row.count} {row.count === 1 ? "transaction" : "transactions"}
+                        {row.openReviewCount > 0 ? ` - ${row.openReviewCount} in review` : ""}
+                      </span>
+                      <span className={deltaTone}>{deltaLabel}</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -788,8 +1208,9 @@ export function DashboardView({
   syncSummary,
   totals
 }: DashboardViewProps) {
-  const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("netWorth");
-  const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("6M");
+  const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("cashMinusLiabilities");
+  const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
+  const [categoryRangeKey, setCategoryRangeKey] = useState<TrendRangeKey>("1M");
   const cashMinusLiabilities = totals.cash - totals.liabilities;
   const balanceViews: BalanceViewOption[] = [
     {
@@ -920,7 +1341,15 @@ export function DashboardView({
       )}
 
       {accounts.length > 0 ? <LiabilitiesDuePanel summary={liabilitiesDue} /> : null}
-      {accounts.length > 0 ? <CategorySpendingPanel breakdowns={categoryBreakdowns} /> : null}
+      {accounts.length > 0 ? (
+        <CategorySpendingPanel
+          asOfDate={asOfDate}
+          breakdowns={categoryBreakdowns}
+          rangeKey={categoryRangeKey}
+          setRangeKey={setCategoryRangeKey}
+          transactions={balanceTransactions}
+        />
+      ) : null}
     </div>
   );
 }

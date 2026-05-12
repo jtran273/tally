@@ -94,10 +94,15 @@ export default async function DashboardPage() {
     accountName: transaction.accountName,
     amount: transaction.amount,
     category: transaction.category,
+    categoryId: transaction.categoryId,
     date: transaction.date,
     id: transaction.id,
     intent: transaction.intent,
     merchant: transaction.merchant,
+    splits: transaction.splits.map((split) => ({
+      amount: split.amount,
+      intent: split.intent
+    })),
     status: transaction.status
   }));
 

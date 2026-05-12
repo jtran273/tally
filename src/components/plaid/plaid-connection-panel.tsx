@@ -8,7 +8,13 @@ import {
   type PlaidConnectionIssue
 } from "@/lib/plaid/status";
 import { useRouter } from "next/navigation";
-import { usePlaidLink, type PlaidLinkOnSuccessMetadata } from "react-plaid-link";
+import {
+  usePlaidLink,
+  type PlaidLinkError,
+  type PlaidLinkOnEventMetadata,
+  type PlaidLinkOnExitMetadata,
+  type PlaidLinkOnSuccessMetadata
+} from "react-plaid-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type PlaidEnvironment = "sandbox" | "production";
@@ -133,6 +139,49 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   return body as T;
+}
+
+function buildPlaidExitDiagnostic(error: PlaidLinkError | null, metadata: PlaidLinkOnExitMetadata) {
+  return {
+    displayMessage: error?.display_message || null,
+    errorCode: error?.error_code || null,
+    errorMessage: error?.error_message || null,
+    errorType: error?.error_type || null,
+    institutionId: metadata.institution?.institution_id ?? null,
+    institutionName: metadata.institution?.name ?? null,
+    linkSessionId: metadata.link_session_id || null,
+    requestId: metadata.request_id || null,
+    status: metadata.status || null
+  };
+}
+
+function buildPlaidEventDiagnostic(eventName: string, metadata: PlaidLinkOnEventMetadata) {
+  return {
+    errorCode: metadata.error_code,
+    errorMessage: metadata.error_message,
+    errorType: metadata.error_type,
+    eventName,
+    exitStatus: metadata.exit_status,
+    institutionId: metadata.institution_id,
+    institutionName: metadata.institution_name,
+    linkSessionId: metadata.link_session_id,
+    requestId: metadata.request_id,
+    viewName: metadata.view_name
+  };
+}
+
+function formatPlaidExitMessage(diagnostic: ReturnType<typeof buildPlaidExitDiagnostic>) {
+  const details = [
+    diagnostic.errorType ? `type ${diagnostic.errorType}` : null,
+    diagnostic.errorCode ? `code ${diagnostic.errorCode}` : null,
+    diagnostic.requestId ? `request ${diagnostic.requestId}` : null,
+    diagnostic.linkSessionId ? `session ${diagnostic.linkSessionId}` : null,
+    diagnostic.institutionName ? `institution ${diagnostic.institutionName}` : null
+  ].filter(Boolean);
+
+  return details.length > 0
+    ? `Plaid Link closed before the institution was connected. ${details.join("; ")}.`
+    : "Plaid Link closed before the institution was connected.";
 }
 
 export function PlaidConnectionPanel() {
@@ -291,11 +340,18 @@ export function PlaidConnectionPanel() {
   }, [router]);
 
   const { open, ready } = usePlaidLink({
-    onExit: (linkError) => {
+    onEvent: (eventName, metadata) => {
+      if (metadata.error_code || eventName === "ERROR") {
+        console.warn("Plaid Link event", buildPlaidEventDiagnostic(eventName, metadata));
+      }
+    },
+    onExit: (linkError, metadata) => {
       setOpenRequested(false);
       setRepairConnectionId(null);
       if (linkError) {
-        setError("Plaid Link closed before the institution was connected.");
+        const diagnostic = buildPlaidExitDiagnostic(linkError, metadata);
+        console.warn("Plaid Link exited", diagnostic);
+        setError(formatPlaidExitMessage(diagnostic));
       }
     },
     onSuccess: (publicToken, metadata) => {
