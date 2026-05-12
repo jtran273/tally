@@ -165,6 +165,7 @@ function assertMonthlyCashflowRunway(): true {
     ],
     transactions: [
       transaction({ amount: 5000, category: "Income", date: "2026-05-01", id: "tx-income", merchant: "Payroll" }),
+      transaction({ amount: 25, category: "Reimbursements", date: "2026-05-02", id: "tx-reimbursement", intent: "reimbursable", merchant: "Chris reimbursement" }),
       transaction({ amount: -120, date: "2026-05-03", id: "tx-groceries", merchant: "Market" }),
       transaction({ amount: -999, date: "2026-05-04", id: "tx-transfer", intent: "transfer", merchant: "Card Payment" }),
       transaction({ amount: -75, date: "2026-04-30", id: "tx-last-month", merchant: "Cafe" })
@@ -176,7 +177,7 @@ function assertMonthlyCashflowRunway(): true {
     summary.currentMonth.spending !== 120 ||
     summary.currentMonth.netCashflow !== 4880
   ) {
-    throw new Error("Expected monthly income, spending, and net cashflow to exclude transfers.");
+    throw new Error("Expected monthly income, spending, and net cashflow to exclude transfers and linked reimbursements.");
   }
 
   if (summary.confirmedRecurringMonthlyLoad !== 2410 || summary.confirmedRecurringCount !== 2) {
@@ -237,6 +238,7 @@ function assertUpcomingCashflowTimeline(): true {
       transaction({ amount: 5000, category: "Income", date: "2026-04-17", id: "tx-payroll-1", merchant: "Payroll", recurring: true }),
       transaction({ amount: 5000, category: "Income", date: "2026-05-01", id: "tx-payroll-2", merchant: "Payroll", recurring: true }),
       transaction({ amount: 200, category: "Income", date: "2026-05-02", id: "tx-transfer", intent: "transfer", merchant: "Transfer", recurring: true }),
+      transaction({ amount: 25, category: "Reimbursements", date: "2026-05-02", id: "tx-reimbursement", intent: "reimbursable", merchant: "Chris reimbursement", recurring: true }),
       transaction({ amount: -20, date: "2026-05-03", id: "tx-bill", merchant: "Cloud App", recurring: true })
     ]
   });
@@ -246,8 +248,12 @@ function assertUpcomingCashflowTimeline(): true {
     throw new Error("Expected recurring income history to project deterministic upcoming deposits.");
   }
 
-  if (eventLabels.some((label) => label.includes("Transfer")) || eventLabels.some((label) => label.includes("Paused App"))) {
-    throw new Error("Expected transfer income and paused recurring rows to stay out of upcoming cashflow.");
+  if (
+    eventLabels.some((label) => label.includes("Transfer")) ||
+    eventLabels.some((label) => label.includes("Chris reimbursement")) ||
+    eventLabels.some((label) => label.includes("Paused App"))
+  ) {
+    throw new Error("Expected transfer income, reimbursement inflows, and paused recurring rows to stay out of upcoming cashflow.");
   }
 
   if (summary.billTotal !== 2600 || summary.incomeTotal !== 10000 || summary.netTotal !== 7400) {

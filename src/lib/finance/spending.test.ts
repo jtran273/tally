@@ -135,6 +135,15 @@ function assertSpendingFixtures(): true {
       merchant: "Payroll"
     }),
     transaction({
+      amount: 25,
+      category: "Reimbursements",
+      categoryId: "category-reimbursements",
+      date: "2026-05-03",
+      id: "tx-reimbursement-inflow",
+      intent: "reimbursable",
+      merchant: "Chris reimbursement"
+    }),
+    transaction({
       amount: -60,
       category: "Groceries",
       categoryId: "category-groceries",
@@ -182,7 +191,7 @@ function assertSpendingFixtures(): true {
   ], { asOfDate: "2026-05-06" });
 
   if (summary.currentWeek.spending !== 522 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2478) {
-    throw new Error("Expected current week cashflow to count spend, income, and transfer exclusions deterministically.");
+    throw new Error("Expected current week cashflow to count spend, income, transfer exclusions, and reimbursement inflow exclusions deterministically.");
   }
 
   if (summary.currentWeek.reimbursable !== 75 || summary.currentWeek.reimbursementOutstanding !== 75) {

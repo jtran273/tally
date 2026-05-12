@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   getEnrichedTransactionRow,
+  linkReimbursementReceivedTransaction,
   listCategories,
   listTransactions,
   recordAuditEvent,
+  unlinkReimbursementReceivedTransaction,
   updateTransactionEnrichment,
   upsertMerchantRule,
   type CategoryRecord,
@@ -24,6 +26,11 @@ export interface TransactionEditActionState {
 }
 
 export interface MerchantCleanupActionState {
+  error?: string;
+  message?: string;
+}
+
+export interface ReimbursementLinkActionState {
   error?: string;
   message?: string;
 }
@@ -118,6 +125,19 @@ function cleanupErrorState(error: unknown): MerchantCleanupActionState {
   return {
     error: error instanceof Error ? error.message : "Unable to apply merchant cleanup."
   };
+}
+
+function reimbursementLinkErrorState(error: unknown): ReimbursementLinkActionState {
+  return {
+    error: error instanceof Error ? error.message : "Unable to update reimbursement link."
+  };
+}
+
+function cleanOptionalAmount(value: FormDataEntryValue | null) {
+  const text = cleanString(value, 40);
+  if (!text) return undefined;
+  const amount = Number.parseFloat(text);
+  return Number.isFinite(amount) ? amount : null;
 }
 
 function merchantText(transaction: TransactionRecord) {
@@ -277,6 +297,86 @@ export async function applyMerchantCleanupAction(
     };
   } catch (error) {
     return cleanupErrorState(error);
+  }
+}
+
+export async function linkReimbursementAction(
+  _state: ReimbursementLinkActionState,
+  formData: FormData
+): Promise<ReimbursementLinkActionState> {
+  try {
+    const reimbursementId = cleanString(formData.get("reimbursementId"), 80);
+    if (!uuidPattern.test(reimbursementId)) return { error: "Invalid reimbursement id." };
+
+    const receivedTransactionId = cleanString(formData.get("receivedTransactionId"), 80);
+    if (!uuidPattern.test(receivedTransactionId)) return { error: "Invalid received transaction id." };
+
+    const appliedAmount = cleanOptionalAmount(formData.get("appliedAmount"));
+    if (appliedAmount === null) return { error: "Enter a valid reimbursement amount." };
+
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to link reimbursements." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to link real reimbursements." };
+
+    const reimbursement = await linkReimbursementReceivedTransaction(context.client, context.userId, {
+      actorId: context.userId,
+      appliedAmount,
+      receivedTransactionId,
+      reimbursementId,
+      source: "transactions_reimbursement_link_action"
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transactions");
+    revalidatePath(`/transactions/${reimbursement.transactionId}`);
+    revalidatePath(`/transactions/${receivedTransactionId}`);
+
+    return {
+      message: reimbursement.status === "received"
+        ? "Reimbursement linked and marked received."
+        : "Partial reimbursement linked with the outstanding balance preserved."
+    };
+  } catch (error) {
+    return reimbursementLinkErrorState(error);
+  }
+}
+
+export async function unlinkReimbursementAction(
+  _state: ReimbursementLinkActionState,
+  formData: FormData
+): Promise<ReimbursementLinkActionState> {
+  try {
+    const reimbursementId = cleanString(formData.get("reimbursementId"), 80);
+    if (!uuidPattern.test(reimbursementId)) return { error: "Invalid reimbursement id." };
+
+    const restoredIntentValue = cleanString(formData.get("restoredReceivedTransactionIntent"), 24) as TransactionIntent;
+    const restoredReceivedTransactionIntent = restoredIntentValue
+      ? restoredIntentValue
+      : undefined;
+    if (restoredReceivedTransactionIntent && !transactionIntents.has(restoredReceivedTransactionIntent)) {
+      return { error: "Choose a valid restored transaction intent." };
+    }
+
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to unlink reimbursements." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to unlink real reimbursements." };
+
+    const reimbursement = await unlinkReimbursementReceivedTransaction(context.client, context.userId, {
+      actorId: context.userId,
+      reimbursementId,
+      restoredReceivedTransactionIntent,
+      source: "transactions_reimbursement_unlink_action"
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transactions");
+    revalidatePath(`/transactions/${reimbursement.transactionId}`);
+
+    return { message: "Reimbursement link removed and audit history recorded." };
+  } catch (error) {
+    return reimbursementLinkErrorState(error);
   }
 }
 

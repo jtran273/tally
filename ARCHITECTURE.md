@@ -141,6 +141,8 @@ Review reason copy and ordering live in `src/lib/review/reasons.ts`; the Transac
 
 Users can accept ready suggestions individually, dismiss non-peer-to-peer review items, request one AI suggestion at a time, edit the enriched transaction inline, or resolve peer-to-peer items with structured split allocation. Peer-to-peer items remain manual-only and require an explanation before they leave the queue. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
 
+The reimbursement schema also supports linking a received positive inflow to an existing reimbursement record through app-owned enriched rows. Linking updates only `reimbursement_records` and the received inflow's enriched intent, leaving `raw_transactions` unchanged. Linked reimbursement inflows use intent `reimbursable`, so spending reports continue to exclude reimbursable portions and income reports do not treat received reimbursements as earned income. Link and unlink helpers write `audit_events` with before/after reimbursement snapshots, the received transaction id, applied amount, outstanding amount, and source metadata.
+
 Accepted AI cleanups and review-page manual edits can upsert reusable merchant rules for future imports when the normalized merchant, category, and intent are specific enough. Rule creation writes audit events and still keeps raw Plaid rows immutable. The review page also auto-resolves stale `missing-category` review items when the enriched transaction already has an exact category match.
 
 ## Recurring Flow

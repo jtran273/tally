@@ -69,7 +69,13 @@ function assertReimbursementFixtures(): true {
   }
 
   const reimbursedSummary = summarizeTransactionReimbursement(tx(-75, "reimbursable", [], [
-    reimbursement({ expectedAmount: 75, receivedAmount: 75, receivedAt: "2026-05-20", status: "received" })
+    reimbursement({
+      expectedAmount: 75,
+      receivedAmount: 75,
+      receivedAt: "2026-05-20",
+      receivedTransactionId: "tx-reimbursement-inflow",
+      status: "received"
+    })
   ]));
 
   if (reimbursedSummary.state !== "reimbursed" || reimbursedSummary.outstandingAmount !== 0) {

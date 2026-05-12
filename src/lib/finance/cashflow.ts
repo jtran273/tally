@@ -6,6 +6,7 @@ import type {
 } from "@/lib/db";
 import type { RecurringCandidate, RecurringPriceChangeSignal } from "@/lib/recurring";
 import { summarizeSync, type SyncSummary } from "./balances";
+import { isReportableIncomeIntent } from "./reimbursement-linking";
 import { buildSpendingInsightSummary, type SpendingWindowSummary } from "./spending";
 
 export interface RecurringPriceChangeInsight {
@@ -148,7 +149,7 @@ function recurringIncomeGroups(transactions: readonly TransactionRecord[]) {
     if (
       transaction.amount <= 0 ||
       !transaction.recurring ||
-      transaction.intent === "transfer" ||
+      !isReportableIncomeIntent(transaction.intent) ||
       transaction.status !== "posted"
     ) {
       return;

@@ -31,6 +31,7 @@ import type {
   TransactionSplitRow
 } from "./types";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
+import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
 
 interface QueryError {
   message: string;
@@ -153,6 +154,7 @@ type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
 type MerchantRuleInsert = Database["public"]["Tables"]["merchant_rules"]["Insert"];
 type RecurringExpenseInsert = Database["public"]["Tables"]["recurring_expenses"]["Insert"];
 type RecurringExpenseUpdate = Database["public"]["Tables"]["recurring_expenses"]["Update"];
+type ReimbursementRecordUpdate = Database["public"]["Tables"]["reimbursement_records"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
 type TransactionSplitInsert = Database["public"]["Tables"]["transaction_splits"]["Insert"];
 
@@ -162,6 +164,21 @@ export interface TransactionSplitMutationInput {
   intent: TransactionIntent;
   label: string;
   notes?: string | null;
+}
+
+export interface LinkReimbursementInput {
+  appliedAmount?: number;
+  actorId?: string | null;
+  receivedTransactionId: string;
+  reimbursementId: string;
+  source?: string;
+}
+
+export interface UnlinkReimbursementInput {
+  actorId?: string | null;
+  reimbursementId: string;
+  restoredReceivedTransactionIntent?: TransactionIntent;
+  source?: string;
 }
 
 export interface MerchantRuleMutationInput {
@@ -288,6 +305,20 @@ function toReimbursementRecord(row: ReimbursementRecordRow): ReimbursementRecord
     dueDate: row.due_date,
     receivedAt: row.received_at,
     notes: row.notes
+  };
+}
+
+function reimbursementAuditSnapshot(row: ReimbursementRecordRow): Record<string, Json> {
+  return {
+    counterparty: row.counterparty,
+    dueDate: row.due_date,
+    expectedAmount: row.expected_amount,
+    receivedAmount: row.received_amount,
+    receivedAt: row.received_at,
+    receivedTransactionId: row.received_transaction_id,
+    splitId: row.split_id,
+    status: row.status,
+    transactionId: row.enriched_transaction_id
   };
 }
 
@@ -996,6 +1027,134 @@ export async function updateTransactionEnrichment(
   );
 
   return transaction;
+}
+
+async function getReimbursementRecordRow(
+  client: FinanceSupabaseClient,
+  userId: string,
+  reimbursementId: string
+): Promise<ReimbursementRecordRow> {
+  const result = await client
+    .from("reimbursement_records")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", reimbursementId)
+    .single();
+
+  return expectData(result, "Load reimbursement record");
+}
+
+export async function linkReimbursementReceivedTransaction(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: LinkReimbursementInput
+): Promise<ReimbursementRecord> {
+  const before = await getReimbursementRecordRow(client, userId, input.reimbursementId);
+  const receivedTransaction = await getTransactionById(client, userId, input.receivedTransactionId);
+
+  if (!receivedTransaction) {
+    throw new FinanceDbError("Link reimbursement received transaction", { message: "Received transaction was not found." });
+  }
+  if (receivedTransaction.intent === "transfer") {
+    throw new FinanceDbError("Link reimbursement received transaction", { message: "Transfers cannot be linked as reimbursement income." });
+  }
+
+  const decision = buildReimbursementLinkDecision(
+    toReimbursementRecord(before),
+    receivedTransaction,
+    { appliedAmount: input.appliedAmount }
+  );
+  const update: ReimbursementRecordUpdate = {
+    received_amount: decision.appliedAmount,
+    received_at: decision.receivedAt,
+    received_transaction_id: receivedTransaction.id,
+    status: decision.status,
+    updated_at: new Date().toISOString()
+  };
+
+  const result = await client
+    .from("reimbursement_records")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", before.id)
+    .select("*")
+    .single();
+  const after = expectData(result, "Update reimbursement received transaction");
+
+  if (receivedTransaction.intent !== "reimbursable") {
+    await updateTransactionEnrichment(client, userId, receivedTransaction.id, {
+      intent: "reimbursable",
+      source: "manual"
+    });
+  }
+
+  await recordAuditEvent(client, userId, {
+    action: "reimbursement.inflow_linked",
+    actorId: input.actorId ?? userId,
+    afterData: reimbursementAuditSnapshot(after),
+    beforeData: reimbursementAuditSnapshot(before),
+    entityId: after.id,
+    entityTable: "reimbursement_records",
+    metadata: {
+      appliedAmount: decision.appliedAmount,
+      outstandingAmount: decision.outstandingAmount,
+      receivedTransactionAmount: receivedTransaction.amount,
+      receivedTransactionId: receivedTransaction.id,
+      receivedTransactionIntentBefore: receivedTransaction.intent,
+      source: input.source ?? "reimbursement_link_helper",
+      transactionId: after.enriched_transaction_id
+    }
+  });
+
+  return toReimbursementRecord(after);
+}
+
+export async function unlinkReimbursementReceivedTransaction(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: UnlinkReimbursementInput
+): Promise<ReimbursementRecord> {
+  const before = await getReimbursementRecordRow(client, userId, input.reimbursementId);
+  const receivedTransactionId = before.received_transaction_id;
+  const update: ReimbursementRecordUpdate = {
+    received_amount: 0,
+    received_at: null,
+    received_transaction_id: null,
+    status: "expected",
+    updated_at: new Date().toISOString()
+  };
+  const result = await client
+    .from("reimbursement_records")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", before.id)
+    .select("*")
+    .single();
+  const after = expectData(result, "Unlink reimbursement received transaction");
+
+  if (receivedTransactionId && input.restoredReceivedTransactionIntent) {
+    await updateTransactionEnrichment(client, userId, receivedTransactionId, {
+      intent: input.restoredReceivedTransactionIntent,
+      source: "manual"
+    });
+  }
+
+  await recordAuditEvent(client, userId, {
+    action: "reimbursement.inflow_unlinked",
+    actorId: input.actorId ?? userId,
+    afterData: reimbursementAuditSnapshot(after),
+    beforeData: reimbursementAuditSnapshot(before),
+    entityId: after.id,
+    entityTable: "reimbursement_records",
+    metadata: {
+      receivedTransactionId,
+      restoredReceivedTransactionIntent: input.restoredReceivedTransactionIntent ?? null,
+      source: input.source ?? "reimbursement_link_helper",
+      transactionId: after.enriched_transaction_id
+    }
+  });
+
+  return toReimbursementRecord(after);
 }
 
 export async function recordAuditEvent(

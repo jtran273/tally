@@ -1,4 +1,5 @@
 import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
+import { isReportableIncomeIntent } from "./reimbursement-linking";
 import { summarizeTransactionReimbursement } from "./reimbursements";
 
 const SPENDING_INTENTS = new Set<TransactionIntent>(["business", "personal", "shared"]);
@@ -199,7 +200,7 @@ function summarizeWindow(
       } else {
         summary.trustedSpending += spendingAmount;
       }
-      if (transaction.amount > 0 && transaction.intent !== "transfer") summary.income += transaction.amount;
+      if (transaction.amount > 0 && isReportableIncomeIntent(transaction.intent)) summary.income += transaction.amount;
       return summary;
     },
     {

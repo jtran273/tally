@@ -12,6 +12,7 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import { isReportableIncomeIntent } from "@/lib/finance/reimbursement-linking";
 import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
 import {
   Clock3,
@@ -806,7 +807,7 @@ function monthBoundsForOffset(asOfDate: string, monthOffset: number) {
 }
 
 function dashboardTransactionIncomeAmount(transaction: DashboardBalanceTransaction) {
-  if (transaction.amount <= 0 || transaction.intent === "transfer") return 0;
+  if (transaction.amount <= 0 || !isReportableIncomeIntent(transaction.intent)) return 0;
   return roundMoney(transaction.amount);
 }
 
