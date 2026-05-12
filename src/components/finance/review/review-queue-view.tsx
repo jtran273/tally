@@ -1,37 +1,17 @@
 import type { AiSuggestionProviderKind } from "@/lib/ai/types";
-import type { AuditEventRow, CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
-import { summarizeTransactionReimbursement } from "@/lib/finance/reimbursements";
+import type { CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
-import {
-  buildAcceptedAiMerchantRuleCandidate,
-  buildMerchantRuleImpactPreview,
-  type MerchantRuleImpactPreview
-} from "@/lib/merchant-rules";
-import {
-  getReviewReasonCopy,
-  isPeerToPeerReview,
-  REVIEW_REASON_ORDER
-} from "@/lib/review/reasons";
-import { buildBulkReviewPlan } from "@/lib/review/bulk-actions";
-import {
-  buildAiBulkPreviewMetrics,
-  deriveReviewProductivityMetrics,
-  type ReviewProductivityGroup
-} from "@/lib/review/productivity-metrics";
+import { isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
 import {
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   CircleDollarSign,
-  HandCoins,
   ShieldCheck,
-  TriangleAlert,
-  type LucideIcon
+  Sparkles,
+  TriangleAlert
 } from "lucide-react";
 import Link from "next/link";
-import { ReviewAiActions } from "./review-ai-actions";
-import { BulkReviewActions } from "./bulk-review-actions";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
@@ -39,23 +19,12 @@ import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
   aiProviderKind: AiSuggestionProviderKind;
-  allReviewItems: ReviewQueueItem[];
-  auditEvents: AuditEventRow[];
   categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
   isSignedIn: boolean;
   reviewItems: ReviewQueueItem[];
   transactions: TransactionRecord[];
-}
-
-interface ReviewTotals {
-  openItems: number;
-  reimbursementOutstanding: number;
-  reimbursableOpenAmount: number;
-  trustedSpending: number;
-  unresolvedSpending: number;
-  unresolvedTransactions: number;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -68,7 +37,6 @@ const moneyFormatter = new Intl.NumberFormat("en-US", {
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   month: "short",
-  weekday: "short",
   year: "numeric"
 });
 
@@ -99,377 +67,76 @@ function formatConfidence(value: number | null | undefined) {
   return value === null || value === undefined ? "Unknown" : `${Math.round(value * 100)}%`;
 }
 
-function uniqueOpenTransactions(reviewItems: ReviewQueueItem[]) {
-  return [...new Map(reviewItems.map((item) => [item.transaction.id, item.transaction])).values()];
-}
-
-function calculateTotals(reviewItems: ReviewQueueItem[], transactions: TransactionRecord[]): ReviewTotals {
-  const openTransactions = uniqueOpenTransactions(reviewItems);
-  const openTransactionIds = new Set(openTransactions.map((transaction) => transaction.id));
-
-  return {
-    openItems: reviewItems.length,
-    reimbursementOutstanding: openTransactions.reduce((sum, transaction) => {
-      const reimbursement = summarizeTransactionReimbursement(transaction);
-      return sum + reimbursement.outstandingAmount;
-    }, 0),
-    reimbursableOpenAmount: openTransactions.reduce((sum, transaction) => {
-      const reimbursement = summarizeTransactionReimbursement(transaction);
-      return sum + reimbursement.reimbursableAmount;
-    }, 0),
-    trustedSpending: transactions
-      .filter((transaction) => !openTransactionIds.has(transaction.id))
-      .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
-    unresolvedSpending: openTransactions
-      .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0),
-    unresolvedTransactions: openTransactions.length
-  };
-}
-
-function ReimbursementContext({ transaction }: { transaction: TransactionRecord }) {
-  const reimbursement = summarizeTransactionReimbursement(transaction);
-  if (reimbursement.state === "none") return null;
-
-  return (
-    <div className={styles.reimbursementContext}>
-      <CircleDollarSign size={14} aria-hidden />
-      <div>
-        <strong>
-          {formatMoney(reimbursement.outstandingAmount)} outstanding reimbursement
-        </strong>
-        <span>
-          {formatMoney(reimbursement.reimbursableAmount)} is marked reimbursable and is excluded from trusted spending.
-          {reimbursement.receivedAmount > 0 ? ` ${formatMoney(reimbursement.receivedAmount)} has already been received.` : ""}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function groupedReviewItems(reviewItems: ReviewQueueItem[]) {
-  return REVIEW_REASON_ORDER
-    .map((reason) => ({
-      items: reviewItems.filter((item) => item.reason === reason),
-      reason
-    }))
-    .filter((group) => group.items.length > 0);
-}
-
-function SummaryCard({
-  detail,
-  icon: Icon,
-  tone,
-  value
-}: {
-  detail: string;
-  icon: LucideIcon;
-  tone?: "trusted" | "warn";
-  value: string;
-}) {
-  return (
-    <div className={`${styles.summaryCard} ${tone ? styles[tone] : ""}`}>
-      <span className={styles.summaryLabel}>
-        <Icon size={13} aria-hidden />
-        {detail}
-      </span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function formatGroupList(groups: ReviewProductivityGroup[]) {
-  if (groups.length === 0) return "No history yet";
-  return groups.map((group) => `${group.label} (${group.count})`).join(", ");
-}
-
-function ProductivityPanel({
-  metrics,
-  preview
-}: {
-  metrics: ReturnType<typeof deriveReviewProductivityMetrics>;
-  preview: ReturnType<typeof buildAiBulkPreviewMetrics>;
-}) {
-  const skippedCount = Object.values(preview.skipped).reduce((sum, count) => sum + count, 0);
-
-  return (
-    <section className={styles.aiCleanupPanel} aria-label="AI review productivity metrics">
-      <div>
-        <div className={styles.eyebrow}>
-          <BarChart3 size={13} aria-hidden />
-          Review productivity
-          <span className={styles.providerBadge}>Safe metrics</span>
-        </div>
-        <h2>{metrics.savingsScore.toLocaleString("en-US")} reviews saved or avoided</h2>
-        <p>
-          Accepted AI: {metrics.acceptedSuggestions.toLocaleString("en-US")}.
-          Dismissed: {metrics.dismissedSuggestions.toLocaleString("en-US")}.
-          Edited manually: {metrics.editedReviews.toLocaleString("en-US")}.
-          Repeated avoided: {metrics.repeatedReviewsAvoided.toLocaleString("en-US")}.
-        </p>
-
-        <div className={styles.rawContext}>
-          <div>
-            <span>Reason</span>
-            <strong>{formatGroupList(metrics.byReason)}</strong>
-          </div>
-          <div>
-            <span>Category</span>
-            <strong>{formatGroupList(metrics.byCategory)}</strong>
-          </div>
-          <div>
-            <span>Merchant</span>
-            <strong>{formatGroupList(metrics.byMerchant)}</strong>
-          </div>
-          <div>
-            <span>Provider</span>
-            <strong>{formatGroupList(metrics.byProvider)}</strong>
-          </div>
-        </div>
-      </div>
-
-      <div className={styles.lockedPanel}>
-        <strong>{preview.acceptReady.toLocaleString("en-US")} safe bulk candidates</strong>
-        <span>
-          Preview only: {preview.eligible.toLocaleString("en-US")} AI-eligible open reviews checked,
-          {` ${skippedCount.toLocaleString("en-US")} skipped`} for peer-to-peer, missing, or stale suggestions.
-        </span>
-      </div>
-    </section>
-  );
-}
-
-function ReasonGuide() {
-  return (
-    <section className={styles.reasonGuide} aria-label="Review reason guide">
-      {REVIEW_REASON_ORDER.map((reason) => {
-        const copy = getReviewReasonCopy(reason);
-        return (
-          <div className={styles.reasonGuideItem} key={reason}>
-            <span className={`${styles.reasonDot} ${styles[`reason-${reason}`]}`} />
-            <div>
-              <strong>{copy.shortLabel}</strong>
-              <span>{copy.description}</span>
-            </div>
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
-function SuggestionRows({ item }: { item: ReviewQueueItem }) {
-  const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
-  const hasSuggestion = hasReviewSuggestionValue(suggestion);
-
-  return (
-    <div className={styles.suggestionGrid}>
-      <div className={styles.suggestionColumn}>
-        <span className={styles.columnLabel}>Current enrichment</span>
-        <dl className={styles.detailList}>
-          <div>
-            <dt>Category</dt>
-            <dd>{item.transaction.category}</dd>
-          </div>
-          <div>
-            <dt>Intent</dt>
-            <dd>{intentLabels[item.transaction.intent]}</dd>
-          </div>
-          <div>
-            <dt>Recurring</dt>
-            <dd>{item.transaction.recurring ? "Yes" : "No"}</dd>
-          </div>
-          <div>
-            <dt>Confidence</dt>
-            <dd>{formatConfidence(item.transaction.confidence)}</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div className={styles.suggestionColumn}>
-        <span className={styles.columnLabel}>Suggested change</span>
-        {hasSuggestion ? (
-          <dl className={styles.detailList}>
-            <div>
-              <dt>Category</dt>
-              <dd>{suggestion.categoryName ?? "Keep current"}</dd>
-            </div>
-            <div>
-              <dt>Intent</dt>
-              <dd>{suggestion.intent ? intentLabels[suggestion.intent] : "Keep current"}</dd>
-            </div>
-            <div>
-              <dt>Recurring</dt>
-              <dd>{suggestion.recurring === undefined ? "Keep current" : suggestion.recurring ? "Yes" : "No"}</dd>
-            </div>
-            <div>
-              <dt>Confidence</dt>
-              <dd>{formatConfidence(suggestion.confidence)}</dd>
-            </div>
-          </dl>
-        ) : (
-          <div className={styles.emptySuggestion}>No accept-ready suggestion is stored for this review item.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MerchantRuleImpact({
-  preview
-}: {
-  preview: MerchantRuleImpactPreview | null;
-}) {
-  if (!preview) return null;
-
-  return (
-    <div className={styles.ruleImpactPanel}>
-      <div className={styles.ruleImpactHead}>
-        <div>
-          <span className={styles.columnLabel}>Merchant rule preview</span>
-          <strong>{preview.matchedCount.toLocaleString("en-US")} recent matches</strong>
-        </div>
-        <span className={preview.changedCount > 0 ? styles.readyPill : styles.skipPill}>
-          {preview.changedCount.toLocaleString("en-US")} would change
-        </span>
-      </div>
-      <p>
-        Accepting this suggestion would create a rule for {preview.proposedMerchantName}:
-        {" "}{preview.proposedCategoryName}, {intentLabels[preview.proposedIntent].toLowerCase()}
-        {preview.proposedRecurring === null ? "" : `, recurring ${preview.proposedRecurring ? "yes" : "no"}`}.
-        {preview.reviewOpenCount > 0 ? ` ${preview.reviewOpenCount.toLocaleString("en-US")} matched rows are still in review.` : ""}
-      </p>
-      {preview.transactions.length > 0 ? (
-        <div className={styles.ruleImpactRows} aria-label="Merchant rule recent transaction impact">
-          {preview.transactions.map((transaction) => (
-            <div className={styles.ruleImpactRow} key={transaction.transactionId}>
-              <div>
-                <strong>{transaction.merchantName}</strong>
-                <span>{formatDate(transaction.date)} | {formatSignedMoney(transaction.amount)}</span>
-              </div>
-              <div>
-                <span>{transaction.currentCategoryName} -&gt; {transaction.suggestedCategoryName}</span>
-                <span>
-                  {intentLabels[transaction.currentIntent]} -&gt; {intentLabels[transaction.suggestedIntent]}
-                  {" | "}Recurring {transaction.currentRecurring ? "yes" : "no"} -&gt; {transaction.suggestedRecurring ? "yes" : "no"}
-                </span>
-              </div>
-              <span className={transaction.wouldChange ? styles.readyPill : styles.skipPill}>
-                {transaction.wouldChange ? "Change" : "No change"}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <span className={styles.emptySuggestion}>
-          No other recent transactions match this proposed rule.
-        </span>
-      )}
-    </div>
-  );
-}
-
-function RawContext({ item }: { item: ReviewQueueItem }) {
-  return (
-    <div className={styles.rawContext}>
-      <div>
-        <span>Raw merchant</span>
-        <strong>{item.transaction.plaidMerchant ?? item.transaction.plaidName ?? "Unavailable"}</strong>
-      </div>
-      <div>
-        <span>Raw name</span>
-        <strong>{item.transaction.plaidName ?? "Unavailable"}</strong>
-      </div>
-      <div>
-        <span>Raw category</span>
-        <strong>{item.transaction.plaidCategory ?? "Unavailable"}</strong>
-      </div>
-      <div>
-        <span>Account</span>
-        <strong>
-          {item.transaction.accountName}
-          {item.transaction.accountMask ? ` - ${item.transaction.accountMask}` : ""}
-        </strong>
-      </div>
-      <div>
-        <span>Institution</span>
-        <strong>{item.transaction.institutionName}</strong>
-      </div>
-    </div>
-  );
-}
-
 function ReviewCard({
   categories,
-  item,
-  transactions
+  item
 }: {
   categories: CategoryRecord[];
   item: ReviewQueueItem;
-  transactions: TransactionRecord[];
 }) {
-  const copy = getReviewReasonCopy(item.reason);
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
   const peerToPeer = isPeerToPeerReview(item.reason);
   const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
   const canDismiss = !peerToPeer;
-  const ruleCandidate = canAccept
-    ? buildAcceptedAiMerchantRuleCandidate({
-      categories,
-      rawTransaction: {
-        merchant_name: item.transaction.plaidMerchant,
-        name: item.transaction.plaidName
-      },
-      suggestion,
-      transaction: {
-        amount: item.transaction.amount,
-        merchant_name: item.transaction.merchant
-      }
-    })
-    : null;
-  const ruleImpactPreview = ruleCandidate
-    ? buildMerchantRuleImpactPreview({
-      candidate: ruleCandidate,
-      categories,
-      excludeTransactionId: item.transaction.id,
-      transactions
-    })
-    : null;
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
       <div className={styles.reviewCardHead}>
         <div>
-          <div className={styles.reasonLine}>
-            <span className={`${styles.reasonDot} ${styles[`reason-${item.reason}`]}`} />
-            <span>{copy.label}</span>
-          </div>
           <h2>{item.transaction.merchant}</h2>
           <div className={styles.metaLine}>
             <span>{formatDate(item.transaction.date)}</span>
-            <span>{item.transaction.status}</span>
-            <span>{item.explanation}</span>
+            <span>{item.transaction.accountName}</span>
+            <span>{peerToPeer ? "Peer-to-peer" : "Needs review"}</span>
           </div>
         </div>
         <div className={styles.amountBlock}>
           <strong className={item.transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}>
             {formatSignedMoney(item.transaction.amount)}
           </strong>
-          <span>{formatConfidence(item.confidence)} review confidence</span>
+          <span>{formatConfidence(item.confidence)} confidence</span>
         </div>
       </div>
 
-      <div className={styles.reasonCallout}>
-        <TriangleAlert size={14} aria-hidden />
-        <div>
-          <strong>{copy.action}</strong>
-          {suggestion.reason ? <span>{suggestion.reason}</span> : <span>{copy.description}</span>}
+      {peerToPeer ? (
+        <div className={styles.reasonCallout}>
+          <TriangleAlert size={14} aria-hidden />
+          <div>
+            <strong>Explain this peer-to-peer payment.</strong>
+            <span>Venmo, Zelle, Cash App, and PayPal hide the real merchant. Split it into real categories below.</span>
+          </div>
         </div>
-      </div>
-
-      <SuggestionRows item={item} />
-      <MerchantRuleImpact preview={ruleImpactPreview} />
-      <ReimbursementContext transaction={item.transaction} />
-      <RawContext item={item} />
+      ) : hasReviewSuggestionValue(suggestion) ? (
+        <div className={styles.suggestionGrid}>
+          <div className={styles.suggestionColumn}>
+            <span className={styles.columnLabel}>AI suggests</span>
+            <dl className={styles.detailList}>
+              <div>
+                <dt>Category</dt>
+                <dd>{suggestion.categoryName ?? item.transaction.category}</dd>
+              </div>
+              <div>
+                <dt>Intent</dt>
+                <dd>{suggestion.intent ? intentLabels[suggestion.intent] : intentLabels[item.transaction.intent]}</dd>
+              </div>
+              {suggestion.reason ? (
+                <div>
+                  <dt>Why</dt>
+                  <dd>{suggestion.reason}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.reasonCallout}>
+          <TriangleAlert size={14} aria-hidden />
+          <div>
+            <strong>No AI suggestion yet.</strong>
+            <span>Pick a category below to finalize this transaction.</span>
+          </div>
+        </div>
+      )}
 
       <div className={styles.cardActions}>
         {peerToPeer ? (
@@ -481,16 +148,15 @@ function ReviewCard({
             transaction={item.transaction}
           />
         ) : (
-          <ReviewItemActions canAccept={canAccept} canDismiss={canDismiss} reviewItemId={item.id} />
+          <>
+            <ReviewItemActions canAccept={canAccept} canDismiss={canDismiss} reviewItemId={item.id} />
+            <ReviewTransactionEditForm
+              categories={categories}
+              reviewItemId={item.id}
+              transaction={item.transaction}
+            />
+          </>
         )}
-
-        {!peerToPeer ? (
-          <ReviewTransactionEditForm
-            categories={categories}
-            reviewItemId={item.id}
-            transaction={item.transaction}
-          />
-        ) : null}
       </div>
     </article>
   );
@@ -500,8 +166,8 @@ function EmptyQueue() {
   return (
     <div className={styles.emptyState}>
       <CheckCircle2 size={28} aria-hidden />
-      <h2>No open review items</h2>
-      <p>Open review items are generated from persisted Plaid transactions, and none are currently unresolved.</p>
+      <h2>Nothing needs review</h2>
+      <p>All transactions are auto-categorized. New imports will show up here only when AI is uncertain.</p>
       <Link className={styles.secondaryButton} href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />
@@ -512,8 +178,6 @@ function EmptyQueue() {
 
 export function ReviewQueueView({
   aiProviderKind,
-  allReviewItems,
-  auditEvents,
   categories,
   dataError,
   isConfigured,
@@ -522,48 +186,42 @@ export function ReviewQueueView({
   transactions
 }: ReviewQueueViewProps) {
   const canShowQueue = isConfigured && isSignedIn && !dataError;
-  const totals = calculateTotals(reviewItems, transactions);
-  const groups = groupedReviewItems(reviewItems);
-  const bulkPlan = buildBulkReviewPlan(reviewItems);
-  const productivityMetrics = deriveReviewProductivityMetrics({
-    auditEvents,
-    reviewItems: allReviewItems
-  });
-  const aiPreview = buildAiBulkPreviewMetrics(reviewItems, categories);
-  const aiPanelTitle = reviewItems.length === 0
-    ? "No open review items to clean up"
-    : `${aiPreview.acceptReady.toLocaleString("en-US")} accept-ready suggestions`;
-  const aiPanelBody = reviewItems.length === 0
-    ? "AI cleanup runs on open review items. Once Plaid sync creates review work, this panel will stay visible and show exactly what can be generated or bulk-accepted."
-    : `${aiPreview.eligible.toLocaleString("en-US")} review items can receive merchant, category, intent, and recurring suggestions from the configured provider.${aiPreview.skipped["peer-to-peer"] > 0 ? ` ${aiPreview.skipped["peer-to-peer"].toLocaleString("en-US")} peer-to-peer items still need manual explanation.` : ""}${aiProviderKind !== "openai" ? " Suggestions are deterministic (OPENAI_API_KEY is not configured on this deployment)." : ""}`;
+  const openTransactionIds = new Set(reviewItems.map((item) => item.transaction.id));
+  const unresolvedSpending = reviewItems.reduce(
+    (sum, item) => sum + transactionSpendingAmount(item.transaction),
+    0
+  );
+  const trustedSpending = transactions
+    .filter((transaction) => !openTransactionIds.has(transaction.id))
+    .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0);
+
+  const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
+  const aiItems = reviewItems.filter((item) => !isPeerToPeerReview(item.reason));
 
   return (
     <div className={styles.shell}>
       <section className={styles.summaryGrid} aria-label="Review queue summary">
-        <SummaryCard
-          detail="Open review items"
-          icon={TriangleAlert}
-          value={totals.openItems.toLocaleString("en-US")}
-          tone={totals.openItems > 0 ? "warn" : undefined}
-        />
-        <SummaryCard
-          detail="Trusted spending"
-          icon={ShieldCheck}
-          value={formatMoney(totals.trustedSpending)}
-          tone="trusted"
-        />
-        <SummaryCard
-          detail="Unresolved spending"
-          icon={CircleDollarSign}
-          value={formatMoney(totals.unresolvedSpending)}
-          tone={totals.unresolvedSpending > 0 ? "warn" : undefined}
-        />
-        <SummaryCard
-          detail="Reimbursements open"
-          icon={HandCoins}
-          value={`${formatMoney(totals.reimbursementOutstanding)} / ${formatMoney(totals.reimbursableOpenAmount)}`}
-          tone={totals.reimbursementOutstanding > 0 ? "warn" : undefined}
-        />
+        <div className={`${styles.summaryCard} ${reviewItems.length > 0 ? styles.warn : ""}`}>
+          <span className={styles.summaryLabel}>
+            <TriangleAlert size={13} aria-hidden />
+            Needs your input
+          </span>
+          <strong>{reviewItems.length.toLocaleString("en-US")}</strong>
+        </div>
+        <div className={`${styles.summaryCard} ${styles.trusted}`}>
+          <span className={styles.summaryLabel}>
+            <ShieldCheck size={13} aria-hidden />
+            Trusted spending
+          </span>
+          <strong>{formatMoney(trustedSpending)}</strong>
+        </div>
+        <div className={`${styles.summaryCard} ${unresolvedSpending > 0 ? styles.warn : ""}`}>
+          <span className={styles.summaryLabel}>
+            <CircleDollarSign size={13} aria-hidden />
+            Unresolved spending
+          </span>
+          <strong>{formatMoney(unresolvedSpending)}</strong>
+        </div>
       </section>
 
       {!isConfigured ? (
@@ -584,75 +242,44 @@ export function ReviewQueueView({
         </div>
       ) : null}
 
-      {canShowQueue ? (
-        <section className={styles.aiCleanupPanel} aria-label="AI review cleanup">
-          <div>
-            <div className={styles.eyebrow}>
-              AI cleanup
-              <span className={styles.providerBadge} title={aiProviderKind === "openai" ? "OpenAI is configured" : "Using deterministic fallback — set OPENAI_API_KEY to enable AI suggestions"}>
-                {aiProviderKind === "openai" ? "OpenAI" : "Mock fallback"}
-              </span>
-            </div>
-            <h2>{aiPanelTitle}</h2>
-            <p>{aiPanelBody}</p>
-          </div>
-          <div className={styles.aiCleanupActions}>
-            <ReviewAiActions disabled={aiPreview.eligible === 0} eligibleCount={aiPreview.eligible} />
-            <BulkReviewActions plan={bulkPlan} />
-          </div>
-        </section>
+      {canShowQueue && aiProviderKind !== "openai" ? (
+        <div className={styles.notice} role="status">
+          <Sparkles size={13} aria-hidden /> OpenAI is not configured. Set OPENAI_API_KEY to enable automatic
+          categorization. Falling back to deterministic merchant rules.
+        </div>
       ) : null}
-
-      {canShowQueue ? (
-        <ProductivityPanel metrics={productivityMetrics} preview={aiPreview} />
-      ) : null}
-
-      <ReasonGuide />
 
       {!canShowQueue ? null : reviewItems.length === 0 ? (
         <EmptyQueue />
       ) : (
         <div className={styles.queueLayout}>
-          <aside className={styles.groupList} aria-label="Open review groups">
-            <div className={styles.groupListHead}>
-              <strong>{totals.unresolvedTransactions.toLocaleString("en-US")} transactions</strong>
-              <span>Grouped by reason</span>
-            </div>
-            {groups.map((group) => {
-              const copy = getReviewReasonCopy(group.reason);
-              return (
-                <a className={styles.groupLink} href={`#reason-${group.reason}`} key={group.reason}>
-                  <span className={`${styles.reasonDot} ${styles[`reason-${group.reason}`]}`} />
-                  <span>{copy.shortLabel}</span>
-                  <strong>{group.items.length}</strong>
-                </a>
-              );
-            })}
-          </aside>
-
           <div className={styles.reviewGroups}>
-            {groups.map((group) => {
-              const copy = getReviewReasonCopy(group.reason);
-              return (
-                <section className={styles.reviewGroup} id={`reason-${group.reason}`} key={group.reason}>
-                  <div className={styles.reviewGroupHead}>
-                    <div>
-                      <div className={styles.reasonLine}>
-                        <span className={`${styles.reasonDot} ${styles[`reason-${group.reason}`]}`} />
-                        <span>{copy.shortLabel}</span>
-                      </div>
-                      <h2>{copy.label}</h2>
-                    </div>
-                    <span>{group.items.length.toLocaleString("en-US")} open</span>
-                  </div>
-                  <div className={styles.cardStack}>
-                    {group.items.map((item) => (
-                      <ReviewCard categories={categories} item={item} key={item.id} transactions={transactions} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+            {peerToPeerItems.length > 0 ? (
+              <section className={styles.reviewGroup}>
+                <div className={styles.reviewGroupHead}>
+                  <h2>Peer-to-peer ({peerToPeerItems.length})</h2>
+                </div>
+                <div className={styles.cardStack}>
+                  {peerToPeerItems.map((item) => (
+                    <ReviewCard categories={categories} item={item} key={item.id} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {aiItems.length > 0 ? (
+              <section className={styles.reviewGroup}>
+                <div className={styles.reviewGroupHead}>
+                  <h2>AI was uncertain ({aiItems.length})</h2>
+                  <span>Confidence below auto-apply threshold. Review and accept or relabel.</span>
+                </div>
+                <div className={styles.cardStack}>
+                  {aiItems.map((item) => (
+                    <ReviewCard categories={categories} item={item} key={item.id} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         </div>
       )}

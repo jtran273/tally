@@ -6,7 +6,6 @@ import {
   listReviewItems,
   listTransactions,
   updateTransactionEnrichment,
-  type AuditEventRow,
   type CategoryRecord,
   type FinanceSupabaseClient,
   type Json,
@@ -15,8 +14,8 @@ import {
 } from "@/lib/db";
 import { getAiProviderStatus } from "@/lib/ai/server";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { runAiReviewCleanup } from "@/lib/review/auto-cleanup";
 import { planMissingCategoryAutofixes } from "@/lib/review/missing-category-autofix";
-import { listReviewProductivityAuditEvents } from "@/lib/review/productivity-data";
 
 export const dynamic = "force-dynamic";
 
@@ -94,9 +93,7 @@ export default async function ReviewPage() {
   let dataError: string | undefined;
   let isConfigured = false;
   let isSignedIn = false;
-  let auditEvents: AuditEventRow[] = [];
   let categories: CategoryRecord[] = [];
-  let allReviewItems: ReviewQueueItem[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
   const aiStatus = getAiProviderStatus();
@@ -108,21 +105,37 @@ export default async function ReviewPage() {
 
   if (context.client && context.userId) {
     try {
-      [auditEvents, categories, allReviewItems, transactions] = await Promise.all([
-        listReviewProductivityAuditEvents(context.client, context.userId, { limit: 500 }),
+      let allReviewItems: ReviewQueueItem[];
+      [categories, allReviewItems, transactions] = await Promise.all([
         listCategories(context.client, context.userId),
         listReviewItems(context.client, context.userId, "all"),
         listTransactions(context.client, context.userId)
       ]);
+
       const autoFixedCount = await autoFixMissingCategoryReviews(
         context.client,
         context.userId,
         allReviewItems,
         categories
       );
-      if (autoFixedCount > 0) {
-        [auditEvents, allReviewItems, transactions] = await Promise.all([
-          listReviewProductivityAuditEvents(context.client, context.userId, { limit: 500 }),
+
+      let cleanupTouched = false;
+      if (aiStatus.activeKind === "openai") {
+        try {
+          const cleanup = await runAiReviewCleanup({
+            client: context.client,
+            userId: context.userId
+          });
+          cleanupTouched = cleanup.suggestionsStored > 0 || cleanup.autoApplied > 0;
+        } catch (cleanupError) {
+          console.warn("ai_review_cleanup_failed", {
+            error: cleanupError instanceof Error ? cleanupError.message : "Unknown"
+          });
+        }
+      }
+
+      if (autoFixedCount > 0 || cleanupTouched) {
+        [allReviewItems, transactions] = await Promise.all([
           listReviewItems(context.client, context.userId, "all"),
           listTransactions(context.client, context.userId)
         ]);
@@ -136,8 +149,6 @@ export default async function ReviewPage() {
   return (
     <ReviewQueueView
       aiProviderKind={aiStatus.activeKind}
-      allReviewItems={allReviewItems}
-      auditEvents={auditEvents}
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}

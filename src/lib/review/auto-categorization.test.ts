@@ -169,7 +169,7 @@ test("evaluateAutoCategorization leaves low-confidence suggestions for review", 
   assert.equal(result.reason, "low-confidence");
 });
 
-test("evaluateAutoCategorization leaves peer-to-peer and large transactions for review", () => {
+test("evaluateAutoCategorization leaves peer-to-peer transactions for review", () => {
   assert.equal(decision({
     rawTransaction: {
       merchant_name: "Venmo",
@@ -184,16 +184,21 @@ test("evaluateAutoCategorization leaves peer-to-peer and large transactions for 
       user_id: userId
     }
   }).reason, "peer-to-peer");
+});
 
-  assert.equal(decision({
+test("evaluateAutoCategorization auto-applies high-confidence large transactions", () => {
+  const result = decision({
     transaction: {
-      amount: -500,
+      amount: -750,
       id: "tx-large",
       merchant_name: "OpenAI",
       status: "posted",
       user_id: userId
     }
-  }).reason, "large-amount");
+  });
+
+  assert.equal(result.shouldApply, true);
+  assert.equal(result.patch?.categoryName, "Software / AI Tools");
 });
 
 test("evaluateAutoCategorization keeps manual-intent and unknown categories out of auto apply", () => {

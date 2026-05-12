@@ -14,10 +14,9 @@ import {
   type NormalizedReviewSuggestion
 } from "./suggestions";
 
-export const AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD = 0.93;
-export const AUTO_CATEGORIZATION_LARGE_AMOUNT_LIMIT = 500;
+export const AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD = 0.7;
 
-const AUTO_APPLY_REVIEW_REASONS = new Set<ReviewReason>(["missing-category", "low-confidence"]);
+const AUTO_APPLY_REVIEW_REASONS = new Set<ReviewReason>(["missing-category", "low-confidence", "large"]);
 const MANUAL_INTENTS = new Set<TransactionIntent>(["shared", "reimbursable", "transfer"]);
 const PEER_TO_PEER_PATTERN = /\b(apple cash|cash app|cashapp|paypal|venmo|zelle)\b/i;
 
@@ -77,7 +76,6 @@ export function evaluateAutoCategorization(input: AutoCategorizationInput): Auto
   if (!hasReviewSuggestionValue(suggestion)) return fail("no-accept-ready-suggestion");
   if (input.transaction.status !== "posted" || input.rawTransaction?.status !== "posted") return fail("pending-transaction");
   if (PEER_TO_PEER_PATTERN.test(peerToPeerEvidence(input))) return fail("peer-to-peer");
-  if (Math.abs(input.transaction.amount) >= AUTO_CATEGORIZATION_LARGE_AMOUNT_LIMIT) return fail("large-amount");
   if (suggestion.confidence === undefined || suggestion.confidence < AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD) {
     return fail("low-confidence");
   }

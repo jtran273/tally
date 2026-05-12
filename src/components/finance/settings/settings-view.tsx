@@ -440,51 +440,6 @@ export function SettingsView({
       <section className={styles.panel}>
         <div className={styles.panelHead}>
           <div>
-            <div className={styles.eyebrow}>AI learning loop</div>
-            <h2>Category cleanup coverage</h2>
-          </div>
-          <span className={`${styles.statusPill} ${categoryConfidence.cleanupCandidateCount === 0 ? styles.statusReady : styles.statusFallback}`}>
-            <BrainCircuit size={13} aria-hidden />
-            {categoryConfidence.categoryCoveragePercent.toFixed(1)}% trusted
-          </span>
-        </div>
-        <div className={styles.metricGrid}>
-          <SettingMetric icon={ShieldCheck} label="Trusted rows" value={`${categoryConfidence.trustedSpendingTransactionCount.toLocaleString("en-US")} / ${categoryConfidence.spendingTransactionCount.toLocaleString("en-US")}`} />
-          <SettingMetric icon={TriangleAlert} label="Needs cleanup" value={categoryConfidence.cleanupCandidateCount.toLocaleString("en-US")} />
-          <SettingMetric icon={BrainCircuit} label="Merchant rules" value={activeMerchantRules.toLocaleString("en-US")} />
-          <SettingMetric icon={Database} label="Cleanup amount" value={moneyFormatter.format(categoryConfidence.cleanupCandidateAmount)} />
-        </div>
-        <div className={styles.settingList}>
-          <div className={styles.settingRow}>
-            <div>
-              <div className={styles.settingTitle}>Accepting AI suggestions trains future imports</div>
-              <div className={styles.settingSub}>Accepted merchant/category/intent suggestions create merchant rules, then future matching transactions can be categorized before they hit the dashboard.</div>
-            </div>
-            <Link className={styles.checkAction} href="/transactions?quality=needs-cleanup&exclude_transfers=1">
-              Review cleanup
-              <ArrowRight size={13} aria-hidden />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.panel}>
-        <div className={styles.panelHead}>
-          <div>
-            <div className={styles.eyebrow}>Review rules</div>
-            <h2>Real transaction guardrails</h2>
-          </div>
-        </div>
-        <div className={styles.settingList}>
-          <SettingToggle label="Flag unmapped categories" detail="Plaid rows without a linked app category stay in review." checked />
-          <SettingToggle label="Flag low confidence rows" detail="Weak category confidence is kept out of trusted review status." checked />
-          <SettingToggle label="Detect recurring charges" detail="Repeated real merchants can be confirmed before joining fixed costs." checked />
-        </div>
-      </section>
-
-      <section className={styles.panel}>
-        <div className={styles.panelHead}>
-          <div>
             <div className={styles.eyebrow}>AI provider</div>
             <h2>Suggestion status</h2>
           </div>
@@ -503,16 +458,6 @@ export function SettingsView({
               {aiProviderStatus.model ?? "No external model"}
             </span>
           </div>
-          <SettingToggle
-            label="Guarded automation"
-            detail="High-confidence import cleanup can apply automatically; manual-only exceptions still require review."
-            checked
-          />
-          <SettingToggle
-            label="Server-only credentials"
-            detail="The browser receives provider status only; API keys stay in server environment variables."
-            checked
-          />
         </div>
       </section>
 
