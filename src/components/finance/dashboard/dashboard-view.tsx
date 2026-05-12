@@ -12,11 +12,13 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import type { CategoryBreakdownSummary } from "@/lib/finance/spending";
 import {
   Clock3,
   CreditCard,
   Database,
   Landmark,
+  Tags,
   TrendingDown,
   TrendingUp,
   WalletCards,
@@ -40,8 +42,10 @@ export interface DashboardBalanceTransaction {
 
 interface DashboardViewProps {
   accounts: AccountRecord[];
+  asOfDate: string;
   balanceTransactions: DashboardBalanceTransaction[];
   balanceTrends: Record<BalanceTrendScope, BalanceTrendPoint[]>;
+  categoryBreakdown: CategoryBreakdownSummary;
   dataError?: string;
   isConfigured: boolean;
   isSignedIn: boolean;
@@ -158,13 +162,18 @@ function deltaToneClass(amount: number, positiveIsGood: boolean) {
   return isGoodMove ? styles.positive : styles.negative;
 }
 
-function filterTrendByRange(trend: readonly BalanceTrendPoint[], rangeKey: TrendRangeKey) {
+function filterTrendByRange(
+  trend: readonly BalanceTrendPoint[],
+  rangeKey: TrendRangeKey,
+  anchorDate?: string
+) {
   const range = trendRangeOptions.find((option) => option.key === rangeKey);
   if (!range?.days || trend.length < 2) return [...trend];
 
-  const latest = trend[trend.length - 1];
-  const latestTime = new Date(`${latest.date}T12:00:00`).getTime();
-  const cutoffTime = latestTime - range.days * 24 * 60 * 60 * 1000;
+  const anchorTime = anchorDate
+    ? new Date(`${anchorDate}T12:00:00`).getTime()
+    : new Date(`${trend[trend.length - 1].date}T12:00:00`).getTime();
+  const cutoffTime = anchorTime - range.days * 24 * 60 * 60 * 1000;
   const firstInRangeIndex = trend.findIndex((point) => new Date(`${point.date}T12:00:00`).getTime() >= cutoffTime);
 
   if (firstInRangeIndex <= 0) return [...trend];
@@ -283,6 +292,7 @@ function TransactionRows({
 
 function TrendChart({
   accounts,
+  anchorDate,
   positiveIsGood,
   scope,
   snapshotCount,
@@ -291,6 +301,7 @@ function TrendChart({
   valueLabel
 }: {
   accounts: AccountRecord[];
+  anchorDate: string;
   positiveIsGood: boolean;
   scope: BalanceTrendScope;
   snapshotCount: number;
@@ -318,7 +329,10 @@ function TrendChart({
     () => new Map(accounts.map((account) => [account.id, account.type])),
     [accounts]
   );
-  const selectedTrend = useMemo(() => filterTrendByRange(trend, rangeKey), [rangeKey, trend]);
+  const selectedTrend = useMemo(
+    () => filterTrendByRange(trend, rangeKey, anchorDate),
+    [anchorDate, rangeKey, trend]
+  );
   const scopedTransactions = useMemo(
     () => transactions.filter((transaction) => transactionIncludedInScope(transaction, accountTypeById, scope)),
     [accountTypeById, scope, transactions]
@@ -585,6 +599,71 @@ function TrendChart({
   );
 }
 
+function formatPercentDelta(value: number) {
+  if (!Number.isFinite(value)) return "0.0%";
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function CategorySpendingPanel({ breakdown }: { breakdown: CategoryBreakdownSummary }) {
+  const rows = breakdown.rows;
+  const maxAmount = rows[0]?.amount ?? 0;
+  const periodLabel = `${formatDate(breakdown.fromDate)} – ${formatDate(breakdown.toDate)}`;
+
+  return (
+    <section aria-label="Spending by category" className={styles.categoryPanel}>
+      <div className={styles.categoryPanelHead}>
+        <div>
+          <span className={styles.eyebrow}><Tags size={13} aria-hidden /> Spending by category</span>
+          <h3 className={styles.categoryHeadline}>{formatMoney(breakdown.totalAmount)}</h3>
+          <p className={styles.categorySubtitle}>{periodLabel} · {rows.length} {rows.length === 1 ? "category" : "categories"}</p>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className={styles.categoryEmpty}>No spending recorded for this month yet.</div>
+      ) : (
+        <div className={styles.categoryRows}>
+          {rows.map((row) => {
+            const widthPercent = maxAmount > 0 ? Math.max(2, (row.amount / maxAmount) * 100) : 0;
+            const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
+            const deltaLabel = row.previousAmount > 0
+              ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
+              : "New this month";
+            return (
+              <Link
+                className={styles.categoryRow}
+                href={transactionsHref({
+                  category: row.id ?? undefined,
+                  exclude_transfers: true,
+                  from: breakdown.fromDate,
+                  q: row.id ? undefined : row.label,
+                  to: breakdown.toDate
+                })}
+                key={row.id ?? row.label}
+              >
+                <div className={styles.categoryRowHead}>
+                  <strong>{row.label}</strong>
+                  <strong>{formatMoney(row.amount)}</strong>
+                </div>
+                <div className={styles.categoryRowBar} aria-hidden>
+                  <span style={{ width: `${widthPercent}%` }} />
+                </div>
+                <div className={styles.categoryRowMeta}>
+                  <span>
+                    {row.percent.toFixed(1)}% · {row.count} {row.count === 1 ? "transaction" : "transactions"}
+                    {row.openReviewCount > 0 ? ` · ${row.openReviewCount} in review` : ""}
+                  </span>
+                  <span className={deltaTone}>{deltaLabel}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function liabilityStatusLabel(row: LiabilityAccountSummary) {
   if (row.status === "no-balance") return "Paid off";
   if (row.status === "overdue") return `${Math.abs(row.daysUntilDue ?? 0)}d overdue`;
@@ -667,8 +746,10 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
 
 export function DashboardView({
   accounts,
+  asOfDate,
   balanceTransactions,
   balanceTrends,
+  categoryBreakdown,
   dataError,
   isConfigured,
   isSignedIn,
@@ -793,6 +874,7 @@ export function DashboardView({
 
           <TrendChart
             accounts={accounts}
+            anchorDate={asOfDate}
             key={selectedBalanceView.key}
             positiveIsGood={selectedBalanceView.positiveIsGood}
             scope={selectedBalanceView.key}
@@ -805,6 +887,7 @@ export function DashboardView({
       )}
 
       {accounts.length > 0 ? <LiabilitiesDuePanel summary={liabilitiesDue} /> : null}
+      {accounts.length > 0 ? <CategorySpendingPanel breakdown={categoryBreakdown} /> : null}
     </div>
   );
 }
