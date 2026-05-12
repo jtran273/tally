@@ -93,6 +93,21 @@ test("buildTransactionsCsv exports review, reimbursement, raw Plaid, and safe me
   assert.match(transactionCsvFixture, /RAW MERCHANT,SQ \*RAW PLAID NAME/);
 });
 
+test("buildTransactionsCsv neutralizes formula-like values hidden behind whitespace", () => {
+  const csv = buildTransactionsCsv([
+    transaction({
+      id: "tx-hidden-formula",
+      merchant: " =IMPORTXML(\"https://example.test\", \"//title\")",
+      note: "\n=HYPERLINK(\"https://example.test\")",
+      plaidMerchant: "\t@external-reference"
+    })
+  ]);
+
+  assert.match(csv, /"' =IMPORTXML\(""https:\/\/example\.test"", ""\/\/title""\)"/);
+  assert.match(csv, /"'\n=HYPERLINK\(""https:\/\/example\.test""\)"/);
+  assert.match(csv, /"'\t@external-reference"/);
+});
+
 function assertTransactionCsvFixture(csv: string): true {
   if (!csv.endsWith("\r\n")) {
     throw new Error("Expected transaction CSV export to end with a CRLF row terminator.");

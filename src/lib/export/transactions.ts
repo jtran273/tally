@@ -25,7 +25,8 @@ interface TransactionCsvColumn {
   ) => CsvValue;
 }
 
-const DANGEROUS_CSV_PREFIX_PATTERN = /^[=+\-@\t\r]/;
+const DANGEROUS_CSV_LEADING_CONTROL_PATTERN = /^[\t\r\n]/;
+const DANGEROUS_CSV_FORMULA_PATTERN = /^[ \t\r\n]*[=+\-@]/;
 
 function unique(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
@@ -40,8 +41,11 @@ function escapeCsvCell(value: CsvValue) {
   if (typeof value === "number") return formatNumber(value);
 
   const text = String(value);
-  const safeText = DANGEROUS_CSV_PREFIX_PATTERN.test(text) ? `'${text}` : text;
-  const needsQuoting = /[",\r\n]/.test(safeText) || safeText.trim() !== safeText;
+  const safeText =
+    DANGEROUS_CSV_LEADING_CONTROL_PATTERN.test(text) || DANGEROUS_CSV_FORMULA_PATTERN.test(text)
+      ? `'${text}`
+      : text;
+  const needsQuoting = /[",\r\n]/.test(safeText) || safeText.trim() !== safeText || text.trim() !== text;
   const escaped = safeText.replaceAll("\"", "\"\"");
 
   return needsQuoting ? `"${escaped}"` : escaped;
