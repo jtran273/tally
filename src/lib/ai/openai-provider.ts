@@ -1,8 +1,14 @@
-import { createMockSuggestionAdapter, suggestTransactionWithMockProvider } from "./mock-provider";
+import {
+  createMockSuggestionAdapter,
+  suggestReimbursementCandidateWithMockProvider,
+  suggestTransactionWithMockProvider
+} from "./mock-provider";
 import type {
   AiSuggestionAdapter,
   AiSuggestionProviderDescriptor,
   CategorySuggestion,
+  ReimbursementCandidateAiRequest,
+  ReimbursementCandidateAiSuggestion,
   TransactionAiSuggestion,
   TransactionSuggestionRequest
 } from "./types";
@@ -107,11 +113,175 @@ export function createOpenAiSuggestionAdapter(options: OpenAiSuggestionAdapterOp
       ...OPENAI_AI_SUGGESTION_PROVIDER,
       version: `${OPENAI_PROVIDER_VERSION}:${model}`
     },
+    async suggestReimbursementCandidate(request) {
+      const baseline = fallback.suggestReimbursementCandidate
+        ? await fallback.suggestReimbursementCandidate(request)
+        : suggestReimbursementCandidateWithMockProvider(request);
+
+      try {
+        return await suggestReimbursementCandidateWithOpenAi({ apiKey, baseline, model, request });
+      } catch (error) {
+        console.warn(`openai_reimbursement_candidate_failed model=${model}: ${sanitizeOpenAiError(error)}`);
+        return baseline;
+      }
+    },
     suggestTransaction: suggestWithProvider,
     async suggestTransactions(requests) {
       return Promise.all(requests.map(suggestWithProvider));
     }
   };
+}
+
+async function suggestReimbursementCandidateWithOpenAi({
+  apiKey,
+  baseline,
+  model,
+  request
+}: {
+  apiKey: string;
+  baseline: ReimbursementCandidateAiSuggestion;
+  model: string;
+  request: ReimbursementCandidateAiRequest;
+}): Promise<ReimbursementCandidateAiSuggestion> {
+  const payload = await callOpenAiReimbursementCandidate({ apiKey, baseline, model, request });
+  const confidence = coerceConfidence(payload.confidence, baseline.confidence);
+  const suggestedIntent = payload.suggestedIntent === "shared" || payload.suggestedIntent === "reimbursable"
+    ? payload.suggestedIntent
+    : baseline.suggestedIntent;
+  const suggestedInflowIds = coerceKnownIds(
+    payload.suggestedInflowIds,
+    request.candidateInflows.map((inflow) => inflow.id),
+    baseline.suggestedInflowIds
+  );
+  const question = coerceString(payload.question) ?? baseline.question;
+  const reason = coerceString(payload.reason) ?? baseline.reason;
+  const signals = coerceSignals(payload.signals, baseline.signals);
+
+  return {
+    ...baseline,
+    suggestionId: `openai-${baseline.suggestionId}`,
+    provider: {
+      ...OPENAI_AI_SUGGESTION_PROVIDER,
+      version: `${OPENAI_PROVIDER_VERSION}:${model}`
+    },
+    suggestedIntent,
+    suggestedInflowIds,
+    confidence,
+    question,
+    reason,
+    signals
+  };
+}
+
+interface OpenAiReimbursementCandidatePayload {
+  confidence?: unknown;
+  question?: unknown;
+  reason?: unknown;
+  signals?: unknown;
+  suggestedInflowIds?: unknown;
+  suggestedIntent?: unknown;
+}
+
+async function callOpenAiReimbursementCandidate({
+  apiKey,
+  baseline,
+  model,
+  request
+}: {
+  apiKey: string;
+  baseline: ReimbursementCandidateAiSuggestion;
+  model: string;
+  request: ReimbursementCandidateAiRequest;
+}): Promise<OpenAiReimbursementCandidatePayload> {
+  const isReasoningModel = /^(o\d|gpt-5)/i.test(model);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_REQUEST_TIMEOUT_MS);
+
+  const body: Record<string, unknown> = {
+    input: [
+      {
+        content: [{ text: buildReimbursementCandidateSystemPrompt(), type: "input_text" }],
+        role: "system"
+      },
+      {
+        content: [{ text: buildReimbursementCandidateUserPrompt(request, baseline), type: "input_text" }],
+        role: "user"
+      }
+    ],
+    max_output_tokens: isReasoningModel ? 3000 : 500,
+    model,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "reimbursement_candidate_suggestion",
+        description: "A concise reimbursement candidate review suggestion for a personal finance ledger.",
+        strict: false,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["suggestedIntent", "suggestedInflowIds", "confidence", "question", "reason"],
+          properties: {
+            suggestedIntent: { enum: ["shared", "reimbursable"], type: "string" },
+            suggestedInflowIds: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 5
+            },
+            confidence: { maximum: 1, minimum: 0, type: "number" },
+            question: { type: "string" },
+            reason: { type: "string" },
+            signals: {
+              type: "array",
+              items: { type: "string" },
+              maxItems: 5
+            }
+          }
+        }
+      }
+    }
+  };
+
+  if (isReasoningModel) {
+    body.reasoning = { effort: "minimal" };
+  }
+
+  if (request.cacheKey) {
+    body.prompt_cache_key = request.cacheKey;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_RESPONSES_URL, {
+      body: JSON.stringify(body),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      method: "POST",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(`OpenAI reimbursement candidate request failed with ${response.status}: ${errorBody.slice(0, 200)}`);
+  }
+
+  const data = await response.json() as OpenAiResponseBody;
+  if (data.status && data.status !== "completed") {
+    const reason = coerceString(data.incomplete_details?.reason) ?? coerceString(data.error?.message);
+    throw new Error(`OpenAI reimbursement candidate response ended with status ${String(data.status)}${reason ? `: ${reason}` : ""}.`);
+  }
+
+  const outputText = typeof data.output_text === "string" ? data.output_text : extractOutputText(data);
+  if (!outputText) {
+    throw new Error("OpenAI reimbursement candidate response had no output text.");
+  }
+
+  const parsed = JSON.parse(outputText) as OpenAiReimbursementCandidatePayload;
+  return parsed && typeof parsed === "object" ? parsed : {};
 }
 
 async function suggestTransactionWithOpenAi({
@@ -334,6 +504,53 @@ function buildUserPrompt(request: TransactionSuggestionRequest, baseline: Transa
   ].join("\n");
 }
 
+function buildReimbursementCandidateSystemPrompt() {
+  return [
+    "You review sanitized personal-finance transaction summaries for possible reimbursements.",
+    "Return ONE JSON object matching the schema.",
+    "",
+    "Rules:",
+    "- Decide only whether Ledger should ask the user about this candidate.",
+    "- suggestedIntent must be shared or reimbursable.",
+    "- Use only the provided app-owned ids in suggestedInflowIds.",
+    "- question should be concise and ask what the user needs to clarify.",
+    "- Do not claim a transaction is reimbursed; this is only a proposal."
+  ].join("\n");
+}
+
+function buildReimbursementCandidateUserPrompt(
+  request: ReimbursementCandidateAiRequest,
+  baseline: ReimbursementCandidateAiSuggestion
+) {
+  const inflows = request.candidateInflows.map((inflow) =>
+    `- ${inflow.id}: ${inflow.date}, ${inflow.merchant}, +${inflow.amount.toFixed(2)}, ${inflow.category}`
+  );
+  const patterns = (request.historicalPatterns ?? []).slice(0, 8).map((pattern) =>
+    `- ${pattern.merchant ?? "(merchant)"} / ${pattern.category ?? "(category)"} → ${pattern.suggestedIntent ?? "shared"}${pattern.counterparty ? ` with ${pattern.counterparty}` : ""}`
+  );
+
+  return [
+    "Candidate expense:",
+    `- id: ${request.transaction.id}`,
+    `- date: ${request.transaction.date}`,
+    `- merchant: ${request.transaction.merchant}`,
+    `- amount: ${request.transaction.amount.toFixed(2)}`,
+    `- category: ${request.transaction.category}`,
+    `- current_intent: ${request.transaction.intent}`,
+    "",
+    "Nearby inflows:",
+    ...(inflows.length > 0 ? inflows : ["- none"]),
+    "",
+    "Heuristic reasons:",
+    ...request.heuristicReasons.slice(0, 6).map((reason) => `- ${reason}`),
+    "",
+    patterns.length > 0 ? "Historical patterns:" : "Historical patterns: none",
+    ...patterns,
+    "",
+    `Baseline suggestion: ${baseline.suggestedIntent}, confidence ${baseline.confidence.toFixed(2)}, question "${baseline.question}".`
+  ].join("\n");
+}
+
 function extractOutputText(data: unknown) {
   if (!data || typeof data !== "object") return null;
   const output = (data as { output?: unknown }).output;
@@ -396,6 +613,16 @@ function coerceSignals(value: unknown, fallback: readonly string[]) {
     .slice(0, 5);
 
   return signals.length > 0 ? signals : [...fallback];
+}
+
+function coerceKnownIds(value: unknown, allowedIds: readonly string[], fallbackIds: readonly string[]) {
+  const allowed = new Set(allowedIds);
+  if (!Array.isArray(value)) {
+    return fallbackIds.filter((candidate) => allowed.has(candidate)).slice(0, 5);
+  }
+  return value
+    .filter((candidate): candidate is string => typeof candidate === "string" && allowed.has(candidate))
+    .slice(0, 5);
 }
 
 function sanitizeOpenAiError(error: unknown) {

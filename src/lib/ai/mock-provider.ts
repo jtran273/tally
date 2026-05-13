@@ -5,6 +5,8 @@ import type {
   AiSuggestionSource,
   CategorySuggestion,
   MerchantCleanupSuggestion,
+  ReimbursementCandidateAiRequest,
+  ReimbursementCandidateAiSuggestion,
   TransactionAiSuggestion,
   TransactionSuggestionRequest
 } from "./types";
@@ -269,12 +271,63 @@ const PLAID_CATEGORY_CUES: readonly PlaidCategoryCue[] = [
 export function createMockSuggestionAdapter(): AiSuggestionAdapter {
   return {
     descriptor: MOCK_AI_SUGGESTION_PROVIDER,
+    async suggestReimbursementCandidate(request) {
+      return suggestReimbursementCandidateWithMockProvider(request);
+    },
     async suggestTransaction(request) {
       return suggestTransactionWithMockProvider(request);
     },
     async suggestTransactions(requests) {
       return requests.map(suggestTransactionWithMockProvider);
     }
+  };
+}
+
+export function suggestReimbursementCandidateWithMockProvider(
+  request: ReimbursementCandidateAiRequest
+): ReimbursementCandidateAiSuggestion {
+  const transaction = request.transaction;
+  const categoryText = transaction.category.toLowerCase();
+  const hasTravelOrHousing = /\b(travel|hotel|flight|airfare|rent|housing|utilities)\b/.test(categoryText);
+  const hasPeerInflow = request.candidateInflows.some((inflow) =>
+    /\b(venmo|zelle|cash app|cashapp|paypal|apple cash)\b/i.test(inflow.merchant)
+  );
+  const historicalBoost = request.historicalPatterns?.some((pattern) =>
+    (pattern.merchant && transaction.merchant.toLowerCase().includes(pattern.merchant.toLowerCase())) ||
+    (pattern.category && transaction.category.toLowerCase() === pattern.category.toLowerCase())
+  ) ? 0.06 : 0;
+  const confidence = roundConfidence(clamp(
+    request.heuristicConfidence +
+      (hasPeerInflow ? 0.08 : 0) +
+      (hasTravelOrHousing ? 0.03 : 0) +
+      historicalBoost,
+    0.35,
+    0.96
+  ));
+  const suggestedIntent = hasPeerInflow || hasTravelOrHousing ? "reimbursable" : "shared";
+  const question = `Was ${transaction.merchant} on ${transaction.date} reimbursable or split with someone?`;
+
+  return {
+    suggestionId: `mock-reimbursement-${stableHash([
+      MOCK_VERSION,
+      transaction.id,
+      transaction.amount.toFixed(2),
+      request.candidateInflows.map((inflow) => inflow.id).join(",")
+    ].join("|"))}`,
+    provider: MOCK_AI_SUGGESTION_PROVIDER,
+    targetTransactionId: transaction.id,
+    suggestedIntent,
+    suggestedInflowIds: request.candidateInflows.map((inflow) => inflow.id),
+    confidence,
+    question,
+    reason: hasPeerInflow
+      ? "Nearby peer-payment inflow makes this charge worth confirming."
+      : "Category and amount make this charge worth confirming.",
+    signals: [
+      ...request.heuristicReasons.slice(0, 4),
+      hasPeerInflow ? "nearby peer-payment inflow" : "no strong peer-payment inflow",
+      `heuristic confidence ${request.heuristicConfidence.toFixed(2)}`
+    ]
   };
 }
 

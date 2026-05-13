@@ -49,6 +49,41 @@ export interface TransactionSuggestionRequest {
   cacheKey?: string;
 }
 
+export interface ReimbursementCandidateSafeTransaction {
+  id: string;
+  date: string;
+  merchant: string;
+  amount: number;
+  category: string;
+  intent: TransactionIntent;
+}
+
+export interface ReimbursementCandidateSafeInflow {
+  id: string;
+  date: string;
+  merchant: string;
+  amount: number;
+  category: string;
+}
+
+export interface ReimbursementCandidateHistoricalPattern {
+  category?: string;
+  confidence?: number;
+  counterparty?: string;
+  merchant?: string;
+  reason?: string;
+  suggestedIntent?: Extract<TransactionIntent, "reimbursable" | "shared">;
+}
+
+export interface ReimbursementCandidateAiRequest {
+  cacheKey?: string;
+  candidateInflows: readonly ReimbursementCandidateSafeInflow[];
+  heuristicConfidence: number;
+  heuristicReasons: readonly string[];
+  historicalPatterns?: readonly ReimbursementCandidateHistoricalPattern[];
+  transaction: ReimbursementCandidateSafeTransaction;
+}
+
 export interface SuggestionField<TValue> {
   value: TValue;
   confidence: number;
@@ -83,8 +118,21 @@ export interface TransactionAiSuggestion {
   signals: string[];
 }
 
+export interface ReimbursementCandidateAiSuggestion {
+  suggestionId: string;
+  provider: AiSuggestionProviderDescriptor;
+  targetTransactionId: string;
+  suggestedIntent: Extract<TransactionIntent, "reimbursable" | "shared">;
+  suggestedInflowIds: string[];
+  confidence: number;
+  question: string;
+  reason: string;
+  signals: string[];
+}
+
 export interface AiSuggestionAdapter {
   readonly descriptor: AiSuggestionProviderDescriptor;
   suggestTransaction(request: TransactionSuggestionRequest): Promise<TransactionAiSuggestion>;
   suggestTransactions?(requests: readonly TransactionSuggestionRequest[]): Promise<TransactionAiSuggestion[]>;
+  suggestReimbursementCandidate?(request: ReimbursementCandidateAiRequest): Promise<ReimbursementCandidateAiSuggestion>;
 }

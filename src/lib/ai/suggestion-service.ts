@@ -2,6 +2,8 @@ import type { TransactionEnrichmentPatch } from "../db/queries";
 import { createMockSuggestionAdapter } from "./mock-provider";
 import type {
   AiSuggestionAdapter,
+  ReimbursementCandidateAiRequest,
+  ReimbursementCandidateAiSuggestion,
   TransactionAiSuggestion,
   TransactionSuggestionRequest
 } from "./types";
@@ -35,6 +37,14 @@ export class TransactionSuggestionService {
     }
 
     return Promise.all(requests.map((request) => this.adapter.suggestTransaction(request)));
+  }
+
+  suggestReimbursementCandidate(request: ReimbursementCandidateAiRequest): Promise<ReimbursementCandidateAiSuggestion> {
+    if (this.adapter.suggestReimbursementCandidate) {
+      return this.adapter.suggestReimbursementCandidate(request);
+    }
+
+    return createMockSuggestionAdapter().suggestReimbursementCandidate!(request);
   }
 }
 

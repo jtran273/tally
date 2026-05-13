@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { CategoryRecord, MerchantRuleRow } from "@/lib/db";
 import { AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD } from "@/lib/review/auto-categorization";
-import { suggestTransactionWithMockProvider } from "./mock-provider";
+import {
+  suggestReimbursementCandidateWithMockProvider,
+  suggestTransactionWithMockProvider
+} from "./mock-provider";
 import type { RawTransactionSuggestionFields } from "./types";
 
 const userId = "11111111-1111-1111-1111-111111111111";
@@ -70,6 +73,33 @@ test("mock provider: known AI merchant gets Software/AI Tools and business inten
   assert.equal(result.recurring?.value, true);
   assert(result.confidence >= 0.9, `Expected confidence >= 0.9, got ${result.confidence}`);
   assert.equal(result.merchantCleanup.value.normalized, "OpenAI");
+});
+
+test("mock provider: reimbursement candidate returns question and suggested inflows", () => {
+  const result = suggestReimbursementCandidateWithMockProvider({
+    candidateInflows: [{
+      amount: 90,
+      category: "Uncategorized",
+      date: "2026-05-06",
+      id: "tx-venmo",
+      merchant: "Venmo Maya R"
+    }],
+    heuristicConfidence: 0.66,
+    heuristicReasons: ["Nearby positive inflow could be a reimbursement."],
+    transaction: {
+      amount: -180,
+      category: "Food / Restaurants",
+      date: "2026-05-04",
+      id: "tx-dinner",
+      intent: "personal",
+      merchant: "State Bird"
+    }
+  });
+
+  assert.equal(result.suggestedIntent, "reimbursable");
+  assert.deepEqual(result.suggestedInflowIds, ["tx-venmo"]);
+  assert.match(result.question, /State Bird/);
+  assert(result.confidence > 0.7);
 });
 
 test("mock provider: Vercel gets Software/Hosting and business intent", () => {
