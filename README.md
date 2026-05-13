@@ -222,6 +222,8 @@ OPENAI_MODEL=
 ENABLE_OPENAI_AUTO_REVIEW=false
 ENABLE_DEMO_MODE=true
 CRON_SECRET=
+OPENCLAW_TOKEN=
+OPENCLAW_USER_ID=
 ```
 
 Generate a production Plaid token encryption key with:

@@ -5,16 +5,26 @@ import {
   dismissAgentProposal,
   filterTransactionRecordsForList,
   type FinanceSupabaseClient,
+  getAgentProposalById,
   listAgentProposals,
+  listTransactions,
   recordClarificationAnswer,
   transactionMatchesSearch
 } from "./queries";
 import type {
+  AccountRow,
   AgentProposalRow,
   AuditEventRow,
+  CategoryRow,
+  EnrichedTransactionRow,
+  InstitutionRow,
+  RawTransactionRow,
+  ReimbursementRecordRow,
   ReviewItemRecord,
+  ReviewItemRow,
   ReviewReason,
   ReviewStatus,
+  TransactionSplitRow,
   TransactionIntent,
   TransactionRecord
 } from "./types";
@@ -201,18 +211,161 @@ test("transaction list filters compose review, transfer exclusion, limit, and of
   );
 });
 
-type FakeTableName = "agent_proposals" | "audit_events";
+function fixtureInstitution(): InstitutionRow {
+  return {
+    created_at: "2026-05-01T08:00:00.000Z",
+    id: "institution-main",
+    logo_url: null,
+    name: "Seed Bank",
+    plaid_institution_id: "ins_seed",
+    primary_color: null,
+    updated_at: "2026-05-01T08:00:00.000Z",
+    user_id: userId,
+    website_url: null
+  };
+}
+
+function fixtureAccount(): AccountRow {
+  return {
+    available_balance: 1100,
+    color: null,
+    created_at: "2026-05-01T08:00:00.000Z",
+    credit_limit: null,
+    current_balance: 1200,
+    id: "account-checking",
+    institution_id: "institution-main",
+    is_active: true,
+    iso_currency_code: "USD",
+    last_synced_at: null,
+    mask: "1111",
+    name: "Everyday Checking",
+    official_name: null,
+    plaid_account_id: "plaid-account-checking",
+    plaid_item_id: "plaid-item-main",
+    subtype: "checking",
+    type: "depository",
+    updated_at: "2026-05-01T08:00:00.000Z",
+    user_id: userId
+  };
+}
+
+function fixtureRawTransaction(id: string, date: string, merchant: string): RawTransactionRow {
+  return {
+    account_id: "account-checking",
+    amount: -20,
+    authorized_date: null,
+    authorized_datetime: null,
+    date,
+    datetime: null,
+    first_seen_at: `${date}T08:00:00.000Z`,
+    id,
+    iso_currency_code: "USD",
+    location: {},
+    merchant_name: merchant,
+    name: merchant,
+    payment_channel: null,
+    payment_meta: {},
+    pending_transaction_id: null,
+    plaid_category: null,
+    plaid_category_id: null,
+    plaid_item_id: "plaid-item-main",
+    plaid_transaction_id: `plaid-${id}`,
+    raw_payload: {},
+    status: "posted",
+    transaction_type: null,
+    updated_at: `${date}T08:00:00.000Z`,
+    user_id: userId
+  };
+}
+
+function fixtureEnrichedTransaction(
+  id: string,
+  rawTransactionId: string,
+  date: string,
+  merchant: string
+): EnrichedTransactionRow {
+  return {
+    account_id: "account-checking",
+    amount: -20,
+    category_id: null,
+    category_name: "Uncategorized",
+    confidence: 0.9,
+    created_at: `${date}T08:00:00.000Z`,
+    date,
+    id,
+    intent: "personal",
+    is_recurring: false,
+    merchant_name: merchant,
+    note: "",
+    raw_transaction_id: rawTransactionId,
+    reviewed_at: null,
+    source: "seed",
+    status: "posted",
+    updated_at: `${date}T08:00:00.000Z`,
+    user_id: userId
+  };
+}
+
+function seedTransactionRows(client: FakeFinanceClient) {
+  client.institutions.push(fixtureInstitution());
+  client.accounts.push(fixtureAccount());
+  client.rawTransactions.push(
+    fixtureRawTransaction("raw-older", "2026-05-11", "Older Cafe"),
+    fixtureRawTransaction("raw-middle", "2026-05-12", "Middle Market"),
+    fixtureRawTransaction("raw-newest", "2026-05-13", "Newest Diner")
+  );
+  client.enrichedTransactions.push(
+    fixtureEnrichedTransaction("tx-older", "raw-older", "2026-05-11", "Older Cafe"),
+    fixtureEnrichedTransaction("tx-middle", "raw-middle", "2026-05-12", "Middle Market"),
+    fixtureEnrichedTransaction("tx-newest", "raw-newest", "2026-05-13", "Newest Diner")
+  );
+}
+
+test("listTransactions applies database limits before hydration for simple filters", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+
+  const transactions = await listTransactions(client.asClient(), userId, { limit: 2 });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
+  assert.deepEqual(client.limitCalls.enriched_transactions, [2]);
+});
+
+test("listTransactions preserves hydrated filtering before applying limits", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+
+  const transactions = await listTransactions(client.asClient(), userId, { limit: 1, search: "older" });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-older"]);
+  assert.equal(client.limitCalls.enriched_transactions, undefined);
+});
+
+type FakeTableName =
+  | "accounts"
+  | "agent_proposals"
+  | "audit_events"
+  | "categories"
+  | "enriched_transactions"
+  | "institutions"
+  | "raw_transactions"
+  | "reimbursement_records"
+  | "review_items"
+  | "transaction_splits";
 
 class FakeQueryBuilder<Row extends Record<string, unknown>> {
   private filters: Array<(row: Row) => boolean> = [];
   private gteFilters: Array<(row: Row) => boolean> = [];
-  private orderBy: { column: keyof Row; ascending: boolean } | null = null;
+  private lteFilters: Array<(row: Row) => boolean> = [];
+  private limitCount: number | null = null;
+  private orders: Array<{ column: keyof Row; ascending: boolean }> = [];
   private singleResult = false;
 
   constructor(
     private rows: Row[],
     private operation: "select" | "insert" | "update" | "delete",
-    private values?: Partial<Row> | Partial<Row>[]
+    private values?: Partial<Row> | Partial<Row>[],
+    private onLimit?: (count: number) => void
   ) {}
 
   select() {
@@ -234,16 +387,19 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
     return this;
   }
 
-  lte() {
+  lte(column: keyof Row & string, value: string | number) {
+    this.lteFilters.push((row) => String(row[column]) <= String(value));
     return this;
   }
 
   order(column: keyof Row & string, options: { ascending?: boolean } = {}) {
-    this.orderBy = { column, ascending: options.ascending ?? true };
+    this.orders.push({ column, ascending: options.ascending ?? true });
     return this;
   }
 
-  limit() {
+  limit(count: number) {
+    this.limitCount = count;
+    this.onLimit?.(count);
     return this;
   }
 
@@ -280,19 +436,26 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 
     let matches = this.rows.filter((row) =>
       this.filters.every((filter) => filter(row)) &&
-      this.gteFilters.every((filter) => filter(row))
+      this.gteFilters.every((filter) => filter(row)) &&
+      this.lteFilters.every((filter) => filter(row))
     );
 
     if (this.operation === "update") {
       matches.forEach((row) => Object.assign(row, this.values));
     }
 
-    if (this.orderBy) {
-      const { column, ascending } = this.orderBy;
+    if (this.orders.length > 0) {
       matches = [...matches].sort((left, right) => {
-        const comparison = String(left[column]).localeCompare(String(right[column]));
-        return ascending ? comparison : -comparison;
+        for (const { column, ascending } of this.orders) {
+          const comparison = String(left[column]).localeCompare(String(right[column]));
+          if (comparison !== 0) return ascending ? comparison : -comparison;
+        }
+        return 0;
       });
+    }
+
+    if (this.limitCount !== null) {
+      matches = matches.slice(0, this.limitCount);
     }
 
     return { data: this.singleResult ? matches[0] ?? null : matches, error: null };
@@ -300,24 +463,89 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 }
 
 class FakeFinanceClient {
+  accounts: AccountRow[] = [];
   agentProposals: AgentProposalRow[] = [];
   auditEvents: AuditEventRow[] = [];
+  categories: CategoryRow[] = [];
+  enrichedTransactions: EnrichedTransactionRow[] = [];
+  institutions: InstitutionRow[] = [];
+  limitCalls: Partial<Record<FakeTableName, number[]>> = {};
+  rawTransactions: RawTransactionRow[] = [];
+  reimbursementRecords: ReimbursementRecordRow[] = [];
+  reviewItems: ReviewItemRow[] = [];
+  transactionSplits: TransactionSplitRow[] = [];
 
   asClient(): FinanceSupabaseClient {
     return this as unknown as FinanceSupabaseClient;
   }
 
+  private rowsFor(table: FakeTableName): Array<Record<string, unknown>> {
+    switch (table) {
+      case "accounts":
+        return this.accounts as unknown as Array<Record<string, unknown>>;
+      case "agent_proposals":
+        return this.agentProposals as unknown as Array<Record<string, unknown>>;
+      case "audit_events":
+        return this.auditEvents as unknown as Array<Record<string, unknown>>;
+      case "categories":
+        return this.categories as unknown as Array<Record<string, unknown>>;
+      case "enriched_transactions":
+        return this.enrichedTransactions as unknown as Array<Record<string, unknown>>;
+      case "institutions":
+        return this.institutions as unknown as Array<Record<string, unknown>>;
+      case "raw_transactions":
+        return this.rawTransactions as unknown as Array<Record<string, unknown>>;
+      case "reimbursement_records":
+        return this.reimbursementRecords as unknown as Array<Record<string, unknown>>;
+      case "review_items":
+        return this.reviewItems as unknown as Array<Record<string, unknown>>;
+      case "transaction_splits":
+        return this.transactionSplits as unknown as Array<Record<string, unknown>>;
+    }
+  }
+
+  private recordLimit(table: FakeTableName, count: number) {
+    this.limitCalls[table] = [...(this.limitCalls[table] ?? []), count];
+  }
+
   from(table: FakeTableName) {
-    const rows = (table === "agent_proposals" ? this.agentProposals : this.auditEvents) as unknown as Array<Record<string, unknown>>;
+    const rows = this.rowsFor(table);
     return {
-      delete: () => new FakeQueryBuilder(rows, "delete"),
+      delete: () => new FakeQueryBuilder(rows, "delete", undefined, (count) => this.recordLimit(table, count)),
       insert: (values: Partial<AgentProposalRow> | Partial<AuditEventRow> | Array<Partial<AgentProposalRow> | Partial<AuditEventRow>>) =>
-        new FakeQueryBuilder(rows, "insert", values as Array<Partial<Record<string, unknown>>>),
-      select: () => new FakeQueryBuilder(rows, "select"),
+        new FakeQueryBuilder(rows, "insert", values as Array<Partial<Record<string, unknown>>>, (count) => this.recordLimit(table, count)),
+      select: () => new FakeQueryBuilder(rows, "select", undefined, (count) => this.recordLimit(table, count)),
       update: (values: Partial<AgentProposalRow> | Partial<AuditEventRow>) =>
-        new FakeQueryBuilder(rows, "update", values as Partial<Record<string, unknown>>),
+        new FakeQueryBuilder(rows, "update", values as Partial<Record<string, unknown>>, (count) => this.recordLimit(table, count)),
       upsert: (values: Partial<AgentProposalRow> | Partial<AgentProposalRow>[]) =>
-        new FakeQueryBuilder(rows, "insert", values)
+        new FakeQueryBuilder(rows, "insert", values, (count) => this.recordLimit(table, count))
+    };
+  }
+}
+
+class MissingSingleRowFinanceClient {
+  asClient(): FinanceSupabaseClient {
+    return this as unknown as FinanceSupabaseClient;
+  }
+
+  from() {
+    return {
+      eq() {
+        return this;
+      },
+      select() {
+        return this;
+      },
+      single() {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "PGRST116",
+            details: "The result contains 0 rows",
+            message: "JSON object requested, multiple (or no) rows returned"
+          }
+        });
+      }
     };
   }
 }
@@ -402,7 +630,9 @@ test("dismissAgentProposal is idempotent and records audit once", async () => {
 
 test("recordClarificationAnswer normalizes terse replies and stores answered status", async () => {
   const client = new FakeFinanceClient();
-  client.agentProposals.push(agentProposalRow());
+  client.agentProposals.push(agentProposalRow({
+    clarification_question: "Who reimbursed you?"
+  }));
 
   const answered = await recordClarificationAnswer(client.asClient(), userId, "proposal-1", "Ryan dinner");
 
@@ -410,6 +640,33 @@ test("recordClarificationAnswer normalizes terse replies and stores answered sta
   assert.equal(answered.clarificationAnswer, "Ryan dinner");
   assert.equal(answered.clarificationAnswerKind, "counterparty");
   assert.deepEqual(answered.proposedPatch, { counterparties: ["Ryan"] });
+});
+
+test("recordClarificationAnswer supports reimbursement candidates that ask a question", async () => {
+  const client = new FakeFinanceClient();
+  client.agentProposals.push(agentProposalRow({
+    clarification_question: "Who reimbursed you?",
+    proposal_type: "reimbursement_candidate",
+    proposed_patch: { suggestedIntent: "reimbursable" }
+  }));
+
+  const answered = await recordClarificationAnswer(client.asClient(), userId, "proposal-1", "Ryan dinner");
+
+  assert.equal(answered.status, "answered");
+  assert.equal(answered.clarificationAnswer, "Ryan dinner");
+  assert.equal(answered.clarificationAnswerKind, "counterparty");
+  assert.deepEqual(answered.proposedPatch, {
+    counterparties: ["Ryan"],
+    suggestedIntent: "reimbursable"
+  });
+});
+
+test("getAgentProposalById treats Supabase single 0-row responses as missing", async () => {
+  const client = new MissingSingleRowFinanceClient();
+
+  const proposal = await getAgentProposalById(client.asClient(), userId, "missing");
+
+  assert.equal(proposal, null);
 });
 
 function assertTransactionFilterFixtures(): true {

@@ -4,9 +4,14 @@ import { isDemoRequest } from "@/lib/demo/auth";
 import { getSupabaseConfig } from "./env";
 
 const PUBLIC_PATHS = ["/login"];
+const SESSION_BYPASS_PATHS = ["/api/openclaw"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+export function isSessionBypassPath(pathname: string) {
+  return SESSION_BYPASS_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 function buildLoginRedirect(request: NextRequest) {
@@ -27,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
 
-  if (isPublicPath(pathname)) {
+  if (isPublicPath(pathname) || isSessionBypassPath(pathname)) {
     return supabaseResponse;
   }
 

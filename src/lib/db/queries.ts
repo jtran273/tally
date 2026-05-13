@@ -247,6 +247,16 @@ function expectData<T>(result: QueryResult<T>, context: string): T {
   return result.data;
 }
 
+function isMissingSingleRowError(error: QueryError) {
+  const message = error.message.toLowerCase();
+  const details = error.details?.toLowerCase() ?? "";
+  return (
+    message.includes("no rows") ||
+    message.includes("0 rows") ||
+    (error.code === "PGRST116" && details.includes("0 rows"))
+  );
+}
+
 function byId<T extends { id: string }>(rows: T[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
@@ -454,6 +464,21 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
   if (quality === "low-confidence") return transaction.confidence < 0.75;
   if (quality === "uncategorized") return !transaction.categoryId || transaction.category.toLowerCase() === "uncategorized";
   return transactionNeedsCategoryCleanup(transaction);
+}
+
+function requiresHydratedTransactionFiltering(filters: TransactionListFilters) {
+  return Boolean(
+    filters.excludeTransfers ||
+    filters.search?.trim() ||
+    (filters.reviewReason && filters.reviewReason !== "all") ||
+    (filters.reviewStatus && filters.reviewStatus !== "all") ||
+    (filters.quality && filters.quality !== "all")
+  );
+}
+
+function transactionRowLimit(filters: TransactionListFilters) {
+  if (filters.limit === undefined || requiresHydratedTransactionFiltering(filters)) return undefined;
+  return (filters.offset ?? 0) + filters.limit;
 }
 
 export function filterTransactionRecordsForList(
@@ -797,6 +822,10 @@ export async function listTransactions(
   }
   if (filters.recurring !== undefined) {
     query = query.eq("is_recurring", filters.recurring);
+  }
+  const rowLimit = transactionRowLimit(filters);
+  if (rowLimit !== undefined) {
+    query = query.limit(rowLimit);
   }
 
   const enrichedRows = expectData(await query, "List enriched transactions");
@@ -1163,7 +1192,7 @@ export async function getAgentProposalById(
     .single();
 
   if (result.error) {
-    if (result.error.message.toLowerCase().includes("no rows")) return null;
+    if (isMissingSingleRowError(result.error)) return null;
     throw new FinanceDbError("Load agent proposal", result.error);
   }
   return result.data ? toAgentProposalRecord(result.data) : null;
@@ -1241,8 +1270,8 @@ export async function recordClarificationAnswer(
     throw new FinanceDbError("Record clarification answer", { message: "Agent proposal was not found." });
   }
   assertPendingAgentProposal(before, "Record clarification answer");
-  if (before.proposalType !== "clarification_request") {
-    throw new FinanceDbError("Record clarification answer", { message: "Agent proposal is not a clarification request." });
+  if (!before.clarificationQuestion) {
+    throw new FinanceDbError("Record clarification answer", { message: "Agent proposal is not asking a clarification question." });
   }
 
   const answer = normalizeAgentClarificationAnswer(rawAnswer);

@@ -296,6 +296,33 @@ If `OPENAI_API_KEY` is set:
 - persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Ledger-owned helpers that write audit events,
 - raw provider secrets must stay server-only.
 
+## OpenClaw Integration Checks
+
+Ledger exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
+
+- `OPENCLAW_TOKEN`,
+- `OPENCLAW_USER_ID`,
+- `SUPABASE_SERVICE_ROLE_KEY`.
+
+Routes:
+
+```text
+GET /api/openclaw/signals?since=<iso>
+POST /api/openclaw/replies
+```
+
+Expected:
+
+- requests must include `Authorization: Bearer <OPENCLAW_TOKEN>`,
+- responses return `Cache-Control: no-store`,
+- `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a placeholder calendar context until the calendar connector lands,
+- `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Ledger proposal carrying a question,
+- stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
+- OpenClaw never writes finance rows directly and Ledger never sends iMessages,
+- signal payloads must pass the assistant forbidden-field guard before serialization.
+
+To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Ledger, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
+
 ## Database Maintenance
 
 Schema changes live in `supabase/migrations`.
@@ -325,6 +352,14 @@ When adding a table:
 2. Update Vercel server environment only.
 3. Redeploy.
 4. Test Plaid exchange, sync, and disconnect.
+
+### OpenClaw token
+
+1. Generate a new high-entropy token.
+2. Update `OPENCLAW_TOKEN` in Vercel/server environment.
+3. Update OpenClaw to send `Authorization: Bearer <new-token>`.
+4. Redeploy Ledger.
+5. Confirm `/api/openclaw/signals` rejects the old token and accepts the new token.
 
 ### Plaid secret
 
