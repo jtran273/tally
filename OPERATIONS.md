@@ -251,13 +251,13 @@ The scheduled sync route is:
 /api/plaid/sync/scheduled
 ```
 
-Configure `CRON_SECRET` as a server-only environment variable before enabling a scheduler. The route accepts `GET` or `POST` only when the request includes:
+Configure `CRON_SECRET` as a server-only environment variable before enabling a scheduler. Scheduled job routes accept `GET` or `POST` only when the request includes:
 
 ```text
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, and sanitized Plaid error metadata.
+The Plaid scheduled route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, and sanitized metadata.
 
 ## Supabase Troubleshooting
 
@@ -330,14 +330,17 @@ Routes:
 ```text
 GET /api/openclaw/signals?since=<iso>
 POST /api/openclaw/replies
+GET|POST /api/openclaw/briefing/scheduled
 ```
 
 Expected:
 
 - requests must include `Authorization: Bearer <OPENCLAW_TOKEN>`,
+- scheduled briefing requests must include `Authorization: Bearer <CRON_SECRET>`,
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Ledger proposal carrying a question,
+- `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
 - OpenClaw never writes finance rows directly and Ledger never sends iMessages,
 - signal payloads must pass the assistant forbidden-field guard before serialization.

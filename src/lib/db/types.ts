@@ -35,13 +35,15 @@ export type AgentProposalType =
   | "reimbursement_candidate"
   | "reimbursement_match"
   | "safe_to_spend_warning"
-  | "clarification_request";
+  | "clarification_request"
+  | "openclaw_briefing";
 export type AgentTargetKind =
   | "review_item"
   | "enriched_transaction"
   | "reimbursement_record"
   | "merchant_rule"
-  | "recurring_expense";
+  | "recurring_expense"
+  | "openclaw_briefing";
 
 type DbInsert<Row extends { user_id: string }> = Partial<Row> & Pick<Row, "user_id">;
 type DbUpdate<Row> = Partial<Omit<Row, "id" | "user_id" | "created_at" | "first_seen_at">>;

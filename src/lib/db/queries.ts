@@ -1154,6 +1154,49 @@ export async function createAgentProposal(
   return toAgentProposalRecord(expectData(result, "Create agent proposal"));
 }
 
+export async function upsertAgentProposalBySourceContext(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: AgentProposalMutationInput,
+  options: { now?: Date } = {}
+): Promise<AgentProposalRecord> {
+  const sourceContextId = input.sourceContextId?.trim();
+  if (!sourceContextId) {
+    throw new FinanceDbError("Upsert agent proposal by source context", {
+      message: "sourceContextId is required."
+    });
+  }
+
+  const evidence = input.evidence ?? {};
+  const proposedPatch = input.proposedPatch ?? {};
+  assertAgentProposalPayloadSafe(evidence, proposedPatch);
+
+  const upsert: AgentProposalInsert = {
+    user_id: userId,
+    clarification_question: input.clarificationQuestion ?? null,
+    confidence: input.confidence ?? null,
+    evidence,
+    expires_at: input.expiresAt ?? null,
+    proposal_type: input.proposalType,
+    proposed_patch: proposedPatch,
+    question_fingerprint: input.questionFingerprint ?? null,
+    source_agent: input.sourceAgent,
+    source_candidate_id: input.sourceCandidateId ?? null,
+    source_context_id: sourceContextId,
+    target_id: input.targetId,
+    target_kind: input.targetKind,
+    updated_at: (options.now ?? new Date()).toISOString()
+  };
+
+  const result = await client
+    .from("agent_proposals")
+    .upsert(upsert, { onConflict: "user_id,source_agent,source_context_id" })
+    .select("*")
+    .single();
+
+  return toAgentProposalRecord(expectData(result, "Upsert agent proposal by source context"));
+}
+
 export async function listAgentProposals(
   client: FinanceSupabaseClient,
   userId: string,
@@ -1169,7 +1212,7 @@ export async function listAgentProposals(
     query = query.eq("status", filters.status);
   }
   if (filters.since) {
-    query = query.gte("created_at", filters.since);
+    query = query.gte("updated_at", filters.since);
   }
 
   const rows = expectData(await query, "List agent proposals")

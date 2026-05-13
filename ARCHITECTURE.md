@@ -67,11 +67,12 @@ Plaid API
 | `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
 | `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
 | `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
+| `/api/openclaw/briefing/scheduled` | `GET`/`POST` | Compile or update the current OpenClaw briefing proposal when authorized with `CRON_SECRET` |
 | `/api/export/transactions` | `GET` | Export filtered enriched transactions as CSV |
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
 
-Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. The scheduled Plaid sync route is the exception: it is intended for trusted server jobs and is authorized with `CRON_SECRET` instead of browser same-origin checks.
+Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. Scheduled Plaid sync and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
 
 ## Data Model
 

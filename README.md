@@ -38,7 +38,7 @@ Production hardening currently includes:
 - Server-only Plaid token exchange and sync.
 - Encrypted Plaid access token storage.
 - Seeded demo mode available when `ENABLE_DEMO_MODE` is not set to `false`, with no real Supabase/Plaid data exposed.
-- Same-origin checks for browser-initiated mutating route handlers, with scheduled Plaid sync protected separately by `CRON_SECRET`.
+- Same-origin checks for browser-initiated mutating route handlers, with scheduled Plaid sync and OpenClaw briefing jobs protected separately by `CRON_SECRET`.
 - Security headers in `next.config.ts`.
 - Ignored local secret files and generated build output.
 
@@ -74,7 +74,7 @@ Each initial, manual, or scheduled sync also writes a persisted run summary with
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
-Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`.
+Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
 
 ### Review Transactions
 
@@ -230,6 +230,7 @@ ENABLE_DEMO_MODE=true
 CRON_SECRET=
 OPENCLAW_TOKEN=
 OPENCLAW_USER_ID=
+OPENCLAW_BRIEFING_CADENCE=weekly
 ```
 
 Generate a production Plaid token encryption key with:

@@ -9,7 +9,8 @@ import {
   listAgentProposals,
   listTransactions,
   recordClarificationAnswer,
-  transactionMatchesSearch
+  transactionMatchesSearch,
+  upsertAgentProposalBySourceContext
 } from "./queries";
 import type {
   AccountRow,
@@ -363,7 +364,7 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 
   constructor(
     private rows: Row[],
-    private operation: "select" | "insert" | "update" | "delete",
+    private operation: "select" | "insert" | "update" | "delete" | "upsert",
     private values?: Partial<Row> | Partial<Row>[],
     private onLimit?: (count: number) => void
   ) {}
@@ -416,10 +417,21 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
   }
 
   private execute() {
-    if (this.operation === "insert") {
+    if (this.operation === "insert" || this.operation === "upsert") {
       const inserted = (Array.isArray(this.values) ? this.values : [this.values ?? {}]).map((value) => {
         const now = "2026-05-13T08:00:00.000Z";
         const rawValue = value as Record<string, unknown>;
+        const existing = this.operation === "upsert" && typeof rawValue.source_context_id === "string"
+          ? this.rows.find((row) =>
+            row["user_id"] === rawValue.user_id &&
+            row["source_agent"] === rawValue.source_agent &&
+            row["source_context_id"] === rawValue.source_context_id
+          )
+          : null;
+        if (existing) {
+          Object.assign(existing, value);
+          return existing;
+        }
         const id = typeof rawValue.id === "string" ? rawValue.id : `row-${this.rows.length + 1}`;
         const row = {
           id,
@@ -518,7 +530,7 @@ class FakeFinanceClient {
       update: (values: Partial<AgentProposalRow> | Partial<AuditEventRow>) =>
         new FakeQueryBuilder(rows, "update", values as Partial<Record<string, unknown>>, (count) => this.recordLimit(table, count)),
       upsert: (values: Partial<AgentProposalRow> | Partial<AgentProposalRow>[]) =>
-        new FakeQueryBuilder(rows, "insert", values, (count) => this.recordLimit(table, count))
+        new FakeQueryBuilder(rows, "upsert", values, (count) => this.recordLimit(table, count))
     };
   }
 }
@@ -598,6 +610,42 @@ test("agent proposals insert, list pending, and filter expired rows", async () =
   assert.equal(created.status, "pending");
   const pending = await listAgentProposals(client.asClient(), userId, { status: "pending" });
   assert.deepEqual(pending.map((proposal) => proposal.id), [created.id]);
+});
+
+test("upsertAgentProposalBySourceContext updates an existing briefing instead of duplicating it", async () => {
+  const client = new FakeFinanceClient();
+  const sourceContextId = "openclaw-briefing:weekly:2026-05-06:2026-05-12";
+  const targetId = "22222222-2222-5222-9222-222222222222";
+
+  const created = await upsertAgentProposalBySourceContext(client.asClient(), userId, {
+    evidence: { briefing: { spending: 100 } },
+    proposedPatch: { suggestedQuestions: ["first question"] },
+    proposalType: "openclaw_briefing",
+    sourceAgent: "ledger-openclaw-briefing-compiler",
+    sourceContextId,
+    targetId,
+    targetKind: "openclaw_briefing"
+  });
+  const updated = await upsertAgentProposalBySourceContext(
+    client.asClient(),
+    userId,
+    {
+      evidence: { briefing: { spending: 125 } },
+      proposedPatch: { suggestedQuestions: ["updated question"] },
+      proposalType: "openclaw_briefing",
+      sourceAgent: "ledger-openclaw-briefing-compiler",
+      sourceContextId,
+      targetId,
+      targetKind: "openclaw_briefing"
+    },
+    { now: new Date("2026-05-13T10:00:00.000Z") }
+  );
+
+  assert.equal(updated.id, created.id);
+  assert.equal(client.agentProposals.length, 1);
+  assert.deepEqual(updated.evidence, { briefing: { spending: 125 } });
+  assert.deepEqual(updated.proposedPatch, { suggestedQuestions: ["updated question"] });
+  assert.equal(updated.updatedAt, "2026-05-13T10:00:00.000Z");
 });
 
 test("agent proposal safety rejects forbidden evidence before insert", async () => {
