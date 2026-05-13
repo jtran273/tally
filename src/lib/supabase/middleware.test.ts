@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isSessionBypassPath } from "./middleware";
+import { NextRequest } from "next/server";
+import { isSessionBypassPath, updateSession } from "./middleware";
 
 test("OpenClaw API routes bypass Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/openclaw/signals"), true);
@@ -11,6 +12,18 @@ test("OpenClaw API routes bypass Supabase session redirects", () => {
 test("scheduled proactive scan bypasses Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/agents/proactive-scan/scheduled"), true);
   assert.equal(isSessionBypassPath("/api/agents/proactive-scan"), true);
+});
+
+test("scheduled Plaid sync bypasses Supabase session redirects", () => {
+  assert.equal(isSessionBypassPath("/api/plaid/sync/scheduled"), true);
+  assert.equal(isSessionBypassPath("/api/plaid/sync/scheduled/extra"), true);
+});
+
+test("scheduled Plaid sync reaches its route handler without a browser session", async () => {
+  const response = await updateSession(new NextRequest("http://localhost/api/plaid/sync/scheduled"));
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.has("location"), false);
 });
 
 test("Google Calendar OAuth callback bypasses Supabase session redirects", () => {

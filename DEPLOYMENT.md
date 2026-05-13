@@ -61,7 +61,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import, review page load, and proactive scans should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
 | `ENABLE_DEMO_MODE` | Server only | Production explicit | Defaults to enabled. Set `false` to hide the seeded demo entry, or set `true`/leave unset only for an intentional demo deployment. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
-| `CRON_SECRET` | Server only | Scheduled jobs yes | Shared bearer secret for `/api/plaid/sync/scheduled`, `/api/agents/proactive-scan/scheduled`, and `/api/openclaw/briefing/scheduled`. Required before enabling Vercel Cron or another scheduler. |
+| `CRON_SECRET` | Server only | Plaid cron yes | Bearer secret Vercel sends to `/api/plaid/sync/scheduled` so only the scheduler can trigger Plaid sync. Optional proactive scan and OpenClaw scheduled routes also require it if they are separately scheduled later. |
 | `OPENCLAW_TOKEN` | Server only | OpenClaw yes | Shared bearer secret for `/api/openclaw/signals` and `/api/openclaw/replies`. Rotate alongside the OpenClaw caller. |
 | `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Ledger rows are exposed to the server-to-server OpenClaw integration. |
 | `OPENCLAW_BRIEFING_CADENCE` | Server only | Optional | `weekly` by default. Set to `daily` only if the scheduled OpenClaw briefing job should refresh a daily proposal key. |
@@ -104,7 +104,7 @@ npm run build
 6. Choose demo visibility intentionally: set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `true`/leave unset only when the deployment should expose the seeded demo workspace.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
-9. If scheduled jobs are enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled`, `/api/openclaw/briefing/scheduled`, and optionally `/api/agents/proactive-scan/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
+9. Set `CRON_SECRET`; `vercel.json` schedules `/api/plaid/sync/scheduled` daily at `12:00 UTC`, which is 5:00 AM America/Los_Angeles during daylight saving time. Vercel sends `CRON_SECRET` as the bearer token for cron invocations.
 10. Promote or deploy to Production after checks pass.
 
 ## Plaid Setup
@@ -224,7 +224,7 @@ For a secret issue:
 
 ## Production Limitations
 
-- Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes exist, but no scheduler is enabled unless Vercel Cron or another trusted runner is configured with `CRON_SECRET`.
+- Scheduled Plaid sync is enabled through Vercel Cron at `12:00 UTC` daily. Vercel cron schedules are UTC, so this maps to 5:00 AM America/Los_Angeles during daylight saving time and 4:00 AM during standard time; on Hobby, invocation may occur within the scheduled hour. Proactive scan and OpenClaw briefing routes still need a separate trusted runner if enabled.
 - The app is single-user from a product perspective, though rows are modeled by `user_id`.
 - Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible; proactive scans also use this flag before spending OpenAI tokens.
 - Bulk review acceptance is not implemented; review suggestions are accepted one item at a time.

@@ -4,7 +4,12 @@ import { isDemoRequest } from "@/lib/demo/auth";
 import { getSupabaseConfig } from "./env";
 
 const PUBLIC_PATHS = ["/login"];
-const SESSION_BYPASS_PATHS = ["/api/agents/proactive-scan", "/api/calendar/callback", "/api/openclaw"];
+const SESSION_BYPASS_PATHS = [
+  "/api/agents/proactive-scan",
+  "/api/calendar/callback",
+  "/api/openclaw",
+  "/api/plaid/sync/scheduled"
+];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
