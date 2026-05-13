@@ -12,7 +12,8 @@ import {
   createAgentProposal,
   type AgentProposalMutationInput,
   type FinanceSupabaseClient,
-  listAgentProposals
+  listAgentProposals,
+  upsertAgentProposalBySourceContext
 } from "@/lib/db/queries";
 
 export interface ReimbursementCandidateDetectorOptions {
@@ -228,6 +229,10 @@ function stableFingerprint(candidate: Pick<ReimbursementCandidateHeuristic, "can
   return `reimbursement-candidate:${candidate.transaction.id}:${inflowIds || "no-inflow"}`;
 }
 
+function stableSourceContextId(candidate: Pick<ReimbursementCandidateHeuristic, "transaction">) {
+  return `reimbursement-candidate:${candidate.transaction.id}`;
+}
+
 function safeJson(value: unknown): Json {
   return JSON.parse(JSON.stringify(value)) as Json;
 }
@@ -283,6 +288,7 @@ function buildDetection(
       questionFingerprint: stableFingerprint(candidate),
       sourceAgent: SOURCE_AGENT,
       sourceCandidateId: aiSuggestion.suggestionId,
+      sourceContextId: stableSourceContextId(candidate),
       targetId: candidate.transaction.id,
       targetKind: "enriched_transaction"
     },
@@ -392,7 +398,9 @@ export async function createDetectedReimbursementCandidateProposals(
 
   const created: AgentProposalRecord[] = [];
   for (const detection of detections) {
-    created.push(await createAgentProposal(client, userId, detection.proposal));
+    created.push(detection.proposal.sourceContextId
+      ? await upsertAgentProposalBySourceContext(client, userId, detection.proposal)
+      : await createAgentProposal(client, userId, detection.proposal));
   }
   return created;
 }

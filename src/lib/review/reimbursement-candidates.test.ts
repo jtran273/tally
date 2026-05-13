@@ -3,8 +3,10 @@ import test from "node:test";
 import { createMockSuggestionAdapter } from "@/lib/ai";
 import { TransactionSuggestionService } from "@/lib/ai/suggestion-service";
 import type { ReimbursementCandidateAiRequest } from "@/lib/ai/types";
-import type { AgentProposalRecord, TransactionRecord } from "@/lib/db";
+import type { AgentProposalRecord, AgentProposalRow, TransactionRecord } from "@/lib/db";
+import type { FinanceSupabaseClient } from "@/lib/db/queries";
 import {
+  createDetectedReimbursementCandidateProposals,
   detectReimbursementCandidateProposals,
   prefilterReimbursementCandidates
 } from "./reimbursement-candidates";
@@ -69,6 +71,59 @@ function existingProposal(input: Partial<AgentProposalRecord> & Pick<AgentPropos
     updatedAt: "2026-05-13T08:00:00.000Z",
     userId,
     ...input
+  };
+}
+
+function proposalUpsertClient() {
+  const rows: AgentProposalRow[] = [];
+
+  return {
+    rows,
+    client: {
+      from(table: string) {
+        assert.equal(table, "agent_proposals");
+
+        return {
+          upsert(value: Partial<AgentProposalRow>, options?: { onConflict?: string }) {
+            assert.equal(options?.onConflict, "user_id,source_agent,source_context_id");
+
+            return {
+              select() {
+                return this;
+              },
+              single() {
+                const now = "2026-05-13T08:00:00.000Z";
+                const existing = rows.find((row) =>
+                  row.user_id === value.user_id &&
+                  row.source_agent === value.source_agent &&
+                  row.source_context_id === value.source_context_id
+                );
+
+                if (existing) {
+                  Object.assign(existing, value, { updated_at: value.updated_at ?? now });
+                  return Promise.resolve({ data: existing, error: null });
+                }
+
+                const row = {
+                  accepted_at: null,
+                  answered_at: null,
+                  clarification_answer: null,
+                  clarification_answer_kind: null,
+                  created_at: now,
+                  dismissed_at: null,
+                  id: `proposal-${rows.length + 1}`,
+                  status: "pending",
+                  updated_at: value.updated_at ?? now,
+                  ...value
+                } as AgentProposalRow;
+                rows.push(row);
+                return Promise.resolve({ data: row, error: null });
+              }
+            };
+          }
+        };
+      }
+    } as unknown as FinanceSupabaseClient
   };
 }
 
@@ -187,10 +242,42 @@ test("detectReimbursementCandidateProposals returns safe proposal payloads from 
   assert.equal(proposal.targetId, "tx-hotel");
   assert.equal(proposal.targetKind, "enriched_transaction");
   assert.equal(proposal.sourceAgent, "ledger-reimbursement-candidate-detector");
+  assert.equal(proposal.sourceContextId, "reimbursement-candidate:tx-hotel");
   assert.equal(proposal.confidence! > 0.6, true);
   assert.equal(typeof proposal.clarificationQuestion, "string");
   assert.match(proposal.clarificationQuestion ?? "", /Ace Hotel/);
   assert.deepEqual((detections[0].proposedPatch as { suggestedInflowIds?: string[] }).suggestedInflowIds, ["tx-zelle"]);
+});
+
+test("createDetectedReimbursementCandidateProposals upserts by source context for overlapping scans", async () => {
+  const { client, rows } = proposalUpsertClient();
+  const expense = transaction({
+    amount: -240,
+    category: "Travel / Hotel",
+    date: "2026-05-01",
+    id: "tx-hotel",
+    merchant: "Ace Hotel"
+  });
+  const inflow = transaction({
+    amount: 120,
+    category: "Uncategorized",
+    date: "2026-05-05",
+    id: "tx-zelle",
+    merchant: "Zelle Transfer Alex"
+  });
+  const input = {
+    existingProposals: [],
+    inflows: [inflow],
+    suggestionService,
+    transactions: [expense]
+  };
+
+  const first = await createDetectedReimbursementCandidateProposals(client, userId, input);
+  const second = await createDetectedReimbursementCandidateProposals(client, userId, input);
+
+  assert.equal(rows.length, 1);
+  assert.equal(first[0].id, second[0].id);
+  assert.equal(rows[0].source_context_id, "reimbursement-candidate:tx-hotel");
 });
 
 test("detectReimbursementCandidateProposals limits concurrent provider calls", async () => {

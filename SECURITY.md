@@ -157,7 +157,7 @@ Protected handlers include:
 - `/login/demo`
 - `/login/logout`
 
-The scheduled sync route `/api/plaid/sync/scheduled` and scheduled OpenClaw briefing route `/api/openclaw/briefing/scheduled` are the exceptions: they are intended for trusted server-to-server callers and require `Authorization: Bearer <CRON_SECRET>`.
+The scheduled sync route `/api/plaid/sync/scheduled`, proactive scan route `/api/agents/proactive-scan/scheduled`, and scheduled OpenClaw briefing route `/api/openclaw/briefing/scheduled` are the exceptions: they are intended for trusted server-to-server callers and require `Authorization: Bearer <CRON_SECRET>`.
 
 The Google Calendar OAuth callback is a browser redirect and uses a short-lived HTTP-only OAuth state cookie plus Supabase session verification instead of the same-origin POST guard.
 
@@ -207,7 +207,7 @@ Do not log:
 - GitHub repo is private.
 - Vercel project environment variables are set for Production and Preview separately.
 - `ENABLE_DEMO_MODE` is explicitly set for production: `false` to hide the demo entry, or `true`/unset only when a seeded product walkthrough is intentional.
-- `CRON_SECRET` is set before enabling scheduled sync or scheduled OpenClaw briefings and omitted when no scheduler is configured.
+- `CRON_SECRET` is set before enabling scheduled sync, proactive scans, or scheduled OpenClaw briefings and omitted when no scheduler is configured.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set before enabling Google Calendar.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.

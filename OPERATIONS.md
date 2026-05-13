@@ -245,10 +245,12 @@ Check:
 
 ## Scheduled Plaid Sync
 
-The scheduled sync route is:
+Scheduled job routes are:
 
 ```text
 /api/plaid/sync/scheduled
+/api/agents/proactive-scan/scheduled
+/api/openclaw/briefing/scheduled
 ```
 
 Configure `CRON_SECRET` as a server-only environment variable before enabling a scheduler. Scheduled job routes accept `GET` or `POST` only when the request includes:
@@ -257,7 +259,7 @@ Configure `CRON_SECRET` as a server-only environment variable before enabling a 
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The Plaid scheduled route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, and sanitized metadata.
+The Plaid scheduled route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. The proactive scan route uses `PROACTIVE_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 45 days for candidate expenses, caps candidate transactions with `PROACTIVE_SCAN_MAX_TX`, uses OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`, and writes only advisory reimbursement proposals. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, and sanitized metadata.
 
 ## Supabase Troubleshooting
 
@@ -309,7 +311,7 @@ The app works without `OPENAI_API_KEY` by using deterministic suggestions.
 If `OPENAI_API_KEY` is set:
 
 - OpenAI review actions should use the configured provider,
-- automatic OpenAI cleanup should stay off unless `ENABLE_OPENAI_AUTO_REVIEW=true`,
+- automatic OpenAI cleanup and proactive OpenAI scans should stay off unless `ENABLE_OPENAI_AUTO_REVIEW=true`,
 - the review queue should let the user generate individual suggestions manually,
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,

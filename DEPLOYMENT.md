@@ -59,12 +59,14 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` | Server only | Production Calendar yes | Dedicated AES-GCM key material for stored Google Calendar access and refresh tokens. Keep stable. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
-| `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import and review page load should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
+| `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import, review page load, and proactive scans should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
 | `ENABLE_DEMO_MODE` | Server only | Production explicit | Defaults to enabled. Set `false` to hide the seeded demo entry, or set `true`/leave unset only for an intentional demo deployment. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
-| `CRON_SECRET` | Server only | Scheduled jobs yes | Shared bearer secret for `/api/plaid/sync/scheduled` and `/api/openclaw/briefing/scheduled`. Required before enabling Vercel Cron or another scheduler. |
+| `CRON_SECRET` | Server only | Scheduled jobs yes | Shared bearer secret for `/api/plaid/sync/scheduled`, `/api/agents/proactive-scan/scheduled`, and `/api/openclaw/briefing/scheduled`. Required before enabling Vercel Cron or another scheduler. |
 | `OPENCLAW_TOKEN` | Server only | OpenClaw yes | Shared bearer secret for `/api/openclaw/signals` and `/api/openclaw/replies`. Rotate alongside the OpenClaw caller. |
 | `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Ledger rows are exposed to the server-to-server OpenClaw integration. |
 | `OPENCLAW_BRIEFING_CADENCE` | Server only | Optional | `weekly` by default. Set to `daily` only if the scheduled OpenClaw briefing job should refresh a daily proposal key. |
+| `PROACTIVE_SCAN_USER_ID` | Server only | Optional | Supabase user id for the nightly proactive reimbursement scan. Falls back to `OPENCLAW_USER_ID`. |
+| `PROACTIVE_SCAN_MAX_TX` | Server only | Optional | Hard cap on candidate transactions scanned per proactive run. Defaults to `100`. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
 
 Generate `PLAID_TOKEN_ENCRYPTION_KEY`:
@@ -102,7 +104,7 @@ npm run build
 6. Choose demo visibility intentionally: set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `true`/leave unset only when the deployment should expose the seeded demo workspace.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
-9. If scheduled jobs are enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled` and optionally `/api/openclaw/briefing/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
+9. If scheduled jobs are enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled`, `/api/openclaw/briefing/scheduled`, and optionally `/api/agents/proactive-scan/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
 10. Promote or deploy to Production after checks pass.
 
 ## Plaid Setup
@@ -152,11 +154,11 @@ To enable OpenAI suggestions:
 1. Set `OPENAI_API_KEY` in Vercel server environment.
 2. Optionally set `OPENAI_MODEL`.
 3. Leave `ENABLE_OPENAI_AUTO_REVIEW=false` or unset for manual-only token usage.
-4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import and review page cleanup should call OpenAI.
+4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import, review page cleanup, and proactive scans should call OpenAI.
 5. Deploy.
 6. Verify Review can request an OpenAI suggestion.
 
-Manual OpenAI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup only runs when `ENABLE_OPENAI_AUTO_REVIEW=true` and only applies eligible high-confidence ordinary categorization under server-side rules.
+Manual OpenAI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup and proactive scans only run OpenAI when `ENABLE_OPENAI_AUTO_REVIEW=true`, and cleanup only applies eligible high-confidence ordinary categorization under server-side rules.
 
 ## First Production Smoke Test
 
@@ -222,9 +224,9 @@ For a secret issue:
 
 ## Production Limitations
 
-- Scheduled Plaid sync and OpenClaw briefing routes exist, but no scheduler is enabled unless Vercel Cron or another trusted runner is configured with `CRON_SECRET`.
+- Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes exist, but no scheduler is enabled unless Vercel Cron or another trusted runner is configured with `CRON_SECRET`.
 - The app is single-user from a product perspective, though rows are modeled by `user_id`.
-- Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible.
+- Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible; proactive scans also use this flag before spending OpenAI tokens.
 - Bulk review acceptance is not implemented; review suggestions are accepted one item at a time.
 - The agent inbox is derived from review items and suggestions; it is not a persisted generic proposal store yet.
 - Reimbursement reporting exists, but automatic reimbursement matching and full reimbursement lifecycle management are not implemented yet.

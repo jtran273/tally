@@ -65,6 +65,7 @@ Plaid API
 | `/api/calendar/callback` | `GET` | Complete Google Calendar OAuth after state-cookie validation |
 | `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
 | `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
+| `/api/agents/proactive-scan/scheduled` | `GET`/`POST` | Run a bounded reimbursement candidate detector scan when authorized with `CRON_SECRET` |
 | `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
 | `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
 | `/api/openclaw/briefing/scheduled` | `GET`/`POST` | Compile or update the current OpenClaw briefing proposal when authorized with `CRON_SECRET` |
@@ -72,7 +73,7 @@ Plaid API
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
 
-Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. Scheduled Plaid sync and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
+Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
 
 ## Data Model
 
@@ -186,7 +187,7 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 ## AI Suggestion Flow
 
-`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import and review page load is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; manual review actions can still request one suggestion at a time.
+`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import, review page load, and proactive scans is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; manual review actions can still request one suggestion at a time.
 
 Manual AI suggestions are advisory and require explicit user acceptance. When `ENABLE_OPENAI_AUTO_REVIEW=true`, eligible high-confidence ordinary cleanup can be applied by server-side heuristics during import or review processing; peer-to-peer and ambiguous items remain manual.
 

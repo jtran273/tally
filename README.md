@@ -38,7 +38,7 @@ Production hardening currently includes:
 - Server-only Plaid token exchange and sync.
 - Encrypted Plaid access token storage.
 - Seeded demo mode available when `ENABLE_DEMO_MODE` is not set to `false`, with no real Supabase/Plaid data exposed.
-- Same-origin checks for browser-initiated mutating route handlers, with scheduled Plaid sync and OpenClaw briefing jobs protected separately by `CRON_SECRET`.
+- Same-origin checks for browser-initiated mutating route handlers, with scheduled Plaid sync, proactive scan, and OpenClaw briefing jobs protected separately by `CRON_SECRET`.
 - Security headers in `next.config.ts`.
 - Ignored local secret files and generated build output.
 
@@ -74,7 +74,7 @@ Each initial, manual, or scheduled sync also writes a persisted run summary with
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
-Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
+Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
 
 ### Review Transactions
 
@@ -88,7 +88,7 @@ The review queue flags transactions that need judgment, including:
 - missing categories,
 - recurring candidates.
 
-Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. OpenAI-backed automatic review cleanup is off by default to control token usage; users can generate AI suggestions manually from review items, or enable automatic OpenAI cleanup with `ENABLE_OPENAI_AUTO_REVIEW=true`. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
+Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. OpenAI-backed automatic review cleanup and proactive scans are off by default to control token usage; users can generate AI suggestions manually from review items, or enable automatic OpenAI work with `ENABLE_OPENAI_AUTO_REVIEW=true`. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
 Users can accept ready suggestions one at a time, generate a suggestion for one review item, dismiss non-peer-to-peer review items, edit a transaction inline, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows require an explanation and split allocation before leaving review.
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
@@ -231,6 +231,8 @@ CRON_SECRET=
 OPENCLAW_TOKEN=
 OPENCLAW_USER_ID=
 OPENCLAW_BRIEFING_CADENCE=weekly
+PROACTIVE_SCAN_USER_ID=
+PROACTIVE_SCAN_MAX_TX=100
 ```
 
 Generate a production Plaid token encryption key with:
