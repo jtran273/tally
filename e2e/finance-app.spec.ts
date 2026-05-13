@@ -415,7 +415,7 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await expect(peerCard.getByRole("button", { name: /remove split row 2/i })).toBeVisible();
 
   const aiCard = page.locator("article", { has: page.getByRole("heading", { name: "Delta Air Lines" }) });
-  await expect(aiCard.getByRole("button", { name: /ask openai|refresh openai suggestion/i })).toBeVisible();
+  await expect(aiCard.getByRole("button", { name: /ask openai|refresh openai suggestion|run rules suggestion|refresh rules suggestion/i })).toBeVisible();
   await expect(aiCard.getByRole("button", { name: /accept suggestion/i })).toBeVisible();
   await expect(aiCard.getByRole("button", { name: /dismiss/i })).toBeVisible();
   await aiCard.getByRole("button", { name: /edit here/i }).click();
