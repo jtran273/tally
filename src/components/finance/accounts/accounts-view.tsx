@@ -214,7 +214,7 @@ export function AccountsView({
           <section className={styles.summaryGrid} aria-label="Account summary">
             <SummaryCard detail={`${accounts.length} persisted account rows`} icon={Landmark} label="Net worth" value={formatMoney(totals.netWorth)} />
             <SummaryCard detail="Cash plus investments and retirement" icon={Database} label="Assets" value={formatMoney(totals.assets)} />
-            <SummaryCard detail="Credit cards reduce net worth" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.credit)} />
+            <SummaryCard detail="Credit cards reduce net worth" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.liabilities)} />
             <SummaryCard
               detail={formatRelativeTime(syncSummary.latestSyncedAt)}
               icon={syncSummary.status === "stale" || syncSummary.status === "never" ? TriangleAlert : Clock3}

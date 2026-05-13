@@ -329,12 +329,17 @@ export function accountSyncState(
 ): SyncState {
   if (!account.lastSyncedAt) return "never";
 
-  const syncedAt = new Date(account.lastSyncedAt);
-  if (Number.isNaN(syncedAt.getTime())) return "never";
+  const syncedAt = parseValidDate(account.lastSyncedAt);
+  if (!syncedAt) return "never";
 
   const now = options.now ?? new Date();
   const staleAfterMs = (options.staleAfterHours ?? 24) * 60 * 60 * 1000;
   return now.getTime() - syncedAt.getTime() > staleAfterMs ? "stale" : "fresh";
+}
+
+function parseValidDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function summarizeSync(
@@ -352,6 +357,7 @@ export function summarizeSync(
   }
 
   let latestSyncedAt: string | null = null;
+  let latestSyncedAtTime = Number.NEGATIVE_INFINITY;
 
   const counts = accounts.reduce(
     (sum, account) => {
@@ -360,11 +366,10 @@ export function summarizeSync(
       if (state === "stale") sum.staleCount += 1;
       if (state === "never") sum.neverSyncedCount += 1;
 
-      if (
-        account.lastSyncedAt &&
-        (!latestSyncedAt || new Date(account.lastSyncedAt).getTime() > new Date(latestSyncedAt).getTime())
-      ) {
+      const syncedAt = account.lastSyncedAt ? parseValidDate(account.lastSyncedAt) : null;
+      if (syncedAt && syncedAt.getTime() > latestSyncedAtTime) {
         latestSyncedAt = account.lastSyncedAt;
+        latestSyncedAtTime = syncedAt.getTime();
       }
 
       return sum;

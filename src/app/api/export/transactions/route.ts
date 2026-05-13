@@ -15,6 +15,7 @@ import {
   buildTransactionsCsv,
   listTransactionReimbursementSummaries
 } from "@/lib/export/transactions";
+import { jsonNoStore } from "@/lib/security/request";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -59,11 +60,11 @@ export async function GET(request: NextRequest) {
   const context = await getFinanceServerContext();
 
   if (!context.isConfigured) {
-    return NextResponse.json({ error: "Authentication is not configured." }, { status: 503 });
+    return jsonNoStore({ error: "Authentication is not configured." }, { status: 503 });
   }
 
   if (!context.client || !context.userId) {
-    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    return jsonNoStore({ error: "Authentication required." }, { status: 401 });
   }
 
   const parsedFilters = parseTransactionFilters(searchParamsToRecord(request.nextUrl.searchParams));
@@ -92,6 +93,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (exportError) {
     console.error("transactions_export_failed", exportError);
-    return NextResponse.json({ error: "Unable to export transactions." }, { status: 500 });
+    return jsonNoStore({ error: "Unable to export transactions." }, { status: 500 });
   }
 }

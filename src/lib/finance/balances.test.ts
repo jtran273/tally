@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountRecord, BalanceSnapshotRecord, TransactionRecord } from "@/lib/db";
-import { buildBalanceTrend, calculateAccountScopeTotal } from "./balances";
+import { buildBalanceTrend, calculateAccountScopeTotal, calculateAccountTotals, summarizeSync } from "./balances";
 
 const account = {
   availableBalance: null,
@@ -43,6 +43,14 @@ test("calculateAccountScopeTotal separates cash, liabilities, and cash minus lia
   assert.equal(calculateAccountScopeTotal([account, creditAccount], "cash"), 1000);
   assert.equal(calculateAccountScopeTotal([account, creditAccount], "liabilities"), 350);
   assert.equal(calculateAccountScopeTotal([account, creditAccount], "cashMinusLiabilities"), 650);
+});
+
+test("calculateAccountTotals exposes credit contribution and liabilities separately", () => {
+  const totals = calculateAccountTotals([account, creditAccount]);
+
+  assert.equal(totals.credit, -350);
+  assert.equal(totals.liabilities, 350);
+  assert.equal(totals.netWorth, 650);
 });
 
 test("buildBalanceTrend scopes snapshots for cash minus liabilities and liabilities", () => {
@@ -166,4 +174,33 @@ test("buildBalanceTrend derives transaction trends for liabilities and cashMinus
   });
   assert.equal(combinedTrend.length > 1, true, "cashMinusLiabilities should derive multiple trend points");
   assert.equal(combinedTrend.at(-1)?.netWorth, 650, "trend should end at current cash minus liabilities");
+});
+
+test("summarizeSync ignores invalid timestamps when deriving latest sync", () => {
+  const summary = summarizeSync(
+    [
+      { lastSyncedAt: "not-a-date" },
+      { lastSyncedAt: null },
+      { lastSyncedAt: "2026-05-07T12:00:00.000Z" },
+      { lastSyncedAt: "2026-05-06T12:00:00.000Z" }
+    ],
+    { now: new Date("2026-05-07T20:00:00.000Z") }
+  );
+
+  assert.equal(summary.latestSyncedAt, "2026-05-07T12:00:00.000Z");
+  assert.equal(summary.freshCount, 1);
+  assert.equal(summary.neverSyncedCount, 2);
+  assert.equal(summary.staleCount, 1);
+  assert.equal(summary.status, "stale");
+});
+
+test("summarizeSync reports never synced when every timestamp is missing or invalid", () => {
+  const summary = summarizeSync([
+    { lastSyncedAt: "not-a-date" },
+    { lastSyncedAt: null }
+  ]);
+
+  assert.equal(summary.latestSyncedAt, null);
+  assert.equal(summary.neverSyncedCount, 2);
+  assert.equal(summary.status, "never");
 });

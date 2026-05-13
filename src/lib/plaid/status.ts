@@ -68,6 +68,12 @@ function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
 }
 
+function validTimestamp(value: string | null) {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : { time, value };
+}
+
 export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): PlaidConnectionIssue | null {
   if (input.status === "revoked") {
     return {
@@ -119,7 +125,7 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
     };
   }
 
-  if (!input.lastSuccessfulSyncAt) {
+  if (!validTimestamp(input.lastSuccessfulSyncAt)) {
     return {
       action: "retry",
       detail: "This connection has not completed a successful sync yet.",
@@ -134,9 +140,9 @@ export function buildPlaidConnectionsStatusSummary(
   connections: readonly PlaidConnectionStatusInput[]
 ): PlaidConnectionsStatusSummary {
   const latestSuccessfulSyncAt = connections
-    .map((connection) => connection.lastSuccessfulSyncAt)
-    .filter((value): value is string => Boolean(value))
-    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+    .map((connection) => validTimestamp(connection.lastSuccessfulSyncAt))
+    .filter((value): value is { time: number; value: string } => Boolean(value))
+    .sort((a, b) => b.time - a.time)[0]?.value ?? null;
   const active = connections.filter((connection) => connection.status === "active").length;
   const errored = connections.filter((connection) => connection.status === "error").length;
   const revoked = connections.filter((connection) => connection.status === "revoked").length;
@@ -154,7 +160,7 @@ export function buildPlaidConnectionsStatusSummary(
     revoked,
     status: total === 0
       ? "empty"
-      : errored > 0 || needsRepair > 0
+      : errored > 0 || needsRepair > 0 || syncable === 0
         ? "needs_attention"
         : !latestSuccessfulSyncAt && syncable > 0
           ? "never_synced"

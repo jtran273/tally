@@ -80,6 +80,47 @@ test("Plaid connection summary distinguishes empty and never-synced states", () 
   );
 });
 
+test("Plaid connection summary ignores invalid latest sync timestamps", () => {
+  const summary = buildPlaidConnectionsStatusSummary([
+    connection({ lastSuccessfulSyncAt: "not-a-date" }),
+    connection({ lastSuccessfulSyncAt: "2026-05-07T12:00:00.000Z" }),
+    connection({ lastSuccessfulSyncAt: "2026-05-06T12:00:00.000Z" })
+  ]);
+
+  assert.equal(summary.latestSuccessfulSyncAt, "2026-05-07T12:00:00.000Z");
+  assert.equal(summary.status, "healthy");
+});
+
+test("Plaid connection summary treats all invalid sync timestamps as never synced", () => {
+  const summary = buildPlaidConnectionsStatusSummary([
+    connection({ lastSuccessfulSyncAt: "not-a-date" })
+  ]);
+
+  assert.equal(summary.latestSuccessfulSyncAt, null);
+  assert.equal(summary.status, "never_synced");
+});
+
+test("Plaid connection issues treat invalid sync timestamps as never synced", () => {
+  assert.deepEqual(
+    getPlaidConnectionIssue(connection({ lastSuccessfulSyncAt: "not-a-date" })),
+    {
+      action: "retry",
+      detail: "This connection has not completed a successful sync yet.",
+      title: "Never synced"
+    }
+  );
+});
+
+test("Plaid connection summary does not mark revoked-only connections healthy", () => {
+  const summary = buildPlaidConnectionsStatusSummary([
+    connection({ status: "revoked" })
+  ]);
+
+  assert.equal(summary.revoked, 1);
+  assert.equal(summary.syncable, 0);
+  assert.equal(summary.status, "needs_attention");
+});
+
 test("Plaid sync result messages include safe API error details", () => {
   const sync = {
     accountsUpserted: 0,

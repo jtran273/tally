@@ -186,6 +186,7 @@ npm test
 npm run test:e2e
 npm run build
 npm audit --omit=dev
+git diff --check
 ```
 
 `npm test` runs `npm run typecheck` followed by the Node unit tests. `npm run test:e2e` starts the Next.js dev server through Playwright and exercises the seeded demo workspace. Use `PLAYWRIGHT_BASE_URL` to choose a local host or port for that server.
