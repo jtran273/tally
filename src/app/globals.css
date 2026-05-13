@@ -1,5 +1,14 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
+/*
+Motion: use --dur-fast (120ms), --dur-base (200ms), --dur-slow (320ms)
+with --ease-standard for small state changes and --ease-emphasized for
+larger entrance/exit motion. Put motion rules inside prefers-reduced-motion:
+no-preference blocks; reduced-motion users should see instant state changes.
+
+Spacing rhythm: prefer 4/8/12/16/24/32px via --space-1..6. Cards use
+--radius-card and compact controls use --radius-control.
+*/
 :root {
   --bg: #f7f7f4;
   --surface: #ffffff;
@@ -18,6 +27,19 @@
   --info: #435fb6;
   --row-pad-y: 14px;
   --content-max: 1500px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-card: 8px;
+  --radius-control: 7px;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
   --shadow-sm: 0 1px 0 rgba(20, 18, 12, 0.04);
   --shadow-md: 0 1px 2px rgba(20, 18, 12, 0.04), 0 8px 28px rgba(20, 18, 12, 0.06);
 }
@@ -2225,12 +2247,49 @@ kbd {
 }
 
 .state-spin {
-  animation: state-spin 0.8s linear infinite;
+  transform-origin: center;
 }
 
 @keyframes state-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nav-item,
+  .icon-btn,
+  .btn-ghost,
+  .search,
+  .mobile-search-trigger,
+  .card,
+  .card-flush,
+  .review-list,
+  .review-detail,
+  .rec-summary-card,
+  .acc-card,
+  .settings-panel,
+  .settings-row,
+  .plaid-connection-row {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-base) var(--ease-standard);
+  }
+
+  .search-layer {
+    transition: opacity var(--dur-base) var(--ease-standard);
+  }
+
+  .search-layer .search {
+    transition:
+      opacity var(--dur-base) var(--ease-standard),
+      transform var(--dur-base) var(--ease-emphasized);
+  }
+
+  .state-spin {
+    animation: state-spin 0.8s linear infinite;
   }
 }
 
@@ -2343,7 +2402,6 @@ kbd {
     display: block;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 180ms ease;
   }
 
   .search-layer.search-open {
@@ -2370,9 +2428,6 @@ kbd {
     box-shadow: 0 18px 54px rgba(23, 23, 19, 0.18);
     opacity: 0;
     transform: translateY(-10px) scale(0.98);
-    transition:
-      opacity 180ms ease,
-      transform 180ms ease;
   }
 
   .search-layer.search-open .search {

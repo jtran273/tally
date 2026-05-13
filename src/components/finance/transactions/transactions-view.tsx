@@ -1,7 +1,7 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
-import { Database, Filter, HandCoins, Hourglass, Inbox } from "lucide-react";
+import { Database, Filter, HandCoins, Hourglass, Inbox, type LucideIcon } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
@@ -48,6 +48,29 @@ function summarize(transactions: TransactionRecord[]) {
   };
 }
 
+function SummaryCard({
+  detail,
+  icon: Icon,
+  label,
+  value
+}: {
+  detail: string;
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={styles.summaryCard} tabIndex={0}>
+      <span className={styles.summaryLabel}>
+        <Icon size={13} aria-hidden />
+        {label}
+      </span>
+      <strong>{value}</strong>
+      <span className={styles.summaryDetail}>{detail}</span>
+    </div>
+  );
+}
+
 export function TransactionsView({
   accounts,
   categories,
@@ -76,48 +99,36 @@ export function TransactionsView({
   return (
     <div className={styles.shell}>
       <section className={styles.summaryGrid} aria-label="Transaction summary">
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Database size={13} aria-hidden />
-            Rows shown
-          </span>
-          <strong>{transactions.length.toLocaleString("en-US")}</strong>
-          <span>Persisted enriched transactions</span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Filter size={13} aria-hidden />
-            Spending
-          </span>
-          <strong>{formatMoney(summary.spending)}</strong>
-          <span>Owned outflow excluding transfers and reimbursable portions</span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <HandCoins size={13} aria-hidden />
-            Reimbursements
-          </span>
-          <strong>{formatMoney(summary.reimbursements.outstandingAmount)}</strong>
-          <span>
-            Outstanding from {formatMoney(summary.reimbursements.reimbursableAmount)} reimbursable activity
-          </span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Hourglass size={13} aria-hidden />
-            Pending
-          </span>
-          <strong>{summary.pending.toLocaleString("en-US")}</strong>
-          <span>Visually marked in the table</span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Inbox size={13} aria-hidden />
-            Review
-          </span>
-          <strong>{summary.needsReview.toLocaleString("en-US")}</strong>
-          <span>Open review items in view</span>
-        </div>
+        <SummaryCard
+          detail="Persisted enriched transactions"
+          icon={Database}
+          label="Rows shown"
+          value={transactions.length.toLocaleString("en-US")}
+        />
+        <SummaryCard
+          detail="Owned outflow excluding transfers and reimbursable portions"
+          icon={Filter}
+          label="Spending"
+          value={formatMoney(summary.spending)}
+        />
+        <SummaryCard
+          detail={`Outstanding from ${formatMoney(summary.reimbursements.reimbursableAmount)} reimbursable activity`}
+          icon={HandCoins}
+          label="Reimbursements"
+          value={formatMoney(summary.reimbursements.outstandingAmount)}
+        />
+        <SummaryCard
+          detail="Visually marked in the table"
+          icon={Hourglass}
+          label="Pending"
+          value={summary.pending.toLocaleString("en-US")}
+        />
+        <SummaryCard
+          detail="Open review items in view"
+          icon={Inbox}
+          label="Review"
+          value={summary.needsReview.toLocaleString("en-US")}
+        />
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />

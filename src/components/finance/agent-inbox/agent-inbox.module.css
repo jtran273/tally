@@ -119,12 +119,38 @@
 }
 
 .proposalCard {
+  position: relative;
   min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 16px;
   background: var(--surface);
   box-shadow: var(--shadow-sm);
+}
+
+.proposalCard::before,
+.proposalCard::after {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  content: "";
+}
+
+.proposalCard::before {
+  inset: 0;
+  background: color-mix(in oklab, var(--pos) 10%, transparent);
+}
+
+.proposalCard::after {
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 14px;
+  border-bottom: 4px solid var(--pos);
+  border-left: 4px solid var(--pos);
+  transform: translate(-50%, -55%) translateX(-18px) rotate(-45deg) scale(0.92);
+  transform-origin: center;
 }
 
 .cardHead {
@@ -156,6 +182,58 @@
 .readyBadge {
   background: color-mix(in oklab, var(--pos) 12%, var(--surface));
   color: var(--pos);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .summaryTile,
+  .safetyPanel,
+  .proposalCard,
+  .primaryButton,
+  .secondaryButton,
+  .iconLink,
+  .readyBadge,
+  .reviewBadge {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-base) var(--ease-standard),
+      transform var(--dur-base) var(--ease-standard);
+  }
+
+  .proposalCard:has([data-proposal-resolving="true"])::before {
+    animation: proposal-check-wash var(--dur-slow) var(--ease-standard) both;
+  }
+
+  .proposalCard:has([data-proposal-resolving="true"])::after {
+    animation: proposal-check-sweep var(--dur-slow) var(--ease-emphasized) both;
+  }
+}
+
+@keyframes proposal-check-wash {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes proposal-check-sweep {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -55%) translateX(-18px) rotate(-45deg) scale(0.92);
+  }
+
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -55%) translateX(0) rotate(-45deg) scale(1);
+  }
 }
 
 .reviewBadge {

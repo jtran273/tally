@@ -26,7 +26,7 @@ export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewIte
   const busy = accepting || dismissing || suggesting;
 
   return (
-    <div className={styles.actionForms}>
+    <div className={styles.actionForms} data-review-resolving={accepting || dismissing ? "true" : undefined}>
       {canSuggest ? (
         <form action={suggestAction}>
           <input name="reviewItemId" type="hidden" value={reviewItemId} />

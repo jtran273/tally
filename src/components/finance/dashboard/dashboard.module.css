@@ -11,7 +11,7 @@
 .emptyState {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
@@ -48,7 +48,7 @@
 
 .hero {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 24px;
   background: var(--surface);
 }
@@ -440,7 +440,7 @@
 .activityPanel {
   margin-top: 16px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px;
   background: var(--surface-2);
 }
@@ -770,7 +770,7 @@
   flex-direction: column;
   gap: 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 20px;
   background: var(--surface);
 }
@@ -831,7 +831,7 @@
   flex-direction: column;
   gap: 6px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
   background: var(--surface-2);
 }
@@ -922,7 +922,7 @@
   flex-direction: column;
   gap: 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 20px;
   background: var(--surface);
 }
@@ -1153,4 +1153,82 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero,
+  .activityPanel,
+  .categoryPanel,
+  .liabilityPanel {
+    animation: panel-mount var(--dur-slow) var(--ease-standard) both;
+  }
+
+  .hero h2 {
+    animation: balance-tick var(--dur-base) var(--ease-emphasized) both;
+  }
+
+  .sync-stale,
+  .sync-never {
+    animation: sync-pulse 2.4s var(--ease-standard) infinite;
+  }
+
+  .balanceViewButton,
+  .trendControls button,
+  .activityModeControls button,
+  .textLink,
+  .textButton,
+  .categoryModeControls button,
+  .categoryRangeControls button,
+  .categoryMonthButton,
+  .categoryRow,
+  .liabilityRow {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .balanceViewButton:hover,
+  .balanceViewButton:focus-visible,
+  .categoryRow:hover,
+  .categoryRow:focus-visible,
+  .liabilityRow:hover {
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes panel-mount {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes balance-tick {
+  from {
+    opacity: 0.68;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--warn) 0%, transparent);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--warn) 12%, transparent);
+  }
 }

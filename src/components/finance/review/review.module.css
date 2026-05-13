@@ -19,7 +19,7 @@
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 16px;
   background: var(--surface);
 }
@@ -55,7 +55,7 @@
 .emptyState {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
@@ -118,9 +118,10 @@
   flex-direction: column;
   gap: 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 16px;
   background: var(--surface);
+  transform-origin: top;
 }
 
 .reviewCardHead {
@@ -353,6 +354,28 @@
 .primaryButton:hover,
 .secondaryButton:hover {
   border-color: var(--ink-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reviewCard,
+  .summaryCard,
+  .notice,
+  .emptyState,
+  .primaryButton,
+  .secondaryButton,
+  .inlineEditForm {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-base) var(--ease-standard),
+      transform var(--dur-base) var(--ease-standard);
+  }
+
+  .reviewCard:has([data-review-resolving="true"]) {
+    opacity: 0.38;
+    transform: translateY(-4px) scale(0.985);
+  }
 }
 
 .primaryButton:disabled,

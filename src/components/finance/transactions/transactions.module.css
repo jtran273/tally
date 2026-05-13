@@ -19,9 +19,10 @@
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 16px;
   background: var(--surface);
+  outline: none;
 }
 
 .summaryCard strong {
@@ -32,7 +33,7 @@
   line-height: 1;
 }
 
-.summaryCard > span:last-child {
+.summaryDetail {
   color: var(--muted);
   font-size: 12px;
 }
@@ -52,9 +53,10 @@
   align-items: end;
   gap: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px;
   background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .field {
@@ -174,7 +176,7 @@
   flex-direction: column;
   gap: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px;
   background: var(--surface);
 }
@@ -187,9 +189,34 @@
   gap: 12px;
 }
 
-.cleanupHeader > span:last-child {
+.cleanupHeader > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cleanupHeader > div > span:last-child {
   color: var(--muted);
   font-size: 12px;
+}
+
+.cleanupCollapsed {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.cleanupCollapsed .cleanupHeader {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.cleanupCollapsed .cleanupHeader > div {
+  display: none;
 }
 
 .cleanupForm {
@@ -407,6 +434,27 @@
   gap: 6px;
 }
 
+.primaryLine {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.primaryLine svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.primaryLine span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .merchantText {
   min-width: 0;
   overflow: hidden;
@@ -435,17 +483,28 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 2px 6px;
+  border-radius: 999px;
+  padding: 0;
   background: var(--surface-2);
   color: var(--ink-2);
-  font-size: 10px;
-  font-weight: 600;
   line-height: 1;
-  text-transform: uppercase;
   white-space: nowrap;
+}
+
+.badgeText,
+.intentText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .pendingBadge {
@@ -523,16 +582,15 @@
 
 .intentChip {
   display: inline-flex;
-  max-width: 100%;
+  width: 26px;
+  height: 26px;
   align-items: center;
+  justify-content: center;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
+  border-radius: 999px;
+  padding: 0;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .intent-personal,
@@ -559,6 +617,13 @@
   color: var(--pos);
 }
 
+.reviewText,
+.mutedText {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .reviewText {
   color: var(--warn);
   font-size: 12px;
@@ -567,9 +632,9 @@
 
 .amountCell {
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 700;
   text-align: right;
   white-space: nowrap;
 }
@@ -739,11 +804,40 @@
   font-weight: 500;
 }
 
-@media (max-width: 1180px) {
-  .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (prefers-reduced-motion: no-preference) {
+  .summaryCard,
+  .filters,
+  .cleanupPanel,
+  .table tbody tr td,
+  .badge,
+  .intentChip,
+  .primaryButton,
+  .secondaryButton,
+  .iconLink {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-base) var(--ease-standard),
+      opacity var(--dur-base) var(--ease-standard),
+      transform var(--dur-base) var(--ease-standard);
   }
 
+  .summaryDetail,
+  .cleanupForm {
+    transition:
+      max-height var(--dur-slow) var(--ease-standard),
+      opacity var(--dur-base) var(--ease-standard),
+      transform var(--dur-base) var(--ease-standard);
+  }
+
+  .table tbody tr:hover td,
+  .table tbody tr:focus-within td {
+    background: var(--accent-soft);
+  }
+}
+
+@media (max-width: 1180px) {
   .filters,
   .cleanupForm {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -784,6 +878,11 @@
   .cleanupHeader {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .cleanupCollapsed {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .primaryButton,
@@ -837,10 +936,12 @@
   }
 
   .secondaryLine,
+  .primaryLine span,
   .noteLine,
   .reimbursementLine {
     overflow: visible;
     text-overflow: clip;
+    white-space: normal;
   }
 
   .amountCell {
@@ -1015,7 +1116,7 @@
     grid-row: 2;
   }
 
-  .table td[data-label="Category"],
+  .table td[data-label="Quality"],
   .table td[data-label="Account"],
   .table td[data-label="Intent"],
   .table td[data-label="Review"] {
@@ -1031,5 +1132,73 @@
   .table td[data-label="Edit"] {
     grid-column: 1 / -1;
     grid-row: 3;
+  }
+}
+
+@media (min-width: 721px) {
+  .summaryGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .filters {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+  }
+
+  .summaryCard {
+    position: relative;
+    min-height: 56px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .summaryCard strong {
+    order: 2;
+    margin-left: auto;
+    font-size: 17px;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .summaryLabel {
+    order: 1;
+    min-width: 0;
+    font-size: 10px;
+  }
+
+  .summaryLabel svg {
+    flex: 0 0 auto;
+  }
+
+  .summaryDetail {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    z-index: 12;
+    max-height: 0;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    padding: 0 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  .summaryCard:hover .summaryDetail,
+  .summaryCard:focus-visible .summaryDetail,
+  .summaryCard:focus-within .summaryDetail {
+    max-height: 88px;
+    border-color: var(--line);
+    padding: 8px 10px;
+    opacity: 1;
+    transform: translateY(0);
   }
 }

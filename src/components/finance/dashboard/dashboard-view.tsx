@@ -1547,7 +1547,7 @@ export function DashboardView({
           <div className={styles.heroTop}>
             <div className={styles.heroIdentity}>
               <span className={styles.eyebrow}>{selectedBalanceView.label}</span>
-              <h2 className={selectedBalanceTone ? styles[selectedBalanceTone] : undefined}>
+              <h2 className={selectedBalanceTone ? styles[selectedBalanceTone] : undefined} key={`${selectedBalanceView.key}-${selectedBalanceView.value}`}>
                 {formatMoney(selectedBalanceView.value)}
               </h2>
               <p className={styles.heroDescription}>{selectedBalanceView.description}</p>

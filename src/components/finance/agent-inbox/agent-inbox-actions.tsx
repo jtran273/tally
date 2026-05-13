@@ -23,7 +23,7 @@ export function AgentInboxActions({ canApprove, reviewItemId, transactionId }: A
   const [dismissState, dismissAction, dismissing] = useActionState(dismissReviewItemAction, initialState);
 
   return (
-    <div className={styles.actionRow}>
+    <div className={styles.actionRow} data-proposal-resolving={approving ? "true" : undefined}>
       {canApprove ? (
         <form action={approveAction}>
           <input name="reviewItemId" type="hidden" value={reviewItemId} />

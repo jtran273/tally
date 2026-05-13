@@ -1,7 +1,21 @@
 import type { AccountRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
-import { Clock3, HandCoins, Pencil, Repeat, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Briefcase,
+  CircleHelp,
+  Clock3,
+  HandCoins,
+  Pencil,
+  Repeat,
+  Tag,
+  TriangleAlert,
+  UserRound,
+  UsersRound,
+  type LucideIcon
+} from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import styles from "./transactions.module.css";
 
 interface TransactionTableProps {
@@ -73,7 +87,6 @@ function formatUnsignedMoney(value: number) {
   return moneyFormatter.format(Math.abs(value));
 }
 
-
 function confidenceLabel(confidence: number) {
   return `${Math.round(confidence * 100)}% confidence`;
 }
@@ -113,7 +126,7 @@ function rawPlaidLine(transaction: TransactionRecord) {
 
 function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
   if (accountOnlyFilter && selectedAccount) return `No transaction rows for ${selectedAccount.name}`;
-  return filtersActive ? "No transactions match these filters" : "No persisted transactions yet";
+  return filtersActive ? "No rows match the current filters" : "No persisted transactions yet";
 }
 
 function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
@@ -126,8 +139,47 @@ function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean
   }
 
   return filtersActive
-    ? "Clear or loosen the filters to widen the persisted transaction set."
-    : "Once Plaid syncs transactions, enriched and raw transaction records will appear here.";
+    ? "Reset search, date, account, review, or quality filters to bring more transactions back into view."
+    : "After Plaid syncs, Ledger will show enriched transaction rows here with merchant, category, review, and reimbursement context.";
+}
+
+function IntentIcon({ intent }: { intent: TransactionIntent }) {
+  const icons: Record<TransactionIntent, LucideIcon> = {
+    business: Briefcase,
+    personal: UserRound,
+    reimbursable: HandCoins,
+    shared: UsersRound,
+    transfer: ArrowLeftRight
+  };
+  const Icon = icons[intent];
+  return <Icon size={12} aria-hidden />;
+}
+
+function StatusBadge({
+  children,
+  icon: Icon,
+  label,
+  tone
+}: {
+  children: ReactNode;
+  icon: LucideIcon;
+  label: string;
+  tone?: "pending" | "review" | "reimbursement";
+}) {
+  const toneClass = tone === "pending"
+    ? styles.pendingBadge
+    : tone === "review"
+      ? styles.reviewBadge
+      : tone === "reimbursement"
+        ? styles.reimbursementBadge
+        : "";
+
+  return (
+    <span aria-label={label} className={`${styles.badge} ${toneClass}`} title={label}>
+      <Icon size={11} aria-hidden />
+      <span className={styles.badgeText}>{children}</span>
+    </span>
+  );
 }
 
 export function TransactionTable({
@@ -158,7 +210,7 @@ export function TransactionTable({
             <tr>
               <th scope="col">Date</th>
               <th scope="col">Merchant</th>
-              <th scope="col">Category</th>
+              <th scope="col">Quality</th>
               <th scope="col">Account</th>
               <th scope="col">Intent</th>
               <th scope="col">Review</th>
@@ -172,6 +224,7 @@ export function TransactionTable({
               const qualityIssues = categoryQuality(transaction);
               const reimbursement = summarizeTransactionReimbursement(transaction);
               const rawLine = rawPlaidLine(transaction);
+              const qualityText = qualityIssues.length > 0 ? qualityIssues.join(", ") : "No quality flags";
 
               return (
                 <tr
@@ -195,29 +248,26 @@ export function TransactionTable({
                           {transaction.merchant}
                         </Link>
                         {transaction.status === "pending" ? (
-                          <span className={`${styles.badge} ${styles.pendingBadge}`}>
-                            <Clock3 size={11} aria-hidden />
-                            Pending
-                          </span>
+                          <StatusBadge icon={Clock3} label="Pending transaction" tone="pending">Pending</StatusBadge>
                         ) : null}
                         {transaction.recurring ? (
-                          <span className={styles.badge}>
-                            <Repeat size={11} aria-hidden />
-                            Recurring
-                          </span>
+                          <StatusBadge icon={Repeat} label="Recurring transaction">Recurring</StatusBadge>
                         ) : null}
                         {hasOpenReview ? (
-                          <span className={`${styles.badge} ${styles.reviewBadge}`}>
-                            <TriangleAlert size={11} aria-hidden />
-                            Review
-                          </span>
+                          <StatusBadge icon={TriangleAlert} label={reviewLabel(transaction)} tone="review">Review</StatusBadge>
                         ) : null}
                         {reimbursement.state !== "none" ? (
-                          <span className={`${styles.badge} ${styles.reimbursementBadge}`}>
-                            <HandCoins size={11} aria-hidden />
+                          <StatusBadge icon={HandCoins} label={reimbursementLabels[reimbursement.state]} tone="reimbursement">
                             {reimbursementLabels[reimbursement.state]}
-                          </span>
+                          </StatusBadge>
                         ) : null}
+                      </div>
+                      <div className={styles.primaryLine}>
+                        <Tag size={12} aria-hidden />
+                        <span>{transaction.category}</span>
+                        <span className={transaction.confidence < 0.75 ? styles.lowConfidenceText : styles.confidenceText}>
+                          {confidenceLabel(transaction.confidence)}
+                        </span>
                       </div>
                       <div className={styles.secondaryLine}>
                         {rawLine || transaction.note || "Raw and enriched names match"}
@@ -232,12 +282,9 @@ export function TransactionTable({
                       ) : null}
                     </div>
                   </td>
-                  <td data-label="Category">
+                  <td data-label="Quality">
                     <div className={styles.categoryCell}>
-                      <span>{transaction.category}</span>
-                      <span className={transaction.confidence < 0.75 ? styles.lowConfidenceText : styles.confidenceText}>
-                        {confidenceLabel(transaction.confidence)}
-                      </span>
+                      <span>{qualityText}</span>
                       {qualityIssues.length > 0 ? (
                         <div className={styles.qualityBadges}>
                           {qualityIssues.map((issue) => (
@@ -247,6 +294,8 @@ export function TransactionTable({
                       ) : null}
                       {transaction.plaidCategory && transaction.plaidCategory !== transaction.category ? (
                         <span>{transaction.plaidCategory}</span>
+                      ) : qualityIssues.length === 0 ? (
+                        <span>Category and confidence look stable</span>
                       ) : null}
                     </div>
                   </td>
@@ -257,12 +306,18 @@ export function TransactionTable({
                     </div>
                   </td>
                   <td data-label="Intent">
-                    <span className={`${styles.intentChip} ${styles[`intent-${transaction.intent}`]}`}>
-                      {intentLabels[transaction.intent]}
+                    <span
+                      aria-label={intentLabels[transaction.intent]}
+                      className={`${styles.intentChip} ${styles[`intent-${transaction.intent}`]}`}
+                      title={intentLabels[transaction.intent]}
+                    >
+                      <IntentIcon intent={transaction.intent} />
+                      <span className={styles.intentText}>{intentLabels[transaction.intent]}</span>
                     </span>
                   </td>
                   <td data-label="Review">
                     <span className={hasOpenReview ? styles.reviewText : styles.mutedText}>
+                      <CircleHelp size={12} aria-hidden />
                       {reviewLabel(transaction)}
                     </span>
                   </td>
