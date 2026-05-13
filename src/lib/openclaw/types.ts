@@ -1,4 +1,5 @@
 import type { WeeklyPlanningContext } from "@/lib/agents";
+import type { UpcomingCalendarContext } from "@/lib/calendar/context";
 import type {
   AgentProposalStatus,
   AgentProposalType,
@@ -46,20 +47,9 @@ export interface OpenClawClarificationQuestion {
   targetKind: AgentTargetKind;
 }
 
-export interface OpenClawCalendarContext {
-  action: "read.upcoming_calendar_context";
-  events: [];
-  generatedAt: string;
-  status: "not_configured";
-  window: {
-    fromDate: string;
-    toDate: string;
-  };
-}
-
 export interface OpenClawSignalsResponse {
   object: "ledger.openclaw.signals";
-  calendarContext: OpenClawCalendarContext;
+  calendarContext: UpcomingCalendarContext;
   contractVersion: typeof OPENCLAW_SIGNAL_CONTRACT_VERSION;
   generatedAt: string;
   nextCursor: string;

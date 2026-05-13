@@ -8,6 +8,7 @@ export type Json =
 
 export type AccountType = "depository" | "credit" | "investment" | "retirement";
 export type PlaidItemStatus = "active" | "error" | "revoked";
+export type GoogleCalendarConnectionStatus = "active" | "error" | "revoked";
 export type PlaidSyncRunSource = "initial" | "manual" | "scheduled";
 export type PlaidSyncRunStatus = "running" | "succeeded" | "partial" | "failed";
 export type TransactionStatus = "pending" | "posted";
@@ -77,6 +78,24 @@ export interface PlaidItemRow {
   consent_expires_at: string | null;
   last_successful_sync_at: string | null;
   transaction_cursor: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoogleCalendarConnectionRow {
+  id: string;
+  user_id: string;
+  google_calendar_id: string;
+  calendar_summary: string | null;
+  access_token_ciphertext: string;
+  refresh_token_ciphertext: string;
+  scope: string;
+  token_type: string;
+  expires_at: string;
+  status: GoogleCalendarConnectionStatus;
+  error_code: string | null;
+  error_message: string | null;
+  last_successful_sync_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -361,6 +380,7 @@ export type Database = {
     Tables: {
       institutions: TableDefinition<InstitutionRow>;
       plaid_items: TableDefinition<PlaidItemRow>;
+      google_calendar_connections: TableDefinition<GoogleCalendarConnectionRow>;
       plaid_sync_runs: TableDefinition<PlaidSyncRunRow>;
       plaid_sync_run_items: TableDefinition<PlaidSyncRunItemRow>;
       accounts: TableDefinition<AccountRow>;

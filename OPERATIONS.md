@@ -107,10 +107,11 @@ After a Vercel deployment:
 6. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render without page overflow.
 7. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
 8. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
-9. Run a manual Plaid sync only after confirming the environment.
-10. Export a CSV from `/transactions` and confirm no secrets are present.
-11. Check browser devtools for blocked CSP resources.
-12. Check Vercel logs for safe, non-secret errors only.
+9. If Calendar is enabled, confirm Settings shows Google Calendar connection state and last successful read.
+10. Run a manual Plaid sync only after confirming the environment.
+11. Export a CSV from `/transactions` and confirm no secrets are present.
+12. Check browser devtools for blocked CSP resources.
+13. Check Vercel logs for safe, non-secret errors only.
 
 When validating reimbursement matching, confirm suggestions are read-only and show only safe app-owned transaction ids, amounts, dates, merchants, confidence, and reasons. A suggested Venmo, Zelle, Cash App, or PayPal inflow must not be linked automatically, must not expose raw Plaid payloads or provider ids, and must not mutate `raw_transactions`, `enriched_transactions`, or `reimbursement_records` without explicit user confirmation.
 
@@ -188,6 +189,26 @@ Use `/settings`:
 4. Confirm the item returns to active status and `last_successful_sync_at` advances.
 
 If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the institution. Historical transactions should remain preserved in Ledger, but future imports require a new active Plaid item.
+
+## Google Calendar Check
+
+Google Calendar is optional and read-only.
+
+Expected healthy state:
+
+- Google OAuth env vars are set only on deployments that should support Calendar.
+- `/settings` can start Google OAuth and return to `/settings?calendar=connected`.
+- Calendar connection rows never expose encrypted access or refresh token fields to authenticated browser clients.
+- OpenClaw signals include `calendarContext` with `status: "ready"` only when Calendar is connected.
+- Agent context includes only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
+
+If Calendar connection fails:
+
+- Confirm `GOOGLE_CALENDAR_CLIENT_ID` and `GOOGLE_CALENDAR_CLIENT_SECRET` are set.
+- Confirm `GOOGLE_CALENDAR_REDIRECT_URI` exactly matches the Google Cloud OAuth redirect URI.
+- Confirm production redirect URI uses HTTPS and is not a Vercel preview URL unless that preview URL is deliberately registered.
+- Confirm `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set and stable.
+- Reconnect Calendar from `/settings` if the OAuth refresh token was revoked.
 
 ### Scheduled sync wiring
 
@@ -315,7 +336,7 @@ Expected:
 
 - requests must include `Authorization: Bearer <OPENCLAW_TOKEN>`,
 - responses return `Cache-Control: no-store`,
-- `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a placeholder calendar context until the calendar connector lands,
+- `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Ledger proposal carrying a question,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
 - OpenClaw never writes finance rows directly and Ledger never sends iMessages,

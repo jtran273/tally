@@ -1935,6 +1935,7 @@ kbd {
   gap: 12px;
 }
 
+.calendar-actions,
 .plaid-actions {
   display: flex;
   min-width: 0;
@@ -2723,11 +2724,14 @@ kbd {
     align-self: flex-start;
   }
 
+  .calendar-actions,
+  .calendar-actions .btn,
   .plaid-actions,
   .plaid-actions .btn {
     width: 100%;
   }
 
+  .calendar-actions .btn,
   .plaid-actions .btn {
     justify-content: center;
   }

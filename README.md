@@ -28,6 +28,7 @@ This separation is the core of the product. It lets the app preserve evidence, e
 - Production URL: `https://personal-finance-os-jtran273s-projects.vercel.app`
 - Database/Auth: Supabase
 - Financial data provider: Plaid
+- Calendar context provider: Google Calendar, optional read-only
 - Optional AI provider: OpenAI
 
 Production hardening currently includes:
@@ -121,7 +122,7 @@ The transaction list also includes a merchant cleanup control for user-initiated
 
 ### Configure The Workspace
 
-Settings is intentionally minimal: it keeps Plaid bank connection controls and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
+Settings is intentionally minimal: it keeps Plaid bank connection controls, optional read-only Google Calendar context, and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
 
 ### Track Recurring Spending
 
@@ -146,7 +147,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
 | `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
 | `/accounts` | Accounts grouped by cash, credit, investments, and retirement |
-| `/settings` | Plaid connection/sync/repair/disconnect controls and session access |
+| `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, and session access |
 
 ## Stack
 
@@ -157,6 +158,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 - Supabase Auth
 - Supabase Postgres
 - Plaid Link and Plaid Transactions
+- Google Calendar read-only OAuth
 - Optional OpenAI Responses API provider
 - Vercel
 - GitHub Actions
@@ -217,6 +219,10 @@ PLAID_PRODUCTION_SECRET=
 PLAID_TOKEN_ENCRYPTION_KEY=
 PLAID_ENV=sandbox
 PLAID_REDIRECT_URI=http://localhost:3000/settings
+GOOGLE_CALENDAR_CLIENT_ID=
+GOOGLE_CALENDAR_CLIENT_SECRET=
+GOOGLE_CALENDAR_REDIRECT_URI=http://localhost:3000/api/calendar/callback
+GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=
 ENABLE_OPENAI_AUTO_REVIEW=false
@@ -258,6 +264,7 @@ src/components/plaid/            Plaid Link connection panel
 src/components/shell/            Authenticated app navigation shell
 src/lib/agents/                  Agent-safe finance manifest and derived proposal helpers
 src/lib/ai/                      AI provider interface, deterministic fallback, optional OpenAI provider
+src/lib/calendar/                Google Calendar OAuth, token vault, event listing, and safe context builder
 src/lib/db/                      Typed Supabase query helpers and app-facing finance records
 src/lib/demo/                    Local demo mode and seeded in-memory finance client
 src/lib/export/                  CSV export helpers

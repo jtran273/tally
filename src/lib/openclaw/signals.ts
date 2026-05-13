@@ -11,9 +11,9 @@ import {
   listReviewItems,
   listTransactions
 } from "@/lib/db";
+import { emptyUpcomingCalendarContext, loadUpcomingCalendarContext } from "@/lib/calendar";
 import {
   OPENCLAW_SIGNAL_CONTRACT_VERSION,
-  type OpenClawCalendarContext,
   type OpenClawClarificationQuestion,
   type OpenClawProposalSignal,
   type OpenClawSignalsResponse
@@ -40,6 +40,7 @@ export interface OpenClawSignalsLoadOptions {
 }
 
 export interface OpenClawSignalsBuildInput {
+  calendarContext?: OpenClawSignalsResponse["calendarContext"];
   generatedAt: string;
   openClarificationProposals: readonly AgentProposalRecord[];
   pendingProposals: readonly AgentProposalRecord[];
@@ -138,20 +139,8 @@ export function selectOpenClarificationProposals(
     .slice(0, limit);
 }
 
-function calendarPlaceholder(generatedAt: string, asOfDate: string): OpenClawCalendarContext {
-  return {
-    action: "read.upcoming_calendar_context",
-    events: [],
-    generatedAt,
-    status: "not_configured",
-    window: {
-      fromDate: asOfDate,
-      toDate: addDays(asOfDate, 7)
-    }
-  };
-}
-
 export function buildOpenClawSignalsResponse({
+  calendarContext,
   generatedAt,
   openClarificationProposals,
   pendingProposals,
@@ -160,7 +149,10 @@ export function buildOpenClawSignalsResponse({
 }: OpenClawSignalsBuildInput): OpenClawSignalsResponse {
   const response: OpenClawSignalsResponse = {
     object: "ledger.openclaw.signals",
-    calendarContext: calendarPlaceholder(generatedAt, weeklyPlanningContext.asOfDate),
+    calendarContext: calendarContext ?? emptyUpcomingCalendarContext({
+      generatedAt,
+      now: new Date(`${weeklyPlanningContext.asOfDate}T12:00:00.000Z`)
+    }),
     contractVersion: OPENCLAW_SIGNAL_CONTRACT_VERSION,
     generatedAt,
     nextCursor: generatedAt,
@@ -198,6 +190,7 @@ export async function loadOpenClawSignals(
     pendingProposals,
     openClarificationProposals,
     accounts,
+    calendarContext,
     transactions,
     reviewItems,
     recurringExpenses
@@ -205,6 +198,7 @@ export async function loadOpenClawSignals(
     listAgentProposals(client, userId, { since, status: "pending" }),
     listAgentProposals(client, userId, { status: "pending" }),
     listAccounts(client, userId),
+    loadUpcomingCalendarContext(client, userId, { generatedAt, now }),
     listTransactions(client, userId, { fromDate, limit: DEFAULT_TRANSACTION_LIMIT, toDate }),
     listReviewItems(client, userId, "open"),
     listRecurringExpenses(client, userId)
@@ -212,6 +206,7 @@ export async function loadOpenClawSignals(
 
   return buildOpenClawSignalsResponse({
     generatedAt,
+    calendarContext,
     openClarificationProposals: selectOpenClarificationProposals(openClarificationProposals, openQuestionLimit),
     pendingProposals,
     since,

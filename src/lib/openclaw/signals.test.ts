@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assertAssistantContextSafe } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
+import { buildUpcomingCalendarContext } from "@/lib/calendar";
 import type { AgentProposalRecord } from "@/lib/db";
 import {
   OpenClawSignalsBadRequestError,
@@ -92,6 +93,30 @@ test("buildOpenClawSignalsResponse exposes question-bearing reimbursement candid
 
   assert.deepEqual(response.openClarificationQuestions.map((question) => question.proposalId), ["candidate-question"]);
   assert.equal(response.openClarificationQuestions[0]?.question, "Was Taco Guild reimbursable?");
+  assertAssistantContextSafe(response);
+});
+
+test("buildOpenClawSignalsResponse can include safe upcoming calendar context", () => {
+  const response = buildOpenClawSignalsResponse({
+    calendarContext: buildUpcomingCalendarContext([
+      {
+        allDay: false,
+        end: "2026-05-14T03:00:00.000Z",
+        location: "Oakland, CA",
+        start: "2026-05-14T01:00:00.000Z",
+        title: "Dinner reservation"
+      }
+    ], { generatedAt, now: new Date(generatedAt) }),
+    generatedAt,
+    openClarificationProposals: [],
+    pendingProposals: [],
+    since: "2026-05-12T12:00:00.000Z",
+    weeklyPlanningContext
+  });
+
+  assert.equal(response.calendarContext.status, "ready");
+  assert.equal(response.calendarContext.events[0].locationCity, "Oakland");
+  assert.equal("location" in response.calendarContext.events[0], false);
   assertAssistantContextSafe(response);
 });
 

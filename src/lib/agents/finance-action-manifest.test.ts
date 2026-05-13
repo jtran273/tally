@@ -98,6 +98,10 @@ function account(input: Partial<AccountRecord> = {}): AccountRecord {
 
 test("finance action capabilities are proposal-only for writes", () => {
   const capabilities = listFinanceAgentCapabilities();
+  assert.equal(
+    capabilities.some((capability) => capability.action === "read.upcoming_calendar_context"),
+    true
+  );
   assert.deepEqual(
     capabilities.filter((capability) => capability.kind === "proposal").map((capability) => capability.action),
     ["propose.review_suggestions", "propose.merchant_rule"]
@@ -221,7 +225,7 @@ test("manifest envelope includes version, mode, and only declared actions", () =
     }]
   });
 
-  assert.equal(envelope.manifestVersion, "2026-05-06");
+  assert.equal(envelope.manifestVersion, "2026-05-13");
   assert.equal(envelope.mode, "proposal-only");
   assert.equal(envelope.userScoped, true);
   assert.equal(envelope.forbiddenFieldCheck, "passed");

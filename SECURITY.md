@@ -43,6 +43,10 @@ Server-only secrets:
 - `PLAID_PRODUCTION_SECRET`
 - `PLAID_TOKEN_ENCRYPTION_KEY`
 - `PLAID_REDIRECT_URI`
+- `GOOGLE_CALENDAR_CLIENT_ID`
+- `GOOGLE_CALENDAR_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_REDIRECT_URI`
+- `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
 - `OPENAI_API_KEY`
 
 Browser-exposed values:
@@ -100,6 +104,7 @@ The database is the security boundary.
 - RLS is enabled for finance tables.
 - Policies constrain access to `auth.uid() = user_id`.
 - `plaid_items.access_token_ciphertext` has select revoked from `anon` and `authenticated`.
+- `google_calendar_connections` revokes table-level access from `anon` and `authenticated`, then grants `authenticated` only safe metadata columns; writes are service-route-only.
 - Server routes that need privileged writes use `SUPABASE_SERVICE_ROLE_KEY` and still pass the signed-in user's `userId` into every mutation.
 
 ## Plaid Token Security
@@ -113,6 +118,18 @@ openssl rand -base64 32
 ```
 
 The encryption code can still decrypt legacy local tokens derived from Plaid credentials, but new production tokens should use the dedicated encryption key. Keep this key stable for the lifetime of stored Plaid tokens. If it is lost, existing Plaid items cannot be decrypted and must be reconnected.
+
+## Google Calendar Token Security
+
+Google Calendar access and refresh tokens are encrypted with AES-256-GCM in `src/lib/calendar/token-vault.ts`.
+
+Production requires `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`. Generate it with:
+
+```bash
+openssl rand -base64 32
+```
+
+The Calendar OAuth flow requests only `https://www.googleapis.com/auth/calendar.readonly`. Event reads request only status, start, end, summary, and location fields from Google. Agent context excludes descriptions, attendees, attendee emails, raw Google event payloads, OAuth tokens, and provider diagnostics.
 
 ## Demo Mode
 
@@ -135,10 +152,14 @@ Protected handlers include:
 - `/api/plaid/exchange`
 - `/api/plaid/sync`
 - `/api/plaid/connections/[connectionId]`
+- `/api/calendar/auth-url`
+- `/api/calendar/connections/[connectionId]`
 - `/login/demo`
 - `/login/logout`
 
 The scheduled sync route `/api/plaid/sync/scheduled` is the exception: it is intended for trusted server-to-server callers and requires `Authorization: Bearer <CRON_SECRET>`.
+
+The Google Calendar OAuth callback is a browser redirect and uses a short-lived HTTP-only OAuth state cookie plus Supabase session verification instead of the same-origin POST guard.
 
 The helper accepts the app origin, forwarded host origin, `NEXT_PUBLIC_APP_URL`, and `VERCEL_URL`. In production, requests without an `Origin` header are rejected.
 
@@ -171,11 +192,13 @@ Safe to log:
 Do not log:
 
 - Plaid access tokens,
+- Google Calendar access or refresh tokens,
 - Plaid secrets,
 - Supabase service role key,
 - raw auth headers,
 - full database URLs,
 - full Plaid payloads,
+- raw Google Calendar event payloads,
 - Plaid item, account, or transaction ids in user-visible logs or agent payloads,
 - full transaction notes unless explicitly needed for a support flow.
 
@@ -186,8 +209,10 @@ Do not log:
 - `ENABLE_DEMO_MODE` is explicitly set for production: `false` to hide the demo entry, or `true`/unset only when a seeded product walkthrough is intentional.
 - `CRON_SECRET` is set before enabling scheduled sync and omitted when no scheduler is configured.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
+- `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set before enabling Google Calendar.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.
 - `PLAID_REDIRECT_URI` is HTTPS and registered in Plaid.
+- `GOOGLE_CALENDAR_REDIRECT_URI` is HTTPS and registered in Google Cloud when Calendar is enabled.
 - Supabase Auth is enabled.
 - Supabase migrations are applied.
 - RLS is enabled and verified.
@@ -214,6 +239,13 @@ If Plaid access tokens are exposed:
 2. Rotate Plaid secrets.
 3. Rotate `PLAID_TOKEN_ENCRYPTION_KEY` only after planning token migration or reconnecting affected items.
 4. Audit `plaid_items`, `audit_events`, and recent sync logs.
+
+If Google Calendar tokens are exposed:
+
+1. Revoke the affected Google OAuth grant.
+2. Rotate `GOOGLE_CALENDAR_CLIENT_SECRET` if needed.
+3. Rotate `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` only after planning token migration or reconnecting Calendar.
+4. Audit `google_calendar_connections`, `audit_events`, and recent app logs.
 
 ## Reporting Security Issues
 

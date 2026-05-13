@@ -1,14 +1,19 @@
 import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
+import { GoogleCalendarConnectionPanel } from "@/components/calendar/google-calendar-connection-panel";
 import { LogOut, ShieldCheck } from "lucide-react";
 import styles from "./settings.module.css";
 
 interface SettingsViewProps {
+  calendarError?: string | null;
+  calendarMessage?: string | null;
   dataError?: string;
   isConfigured: boolean;
   isSignedIn: boolean;
 }
 
 export function SettingsView({
+  calendarError,
+  calendarMessage,
   dataError,
   isConfigured,
   isSignedIn
@@ -34,6 +39,11 @@ export function SettingsView({
       ) : null}
 
       <PlaidConnectionPanel />
+
+      <GoogleCalendarConnectionPanel
+        initialError={calendarError}
+        initialSuccessMessage={calendarMessage}
+      />
 
       <section className={styles.panel}>
         <div className={styles.panelHead}>

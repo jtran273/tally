@@ -29,6 +29,7 @@ Plaid API
 - `src/components` owns UI composition and interaction surfaces.
 - `src/lib/db` owns typed database access and conversion from database rows to app records.
 - `src/lib/plaid` owns Plaid configuration, Link token creation, public token exchange, transaction sync, disconnect, token encryption, and safe error handling.
+- `src/lib/calendar` owns read-only Google Calendar OAuth, encrypted token storage, token refresh, bounded event reads, and safe upcoming-event context.
 - `src/lib/demo` owns local demo mode and seeded in-memory finance data.
 - `src/lib/agents` owns the proposal-only finance action manifest, OpenClaw-safe context contracts, clarification policy, weekly planning context, and proposal-store safety helpers.
 - `src/lib/review`, `src/lib/recurring`, `src/lib/finance`, `src/lib/settings`, and `src/lib/insights` own domain calculations and setup-state helpers.
@@ -60,6 +61,12 @@ Plaid API
 | `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection |
 | `/api/plaid/sync/scheduled` | `GET`/`POST` | Run scheduled sync for all users with syncable Plaid items when authorized with `CRON_SECRET` |
 | `/api/plaid/connections/[connectionId]` | `DELETE` | Revoke a Plaid item and stop future sync |
+| `/api/calendar/auth-url` | `POST` | Start read-only Google Calendar OAuth for the signed-in user |
+| `/api/calendar/callback` | `GET` | Complete Google Calendar OAuth after state-cookie validation |
+| `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
+| `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
+| `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
+| `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
 | `/api/export/transactions` | `GET` | Export filtered enriched transactions as CSV |
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
@@ -76,6 +83,7 @@ Core tables:
 - `plaid_items`: Plaid item ids, encrypted Plaid access tokens, sync cursors, product and error state.
 - `plaid_sync_runs`: persisted initial/manual/scheduled sync summaries with item status, changed-row counts, and safe error metadata.
 - `plaid_sync_run_items`: per-item sync outcomes keyed by app-owned Plaid item row ids, not provider item ids.
+- `google_calendar_connections`: read-only Google Calendar OAuth connection metadata plus encrypted access and refresh tokens. Authenticated clients can select only non-token columns; writes are service-route-only.
 - `accounts`: account metadata, balances, masks, active state, and grouping fields.
 - `balance_snapshots`: point-in-time account balances for trends.
 - `categories`: user-owned categories.
@@ -109,6 +117,19 @@ The core sync service can run either all syncable items or a single item by data
 Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
 
 The access token never leaves server code.
+
+## Calendar Flow
+
+Google Calendar is optional and read-only.
+
+1. Settings requests `/api/calendar/auth-url`.
+2. The route validates same-origin session access, creates a short-lived OAuth state cookie, and returns a Google OAuth URL scoped only to `https://www.googleapis.com/auth/calendar.readonly`.
+3. Google redirects back to `/api/calendar/callback`.
+4. The callback validates the state cookie and signed-in Supabase session, exchanges the code server-side, encrypts the access and refresh tokens, and stores the primary Calendar connection row.
+5. OpenClaw signal loading refreshes tokens when needed and reads the next 14 days of primary-calendar events.
+6. The safe context builder emits only start, end, redacted/truncated title, `locationCity`, all-day flag, and suspected category.
+
+Calendar descriptions, attendees, attendee emails, raw Google event payloads, OAuth tokens, and provider diagnostics are not included in agent context. The generic field name `location` remains forbidden in finance/assistant manifests; calendar context uses `locationCity` to avoid confusing city-only planning context with raw provider location data.
 
 ## Transaction Flow
 
@@ -182,7 +203,7 @@ CSV exports and any future manual imports are optional backfill or reconciliatio
 
 ## Settings Flow
 
-Settings is deliberately narrow. The route renders Plaid Link connection, sync, repair, and disconnect controls plus the session sign-out action. Category management, review decisions, recurring work, AI suggestions, and dashboard finance summaries live on their own workflow pages instead of in Settings. Setup-state helpers remain in `src/lib/settings` for tests and future onboarding surfaces.
+Settings is deliberately narrow. The route renders Plaid Link connection, sync, repair, and disconnect controls; optional Google Calendar read connection controls; and the session sign-out action. Category management, review decisions, recurring work, AI suggestions, and dashboard finance summaries live on their own workflow pages instead of in Settings. Setup-state helpers remain in `src/lib/settings` for tests and future onboarding surfaces.
 
 ## Caching And Rendering
 

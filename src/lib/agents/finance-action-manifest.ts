@@ -5,16 +5,18 @@ import type {
   TransactionIntent,
   TransactionRecord
 } from "@/lib/db";
+import type { UpcomingCalendarContext } from "@/lib/calendar/context";
 import { accountSyncState, summarizeSync, type SyncSummary } from "@/lib/finance/balances";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import type { WeeklyPlanningContext } from "./weekly-planning-context";
 
-export const FINANCE_ACTION_MANIFEST_VERSION = "2026-05-06" as const;
+export const FINANCE_ACTION_MANIFEST_VERSION = "2026-05-13" as const;
 export const FINANCE_ACTION_MANIFEST_MODE = "proposal-only" as const;
 
 export const financeReadActionIds = [
   "read.weekly_planning_context",
+  "read.upcoming_calendar_context",
   "read.review_queue_summary",
   "read.spending_summary",
   "read.stale_sync_summary"
@@ -167,6 +169,7 @@ export interface FinanceAgentManifestEnvelope {
   source: "ledger";
   summary: Partial<{
     weeklyPlanning: WeeklyPlanningContext;
+    upcomingCalendar: UpcomingCalendarContext;
     reviewQueue: ReviewQueueSummary;
     spending: SpendingSummary;
     staleSync: StaleSyncSummary;
@@ -204,6 +207,12 @@ export function listFinanceAgentCapabilities(): FinanceAgentCapability[] {
       action: "read.weekly_planning_context",
       approvalRequired: false,
       description: "Read a bounded, AI-safe weekly planning context composed from deterministic finance summaries.",
+      kind: "read"
+    },
+    {
+      action: "read.upcoming_calendar_context",
+      approvalRequired: false,
+      description: "Read minimized upcoming calendar events for near-term planning pressure.",
       kind: "read"
     },
     {

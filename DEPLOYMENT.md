@@ -18,6 +18,7 @@ Use the stable production alias above for day-to-day access. Vercel also creates
 - Supabase database with migrations applied.
 - Plaid app with Sandbox credentials for local work.
 - Plaid Production or Limited Production credentials only when ready for real institutions.
+- Google Cloud OAuth client for optional read-only Calendar context.
 - Optional OpenAI API key for server-side suggestions.
 
 ## Production Repository Requirement
@@ -52,6 +53,10 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Keep stable. |
 | `PLAID_ENV` | Server only | Yes | `sandbox` or `production`. Use `sandbox` locally. |
 | `PLAID_REDIRECT_URI` | Server only | Production OAuth recommended | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. Local `http://localhost` redirects are ignored for production Link tokens because Plaid only permits them in Sandbox. |
+| `GOOGLE_CALENDAR_CLIENT_ID` | Server only | Calendar yes | OAuth client id for read-only Google Calendar access. |
+| `GOOGLE_CALENDAR_CLIENT_SECRET` | Server only | Calendar yes | OAuth client secret for read-only Google Calendar access. |
+| `GOOGLE_CALENDAR_REDIRECT_URI` | Server only | Calendar recommended | Exact OAuth callback registered in Google Cloud. Defaults from `NEXT_PUBLIC_APP_URL` to `/api/calendar/callback`; production must be HTTPS. |
+| `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` | Server only | Production Calendar yes | Dedicated AES-GCM key material for stored Google Calendar access and refresh tokens. Keep stable. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import and review page load should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
@@ -125,6 +130,18 @@ Local OAuth redirects may require registering the local URI in Plaid. Non-OAuth 
 
 For local desktop testing against Plaid Production, do not send `http://localhost` as the production redirect URI. Use a registered HTTPS tunnel/app URL, or omit the redirect URI and test from a normal desktop browser where Plaid can use a popup or new tab for OAuth institutions.
 
+## Google Calendar Setup
+
+Google Calendar is optional and read-only. It gives OpenClaw a minimized upcoming-event context for planning pressure such as travel, birthdays, weddings, and scheduled dinners.
+
+1. Create a Google Cloud OAuth client for a web app.
+2. Add the callback URL: `https://personal-finance-os-jtran273s-projects.vercel.app/api/calendar/callback`.
+3. Set `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, and `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`.
+4. Deploy, sign in, and connect Calendar from `/settings`.
+5. Confirm `/api/openclaw/signals` includes `calendarContext` with only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
+
+The app requests only `https://www.googleapis.com/auth/calendar.readonly`. It does not store descriptions, attendees, attendee emails, or raw event payloads in agent context.
+
 ## OpenAI Setup
 
 The app runs without OpenAI by using deterministic suggestions.
@@ -150,7 +167,7 @@ Manual OpenAI suggestions are advisory and require user acceptance. Automatic Op
 6. Confirm `/dashboard` loads.
 7. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render.
 8. Visit `/settings`.
-9. Confirm bank connection controls, last successful sync, and session access are correct.
+9. Confirm bank connection controls, optional Google Calendar connection, last successful sync/read, and session access are correct.
 10. Connect one institution.
 11. Confirm accounts and transactions import.
 12. Run manual sync.
