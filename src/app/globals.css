@@ -2746,6 +2746,15 @@ kbd {
     font-size: 34px;
   }
 
+  .nav-item {
+    min-width: 54px;
+    padding: 6px 5px;
+  }
+
+  .nav-item span:not(.nav-badge) {
+    font-size: 10px;
+  }
+
   .topbar-title {
     font-size: 24px;
   }

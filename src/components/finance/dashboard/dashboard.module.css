@@ -342,11 +342,13 @@
 
 .trend {
   margin-top: 10px;
+  min-width: 0;
 }
 
 .trend svg {
   display: block;
   width: 100%;
+  min-width: 0;
   height: clamp(200px, 20vw, 320px);
   overflow: hidden;
   border: 1px solid var(--line-2);
@@ -644,9 +646,14 @@
 
   .trend {
     margin: 12px 0 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .trend svg {
+    width: 560px;
+    min-width: 560px;
     height: 190px;
   }
 
@@ -695,10 +702,23 @@
   .categoryMonthPicker {
     overflow-x: auto;
     flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
   }
 
   .categoryPanelActions .textLink {
     text-align: left;
+  }
+
+  .categoryTrendChart {
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .categoryTrendChart svg {
+    width: 640px;
+    min-width: 640px;
+    height: 220px;
   }
 }
 
@@ -715,6 +735,33 @@
   .amount {
     align-self: flex-start;
     text-align: left;
+  }
+
+  .hero h2 {
+    font-size: 30px;
+  }
+
+  .chartInsight {
+    padding: 10px;
+  }
+
+  .categoryHeadline,
+  .liabilityHeadline {
+    font-size: 24px;
+  }
+
+  .categoryRowHead,
+  .categoryRowMeta,
+  .categoryOtherRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .categoryLegendLabel,
+  .categoryRowHead strong {
+    max-width: 100%;
+    white-space: normal;
   }
 }
 
@@ -915,6 +962,7 @@
 .categoryTrendChart svg {
   display: block;
   width: 100%;
+  min-width: 0;
   height: clamp(220px, 22vw, 300px);
   border: 1px solid var(--line-2);
   border-radius: 8px;

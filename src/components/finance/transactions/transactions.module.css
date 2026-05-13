@@ -195,6 +195,7 @@
 .cleanupForm {
   display: grid;
   grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(130px, 0.7fr) auto auto;
+  min-width: 0;
   align-items: end;
   gap: 10px;
 }
@@ -213,6 +214,13 @@
   font-weight: 450;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.filterActions .primaryButton,
+.filterActions .secondaryButton,
+.cleanupForm .primaryButton,
+.cleanupForm .secondaryButton {
+  max-width: 100%;
 }
 
 .primaryButton {
@@ -765,6 +773,14 @@
     flex-wrap: wrap;
   }
 
+  .checkboxField,
+  .filterActions .primaryButton,
+  .filterActions .secondaryButton,
+  .cleanupForm .primaryButton,
+  .cleanupForm .secondaryButton {
+    width: 100%;
+  }
+
   .cleanupHeader {
     align-items: flex-start;
     flex-direction: column;
@@ -773,6 +789,92 @@
   .primaryButton,
   .secondaryButton {
     flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 600px) {
+  .summaryCard {
+    min-height: 96px;
+    padding: 14px;
+  }
+
+  .summaryCard strong {
+    font-size: 25px;
+  }
+
+  .filters,
+  .cleanupPanel {
+    padding: 12px;
+  }
+
+  .tableShell {
+    border: 0;
+    background: transparent;
+  }
+
+  .dateCell {
+    gap: 1px;
+  }
+
+  .dateCell span:first-child,
+  .dateCell span:last-child {
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  .merchantCell {
+    gap: 6px;
+  }
+
+  .merchantName {
+    align-items: flex-start;
+  }
+
+  .merchantEditLink {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  .secondaryLine,
+  .noteLine,
+  .reimbursementLine {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .amountCell {
+    font-size: 14px;
+  }
+
+  .iconLink {
+    width: 100%;
+  }
+
+  .limitNotice {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-top: 10px;
+    background: var(--surface);
+  }
+}
+
+@media (max-width: 430px) {
+  .shell {
+    gap: 12px;
+  }
+
+  .summaryGrid {
+    gap: 10px;
+  }
+
+  .summaryCard strong {
+    font-size: 23px;
+  }
+
+  .filters,
+  .cleanupPanel {
+    border-radius: 7px;
   }
 }
 
@@ -874,5 +976,60 @@
   .confidenceText,
   .lowConfidenceText {
     white-space: normal;
+  }
+}
+
+@media (max-width: 600px) {
+  .table tbody {
+    display: grid;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .table td {
+    display: block;
+    min-width: 0;
+    border-bottom: 0;
+    padding: 0;
+  }
+
+  .table td::before {
+    display: none;
+  }
+
+  .table td[data-label="Date"] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .table td[data-label="Merchant"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .table td[data-label="Category"],
+  .table td[data-label="Account"],
+  .table td[data-label="Intent"],
+  .table td[data-label="Review"] {
+    display: none;
+  }
+
+  .table td[data-label="Amount"] {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .table td[data-label="Edit"] {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }

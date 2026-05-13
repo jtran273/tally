@@ -13,7 +13,8 @@ const responsiveRoutes = [
 ] as const;
 
 const responsiveViewports = [
-  { height: 844, name: "mobile", width: 390 },
+  { height: 844, name: "mobile-390", width: 390 },
+  { height: 932, name: "mobile-430", width: 430 },
   { height: 1024, name: "tablet", width: 768 },
   { height: 900, name: "desktop", width: 1440 }
 ] as const;

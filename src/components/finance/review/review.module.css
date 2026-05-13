@@ -282,6 +282,11 @@
   gap: 8px;
 }
 
+.actionForms form {
+  display: flex;
+  min-width: 0;
+}
+
 .inlineEditForm {
   display: grid;
   flex: 1 1 100%;
@@ -445,6 +450,7 @@
 .splitHeader,
 .splitActions {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
@@ -597,5 +603,95 @@
   .primaryButton,
   .secondaryButton {
     flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 600px) {
+  .summaryGrid {
+    gap: 10px;
+  }
+
+  .summaryCard {
+    min-height: 96px;
+    padding: 14px;
+  }
+
+  .summaryCard strong {
+    font-size: 25px;
+  }
+
+  .reviewCard {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .reviewCard h2 {
+    font-size: 18px;
+  }
+
+  .metaLine span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cardActions,
+  .actionForms,
+  .inlineEditActions,
+  .splitActions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .actionForms form,
+  .cardActions > button,
+  .inlineEditActions .primaryButton,
+  .inlineEditActions .secondaryButton,
+  .splitActions .primaryButton,
+  .splitActions .secondaryButton,
+  .actionForms .primaryButton,
+  .actionForms .secondaryButton {
+    width: 100%;
+  }
+
+  .peerForm,
+  .inlineEditForm {
+    padding: 10px;
+  }
+
+  .checkboxField {
+    width: 100%;
+  }
+
+  .splitHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .splitHeader strong {
+    overflow-wrap: anywhere;
+  }
+
+  .emptyState {
+    min-height: 220px;
+    padding: 22px 14px;
+  }
+}
+
+@media (max-width: 430px) {
+  .shell {
+    gap: 12px;
+  }
+
+  .summaryCard strong {
+    font-size: 23px;
+  }
+
+  .notice {
+    align-items: flex-start;
+  }
+
+  .reviewGroupHead h2 {
+    font-size: 20px;
   }
 }
