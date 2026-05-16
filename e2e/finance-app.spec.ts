@@ -84,6 +84,10 @@ async function expectNoSensitiveFinanceText(page: Page) {
   expect(bodyText).not.toMatch(/sk-[A-Za-z0-9]/);
 }
 
+async function expectNoVisibleLegacyBrand(page: Page) {
+  await expect(page.getByText(/\bLedger\b/)).toHaveCount(0);
+}
+
 async function expectDesignSystemTypography(page: Page) {
   const metrics = await page.evaluate(() => {
     function isVisible(element: Element) {
@@ -124,8 +128,12 @@ async function expectDesignSystemTypography(page: Page) {
       bodyFont: Number.parseFloat(body.fontSize),
       bodyLineHeight: Number.parseFloat(body.lineHeight),
       clippedControls,
+      fontMono: root.getPropertyValue("--font-mono").trim(),
+      fontSerif: root.getPropertyValue("--font-serif").trim(),
       fontSans: root.getPropertyValue("--font-sans").trim(),
+      sage: root.getPropertyValue("--sage").trim().toLowerCase(),
       sageInk: root.getPropertyValue("--sage-ink").trim().toLowerCase(),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase(),
       textBody: root.getPropertyValue("--text-body").trim(),
       tinyControls,
       titleFont: titleStyle?.fontFamily ?? "",
@@ -134,9 +142,13 @@ async function expectDesignSystemTypography(page: Page) {
     };
   });
 
+  expect(metrics.sage).toBe("#6c8a6a");
   expect(metrics.sageInk).toBe("#4f6a4d");
+  expect(metrics.sageSoft).toBe("#e1ebe0");
   expect(metrics.textBody).toBe("15px");
   expect(metrics.fontSans).toContain("Inter Tight");
+  expect(metrics.fontSerif).toContain("Instrument Serif");
+  expect(metrics.fontMono).toContain("JetBrains Mono");
   expect(metrics.bodyFont).toBeGreaterThanOrEqual(15);
   expect(metrics.bodyLineHeight).toBeGreaterThanOrEqual(21);
   expect(metrics.titleSize, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).not.toBeNull();
@@ -146,6 +158,49 @@ async function expectDesignSystemTypography(page: Page) {
   expect(metrics.titleFont, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toMatch(/Instrument Serif|Georgia|Times/);
   expect(metrics.tinyControls, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toHaveLength(0);
   expect(metrics.clippedControls, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toHaveLength(0);
+}
+
+async function expectReducedMotionSafe(page: Page) {
+  const metrics = await page.evaluate(() => {
+    function isVisible(element: Element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    }
+
+    function durationToMs(value: string) {
+      return value.split(",").map((raw) => {
+        const token = raw.trim();
+        if (token.endsWith("ms")) return Number.parseFloat(token);
+        if (token.endsWith("s")) return Number.parseFloat(token) * 1000;
+        return Number.parseFloat(token) || 0;
+      });
+    }
+
+    const offenders = Array.from(document.querySelectorAll("body *"))
+      .filter(isVisible)
+      .map((element) => {
+        const style = window.getComputedStyle(element);
+        const maxAnimation = Math.max(...durationToMs(style.animationDuration), 0);
+        const maxTransition = Math.max(...durationToMs(style.transitionDuration), 0);
+
+        return {
+          animationDuration: style.animationDuration,
+          className: typeof element.className === "string" ? element.className.slice(0, 120) : "",
+          maxAnimation,
+          maxTransition,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80),
+          transitionDuration: style.transitionDuration
+        };
+      })
+      .filter((element) => element.maxAnimation > 5 || element.maxTransition > 5)
+      .slice(0, 8);
+
+    return { offenders };
+  });
+
+  expect(metrics.offenders, `Reduced motion offenders: ${JSON.stringify(metrics.offenders, null, 2)}`).toHaveLength(0);
 }
 
 async function expectTransactionControlsVisible(page: Page) {
@@ -203,18 +258,31 @@ async function expectTransactionStatusBadgesVisible(page: Page) {
 test("demo login opens the seeded finance workspace", async ({ page }) => {
   await page.goto("/login");
 
+  await expect(page).toHaveTitle("Tally - Personal Finance Copilot");
+  await expect(page.getByText("Tally", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personal finance copilot", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
   await expect(page.getByRole("button", { name: /enter demo/i })).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
   await page.getByRole("button", { name: /enter demo/i }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tally dashboard" })).toBeVisible();
   await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
 });
 
 test("app shell navigation and global search reach the primary workspace routes", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
+
+  const brand = page.getByRole("link", { name: "Tally dashboard" });
+  await expect(brand).toBeVisible();
+  await expect(brand).toContainText("Tally");
+  await expect(brand).not.toContainText("Copilot");
+  await expectNoVisibleLegacyBrand(page);
 
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   const routes = [
@@ -295,6 +363,87 @@ test("design tokens and typography stay cohesive across finance routes", async (
       await expectDesignSystemTypography(page);
       await expectNoPageOverflow(page);
     }
+  }
+});
+
+test("Tally brand surfaces stay tokenized and readable at minimum width", async ({ baseURL, context, page }) => {
+  await page.setViewportSize({ height: 568, width: 320 });
+  await page.goto("/login");
+
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
+  await expect(page.getByText("Tally", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personal finance copilot", { exact: true })).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
+  const loginTokenMetrics = await page.evaluate(() => {
+    const root = window.getComputedStyle(document.documentElement);
+    const body = window.getComputedStyle(document.body);
+
+    return {
+      bodyFont: Number.parseFloat(body.fontSize),
+      fontSans: root.getPropertyValue("--font-sans").trim(),
+      sage: root.getPropertyValue("--sage").trim().toLowerCase(),
+      sageInk: root.getPropertyValue("--sage-ink").trim().toLowerCase(),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase()
+    };
+  });
+  expect(loginTokenMetrics.sage).toBe("#6c8a6a");
+  expect(loginTokenMetrics.sageInk).toBe("#4f6a4d");
+  expect(loginTokenMetrics.sageSoft).toBe("#e1ebe0");
+  expect(loginTokenMetrics.fontSans).toContain("Inter Tight");
+  expect(loginTokenMetrics.bodyFont).toBeGreaterThanOrEqual(15);
+  await expectNoPageOverflow(page);
+
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/dashboard");
+
+  const brandMetrics = await page.evaluate(() => {
+    const root = window.getComputedStyle(document.documentElement);
+    const brand = document.querySelector(".brand");
+    const mark = document.querySelector(".brand-mark");
+    const markSvg = document.querySelector(".brand-mark svg");
+    const activeNav = document.querySelector(".nav-item.active");
+    const markStyle = mark ? window.getComputedStyle(mark) : null;
+    const activeStyle = activeNav ? window.getComputedStyle(activeNav) : null;
+
+    return {
+      activeBackground: activeStyle?.backgroundColor ?? "",
+      activeColor: activeStyle?.color ?? "",
+      brandText: brand?.textContent?.replace(/\s+/g, " ").trim() ?? "",
+      markBackground: markStyle?.backgroundColor ?? "",
+      markHasSvg: Boolean(markSvg),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase()
+    };
+  });
+
+  expect(brandMetrics.brandText).toContain("Tally");
+  expect(brandMetrics.brandText).not.toContain("Copilot");
+  expect(brandMetrics.markHasSvg).toBe(true);
+  expect(brandMetrics.sageSoft).toBe("#e1ebe0");
+  expect(brandMetrics.activeBackground).not.toBe("rgb(26, 28, 25)");
+  expect(brandMetrics.activeColor).not.toBe("rgb(244, 244, 239)");
+  await expectNoVisibleLegacyBrand(page);
+  await expectNoPageOverflow(page);
+});
+
+test("Tally surfaces respect reduced motion preferences", async ({ baseURL, context, page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ height: 568, width: 320 });
+  await page.goto("/login");
+
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
+  await expectReducedMotionSafe(page);
+  await expectNoPageOverflow(page);
+
+  await enableDemoMode(context, baseURL!);
+  for (const route of [
+    { heading: "Dashboard", path: "/dashboard" },
+    { heading: "Settings", path: "/settings" }
+  ] as const) {
+    await page.goto(route.path);
+    await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible();
+    await expectReducedMotionSafe(page);
+    await expectNoPageOverflow(page);
   }
 });
 
@@ -764,13 +913,13 @@ test("settings keeps bank connections and access controls simple", async ({ base
   await expect(page.getByText("Institutions", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Production mode imports real account balances")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Setup checklist" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Personal Ledger" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Latest Plaid run" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Spending categories" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Saved category automation" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Suggestion status" })).toHaveCount(0);
   await expect(page.getByText(/OpenAI auto review|Manual AI ready|Fallback active/)).toHaveCount(0);
 
+  await expectNoVisibleLegacyBrand(page);
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });

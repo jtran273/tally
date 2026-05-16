@@ -1,6 +1,6 @@
 # Deployment
 
-Ledger is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an optional OpenAI provider. Production setup must keep code, secrets, database access, and Plaid environment choices aligned.
+Tally is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an optional OpenAI provider. Production setup must keep code, secrets, database access, and Plaid environment choices aligned.
 
 ## Deployment Targets
 
@@ -65,7 +65,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `ENABLE_DEMO_MODE` | Server only | Production optional | Defaults to enabled outside production and disabled in production. Set `true` only when the deployment should expose the seeded demo workspace. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
 | `CRON_SECRET` | Server only | Plaid cron yes | Bearer secret Vercel sends to `/api/plaid/sync/scheduled` so only the scheduler can trigger Plaid sync. Optional proactive scan and OpenClaw scheduled routes also require it if they are separately scheduled later. |
 | `OPENCLAW_TOKEN` | Server only | OpenClaw yes | Shared bearer secret for `/api/openclaw/signals` and `/api/openclaw/replies`. Rotate alongside the OpenClaw caller. |
-| `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Ledger rows are exposed to the server-to-server OpenClaw integration. |
+| `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Tally rows are exposed to the server-to-server OpenClaw integration. |
 | `OPENCLAW_BRIEFING_CADENCE` | Server only | Optional | `weekly` by default. Set to `daily` only if the scheduled OpenClaw briefing job should refresh a daily proposal key. |
 | `PROACTIVE_SCAN_USER_ID` | Server only | Optional | Supabase user id for the nightly proactive reimbursement scan. Falls back to `OPENCLAW_USER_ID`. |
 | `PROACTIVE_SCAN_MAX_TX` | Server only | Optional | Hard cap on candidate transactions scanned per proactive run. Defaults to `100`. |
@@ -186,7 +186,7 @@ Manual OpenAI suggestions are advisory and require user acceptance. Automatic Op
 15. Edit one transaction.
 16. Resolve one review item if present.
 17. Export CSV and inspect columns.
-18. Disconnect the Plaid item if this was only a smoke test. Historical Ledger rows should remain unless you run the separate cleanup CLI against the revoked item.
+18. Disconnect the Plaid item if this was only a smoke test. Historical Tally rows should remain unless you run the separate cleanup CLI against the revoked item.
 
 ## Security Headers
 

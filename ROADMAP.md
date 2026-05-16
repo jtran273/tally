@@ -1,4 +1,4 @@
-# Ledger Roadmap
+# Tally Roadmap
 
 This roadmap reflects the current codebase after the May 2026 buildout. Earlier roadmap items that are now implemented are listed as shipped so the active backlog only contains work that still needs product or engineering effort.
 
@@ -65,7 +65,7 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 
 **Priority:** P2
 
-**Why:** Merchant rules and AI suggestions should reduce review work over time. Ledger needs first-party metrics to show whether automation is trusted.
+**Why:** Merchant rules and AI suggestions should reduce review work over time. Tally needs first-party metrics to show whether automation is trusted.
 
 **Acceptance criteria:**
 

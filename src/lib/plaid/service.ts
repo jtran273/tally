@@ -6,6 +6,7 @@ import {
   Products,
   type AccountBase,
   type Institution,
+  type LinkTokenCreateRequest,
   type RemovedTransaction,
   type Transaction
 } from "plaid";
@@ -2110,24 +2111,43 @@ export async function createPlaidLinkToken({
   }
 
   const item = itemId && client ? await loadPlaidItemForSync(client, userId, itemId) : null;
-  const response = await plaid.linkTokenCreate({
-    ...(item
-      ? { access_token: decryptPlaidAccessToken(item.access_token_ciphertext) }
-      : { products: [Products.Transactions] }),
-    client_name: "Ledger",
-    country_codes: [CountryCode.Us],
-    language: "en",
-    redirect_uri: config.redirectUri ?? undefined,
-    user: {
-      client_user_id: userId,
-      email_address: userEmail ?? undefined
-    }
-  });
+  const response = await plaid.linkTokenCreate(buildPlaidLinkTokenCreateRequest({
+    accessToken: item ? decryptPlaidAccessToken(item.access_token_ciphertext) : undefined,
+    redirectUri: config.redirectUri,
+    userEmail,
+    userId
+  }));
 
   return {
     expiration: response.data.expiration,
     linkToken: response.data.link_token,
     requestId: response.data.request_id
+  };
+}
+
+export function buildPlaidLinkTokenCreateRequest({
+  accessToken,
+  redirectUri,
+  userEmail,
+  userId
+}: {
+  accessToken?: string;
+  redirectUri: string | null;
+  userEmail: string | null;
+  userId: string;
+}): LinkTokenCreateRequest {
+  return {
+    ...(accessToken
+      ? { access_token: accessToken }
+      : { products: [Products.Transactions] }),
+    client_name: "Tally",
+    country_codes: [CountryCode.Us],
+    language: "en",
+    redirect_uri: redirectUri ?? undefined,
+    user: {
+      client_user_id: userId,
+      email_address: userEmail ?? undefined
+    }
   };
 }
 

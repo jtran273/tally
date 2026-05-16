@@ -192,7 +192,7 @@ function emptyTransactionCopy(
 
   return filtersActive
     ? "Reset search, month, account, category, or review filters to bring more transactions back into view."
-    : "After Plaid syncs, Ledger will show enriched transaction rows here with merchant, category, review, and reimbursement context.";
+    : "After Plaid syncs, Tally will show enriched transaction rows here with merchant, category, review, and reimbursement context.";
 }
 
 function StatusBadge({

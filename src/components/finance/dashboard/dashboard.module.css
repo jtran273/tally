@@ -434,7 +434,7 @@
 .trendPoint:hover .trendDot,
 .trendPoint:focus-visible .trendDot,
 .activeTrendDot {
-  filter: drop-shadow(0 2px 5px rgba(47, 111, 78, 0.22));
+  filter: drop-shadow(0 2px 5px color-mix(in oklab, var(--sage) 28%, transparent));
 }
 
 .emptyTrend {

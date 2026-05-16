@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ledger - Personal Finance Copilot",
-  description: "A calm personal finance dashboard prototype for the Personal Finance OS MVP."
+  title: "Tally - Personal Finance Copilot",
+  description: "A calm personal finance dashboard for reviewing bank data, recurring spending, and trusted budget records."
 };
 
 export const viewport: Viewport = {

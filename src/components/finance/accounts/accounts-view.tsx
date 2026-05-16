@@ -385,7 +385,7 @@ export function AccountsView({
             <div className={styles.accountListHead}>
               <div>
                 <h2>Connected accounts</h2>
-                <p>Balances first, with recent activity only where Ledger has transactions.</p>
+                <p>Balances first, with recent activity only where Tally has transactions.</p>
               </div>
               <LinkButton href="/settings">
                 <Settings size={13} aria-hidden />

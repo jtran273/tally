@@ -1,6 +1,6 @@
 # Operations Runbook
 
-This runbook covers day-to-day checks, deployment verification, Plaid sync troubleshooting, and maintenance for Ledger.
+This runbook covers day-to-day checks, deployment verification, Plaid sync troubleshooting, and maintenance for Tally.
 
 ## Routine Local Checks
 
@@ -138,10 +138,10 @@ Expected healthy state:
 - Last successful sync is present after sync.
 - Accounts import with balances.
 - Transactions import without duplicates.
-- Disconnecting a Plaid item preserves Ledger finance rows and stops future syncs.
+- Disconnecting a Plaid item preserves Tally finance rows and stops future syncs.
 - The revoked Plaid item remains visible as a disconnected/revoked tombstone with a marker token and cleared cursor, and it does not sync again.
 - Existing account, balance, transaction, review, recurring, and reimbursement rows for that item remain visible for history.
-- Destructive Ledger row cleanup is separate: run `npm run plaid:cleanup -- --user-id <user-id> --institution-name "<institution>"` for a dry run, then add `--execute --confirm DELETE_PLAID_ITEM_DATA` only for a revoked item you intend to purge.
+- Destructive Tally row cleanup is separate: run `npm run plaid:cleanup -- --user-id <user-id> --institution-name "<institution>"` for a dry run, then add `--execute --confirm DELETE_PLAID_ITEM_DATA` only for a revoked item you intend to purge.
 - Repairable item errors show safe user copy and a Repair action. Repair opens Plaid Link update mode for the selected item, then syncs only that item.
 
 ## Plaid Sync Troubleshooting
@@ -177,7 +177,7 @@ Check:
 - `transaction_cursor` is not corrupt,
 - Vercel logs for safe Plaid error code.
 
-If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Ledger should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
+If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Tally should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
 
 ### Sync fails with PLAID_CONFIGURATION_ERROR for every item
 
@@ -203,7 +203,7 @@ Use `/settings`:
 3. Confirm the app runs a one-item sync after Link succeeds.
 4. Confirm the item returns to active status and `last_successful_sync_at` advances.
 
-If repair fails with `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`, or `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Disconnect the stale item to stop future syncs while preserving Ledger history; use the cleanup CLI only if you intentionally want to purge historical rows for a revoked item.
+If repair fails with `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`, or `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Disconnect the stale item to stop future syncs while preserving Tally history; use the cleanup CLI only if you intentionally want to purge historical rows for a revoked item.
 
 ## Google Calendar Check
 
@@ -332,12 +332,12 @@ If `OPENAI_API_KEY` is set:
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,
 - accepted suggestions and merchant rules should still require explicit user actions,
-- persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Ledger-owned helpers that write audit events,
+- persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Tally-owned helpers that write audit events,
 - raw provider secrets must stay server-only.
 
 ## OpenClaw Integration Checks
 
-Ledger exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
+Tally exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
 
 - `OPENCLAW_TOKEN`,
 - `OPENCLAW_USER_ID`,
@@ -357,13 +357,13 @@ Expected:
 - scheduled briefing requests must include `Authorization: Bearer <CRON_SECRET>`,
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
-- `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Ledger proposal carrying a question,
+- `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
 - `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
-- OpenClaw never writes finance rows directly and Ledger never sends iMessages,
+- OpenClaw never writes finance rows directly and Tally never sends iMessages,
 - signal payloads must pass the assistant forbidden-field guard before serialization.
 
-To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Ledger, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
+To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Tally, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
 
 ## Database Maintenance
 
@@ -400,7 +400,7 @@ When adding a table:
 1. Generate a new high-entropy token.
 2. Update `OPENCLAW_TOKEN` in Vercel/server environment.
 3. Update OpenClaw to send `Authorization: Bearer <new-token>`.
-4. Redeploy Ledger.
+4. Redeploy Tally.
 5. Confirm `/api/openclaw/signals` rejects the old token and accepts the new token.
 
 ### Plaid secret

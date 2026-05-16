@@ -1,6 +1,6 @@
 # Architecture
 
-Ledger is a Next.js App Router application backed by Supabase Postgres, Supabase Auth, Plaid, and an optional AI suggestion provider. The architecture keeps provider data, user-approved enrichment, review workflow, and dashboard calculations separate so the app can explain where every number came from.
+Tally is a Next.js App Router application backed by Supabase Postgres, Supabase Auth, Plaid, and an optional AI suggestion provider. The architecture keeps provider data, user-approved enrichment, review workflow, and dashboard calculations separate so the app can explain where every number came from.
 
 ## Runtime Overview
 
@@ -27,6 +27,8 @@ Plaid API
 
 - `src/app` owns routing, route handlers, server actions, layouts, loading states, and page-level data fetching.
 - `src/components` owns UI composition and interaction surfaces.
+- `src/components/ui` owns reusable Tally primitives for buttons, panels, headings, metrics, badges, and notices.
+- `src/components/brand` owns the Tally mark used by app shell and login surfaces.
 - `src/lib/db` owns typed database access and conversion from database rows to app records.
 - `src/lib/plaid` owns Plaid configuration, Link token creation, public token exchange, transaction sync, disconnect, token encryption, and safe error handling.
 - `src/lib/calendar` owns read-only Google Calendar OAuth, encrypted token storage, token refresh, bounded event reads, and safe upcoming-event context.
@@ -60,7 +62,7 @@ Plaid API
 | `/api/plaid/exchange` | `POST` | Exchange a Plaid public token, persist item metadata, then run initial sync; demo mode rejects this write path |
 | `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection; demo mode returns a no-op seeded sync result |
 | `/api/plaid/sync/scheduled` | `GET`/`POST` | Run scheduled sync for all users with syncable Plaid items when authorized with `CRON_SECRET` |
-| `/api/plaid/connections/[connectionId]` | `DELETE` | Remove a Plaid item, stop future sync, and retain a revoked tombstone row while preserving historical Ledger rows |
+| `/api/plaid/connections/[connectionId]` | `DELETE` | Remove a Plaid item, stop future sync, and retain a revoked tombstone row while preserving historical Tally rows |
 | `/api/calendar/auth-url` | `POST` | Start read-only Google Calendar OAuth for the signed-in user; demo mode rejects this write path |
 | `/api/calendar/callback` | `GET` | Complete Google Calendar OAuth after state-cookie validation |
 | `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
@@ -119,11 +121,11 @@ The core sync service can run either all syncable items or a single item by data
 
 Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
 
-When Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` for Transactions Sync, Ledger treats transactions as skipped for that item while still importing accounts, balances, and balance snapshots where available. The sync run records skipped transaction counts and safe warning metadata, and it does not advance the item's transaction cursor on a skipped transaction pass.
+When Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` for Transactions Sync, Tally treats transactions as skipped for that item while still importing accounts, balances, and balance snapshots where available. The sync run records skipped transaction counts and safe warning metadata, and it does not advance the item's transaction cursor on a skipped transaction pass.
 
 The access token never leaves server code.
 
-Disconnect is intentionally non-destructive for Ledger-owned finance data. The service removes the item from Plaid, or marks it revoked locally when the old stored token can no longer decrypt, then keeps the `plaid_items` row as a disconnected tombstone with the stored cursor cleared and token ciphertext replaced by a revoked marker. Historical accounts, snapshots, raw/enriched transactions, reviews, splits, reimbursements, recurring rows, agent proposals, sync run items, and audit events remain available. The separate `npm run plaid:cleanup` CLI is the only destructive path and refuses to execute against non-revoked Plaid items.
+Disconnect is intentionally non-destructive for Tally-owned finance data. The service removes the item from Plaid, or marks it revoked locally when the old stored token can no longer decrypt, then keeps the `plaid_items` row as a disconnected tombstone with the stored cursor cleared and token ciphertext replaced by a revoked marker. Historical accounts, snapshots, raw/enriched transactions, reviews, splits, reimbursements, recurring rows, agent proposals, sync run items, and audit events remain available. The separate `npm run plaid:cleanup` CLI is the only destructive path and refuses to execute against non-revoked Plaid items.
 
 ## Calendar Flow
 
@@ -198,7 +200,7 @@ Manual AI suggestions are advisory and require explicit user acceptance. When `E
 
 The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. `src/lib/agents/weekly-planning-context.ts` builds the v1 OpenClaw/assistant weekly planning context as a pure read model over existing spending, income, reimbursement, review, cashflow, and sync summaries. It excludes transfers from spend/income planning and surfaces transfers only as a separate signal, and it runs the manifest forbidden-field guard before handoff.
 
-The `agent_proposals` table persists longer-lived assistant suggestions and clarification requests so OpenClaw integrations do not need to recreate state from open review items on every poll. `src/lib/db/queries.ts` exposes creation, listing, dismissal, clarification-answer recording, and narrow acceptance helpers. Inserted evidence and proposed patches are JSON objects checked by the assistant forbidden-field guard; expired pending proposals are hidden from normal pending lists. Acceptance is not autonomous: Ledger re-reads the current user-owned target row, dispatches through known mutation paths such as review suggestion acceptance or reimbursement matching, and writes `audit_events`.
+The `agent_proposals` table persists longer-lived assistant suggestions and clarification requests so OpenClaw integrations do not need to recreate state from open review items on every poll. `src/lib/db/queries.ts` exposes creation, listing, dismissal, clarification-answer recording, and narrow acceptance helpers. Inserted evidence and proposed patches are JSON objects checked by the assistant forbidden-field guard; expired pending proposals are hidden from normal pending lists. Acceptance is not autonomous: Tally re-reads the current user-owned target row, dispatches through known mutation paths such as review suggestion acceptance or reimbursement matching, and writes `audit_events`.
 
 `src/lib/review/reimbursement-candidates.ts` detects unlabeled personal expenses that may be reimbursable before the user marks them shared. It runs a deterministic prefilter over safe enriched transaction summaries and nearby positive inflows, then asks the configured AI suggestion provider to refine the candidate into a `reimbursement_candidate` proposal. The detector only emits proposals and clarification questions; it does not create splits, reimbursement records, or links.
 
@@ -206,7 +208,7 @@ The agent inbox at `/agent-inbox` is still the primary human review surface for 
 
 Ambiguous reimbursement clarification is modeled as an agent-safe question request, not a mutation. `src/lib/agents/clarifications.ts` decides whether a reimbursement candidate should interrupt James, stay silent, or remain queued in the app based on confidence, accounting impact, open-question batching, and value thresholds. The resulting `assistant_clarification_request` carries minimized transaction context, a single question, evidence strings, and `writesAllowed: false`. Answers become feedback for future reimbursement matching and suppression, but any split, reimbursement record, merchant rule, or review resolution still needs an explicit approval path that re-reads user-owned rows and writes audit events.
 
-CSV exports and any future manual imports are optional backfill or reconciliation tools. CSV exports include enriched rows and safe raw merchant/category labels, but not Plaid provider transaction ids. They are not required in the v1 automated clarification path, which should rely on Plaid/bank data, Ledger heuristics, optional LLM reasoning, and OpenClaw asking only when the answer changes accounting meaningfully.
+CSV exports and any future manual imports are optional backfill or reconciliation tools. CSV exports include enriched rows and safe raw merchant/category labels, but not Plaid provider transaction ids. They are not required in the v1 automated clarification path, which should rely on Plaid/bank data, Tally heuristics, optional LLM reasoning, and OpenClaw asking only when the answer changes accounting meaningfully.
 
 ## Settings Flow
 
@@ -226,7 +228,7 @@ Finance pages use `dynamic = "force-dynamic"` so signed-in user data is read per
 
 ## Design System Notes
 
-The UI is a dense finance tool, not a landing page. It favors:
+The design system is documented in `docs/design-system.md`. The UI is a dense finance tool, not a landing page. It favors:
 
 - desktop sidebar navigation,
 - mobile bottom navigation,

@@ -111,7 +111,7 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
     const institutionName = input.institutionName?.trim();
     return {
       action: "reconnect",
-      detail: `Ledger can still show saved balances${institutionName ? ` for ${institutionName}` : ""}, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports.`,
+      detail: `Tally can still show saved balances${institutionName ? ` for ${institutionName}` : ""}, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports.`,
       title: institutionName ? `Reconnect ${institutionName}` : "Reconnect required"
     };
   }
@@ -196,7 +196,7 @@ export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): stri
     .filter((item) => item.errorCode || item.errorMessage || item.warningCode || item.warningMessage)
     .map((item) => {
       if (normalizedCode(item.errorCode ?? null) === TOKEN_DECRYPTION_ERROR_CODE) {
-        return "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Ledger can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable.";
+        return "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Tally can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable.";
       }
 
       return [

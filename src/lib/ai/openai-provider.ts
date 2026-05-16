@@ -510,7 +510,7 @@ function buildReimbursementCandidateSystemPrompt() {
     "Return ONE JSON object matching the schema.",
     "",
     "Rules:",
-    "- Decide only whether Ledger should ask the user about this candidate.",
+    "- Decide only whether Tally should ask the user about this candidate.",
     "- suggestedIntent must be shared or reimbursable.",
     "- Use only the provided app-owned ids in suggestedInflowIds.",
     "- question should be concise and ask what the user needs to clarify.",

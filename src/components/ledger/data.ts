@@ -180,7 +180,7 @@ export const ledgerData: LedgerData = (() => {
       plaidMerchant: "ZELLE PAYMENT TO ALEX K",
       reviewReason: "venmo",
       confidence: 0.48,
-      aiSuggested: { category: "Transport / Rideshare", intent: "shared", confidence: 0.63, reason: "Peer-to-peer transfer. Explain it before Ledger trusts the spend bucket." }
+      aiSuggested: { category: "Transport / Rideshare", intent: "shared", confidence: 0.63, reason: "Peer-to-peer transfer. Explain it before Tally trusts the spend bucket." }
     }),
     txn("t13", 6, "Joe's Pizza", -14.5, "a5", "Food / Restaurants", "personal"),
     txn("t14", 7, "CHASE PMT THANK YOU", 1200, "a1", "Transfer", "transfer", { plaidCategory: "Payment", reviewReason: "transfer-pair", confidence: 0.6 }),

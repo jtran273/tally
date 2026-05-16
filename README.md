@@ -2,15 +2,15 @@
 
 Personal Finance OS is a personal finance dashboard for importing bank data, reviewing messy transactions, tracking recurring spending, and turning raw account activity into trusted budget records.
 
-The app is branded in the UI as **Ledger**. It is currently built for one primary user, but the database already models every finance record with `user_id` so the product can expand later without rewriting the data ownership model.
+The app is branded in the UI as **Tally**. It is currently built for one primary user, but the database already models every finance record with `user_id` so the product can expand later without rewriting the data ownership model.
 
-## What Ledger Is
+## What Tally Is
 
-Ledger is not just a transaction table. It is a review-first finance workspace.
+Tally is not just a transaction table. It is a review-first finance workspace.
 
 Bank feeds are useful, but imported data is often incomplete or misleading. Plaid can tell the app that a transaction was a Venmo payment, a transfer, or a generic merchant charge, but it cannot always know whether that activity was personal spending, business spending, shared spending, reimbursement, or a transfer that should not count against a budget.
 
-Ledger keeps those concepts separate:
+Tally keeps those concepts separate:
 
 - **Raw provider data** answers: what did Plaid send?
 - **Enriched transaction data** answers: what should the user trust this transaction to mean?
@@ -44,6 +44,12 @@ Production hardening currently includes:
 - Ignored local secret files and generated build output.
 - GitHub secret scanning and push protection enabled on the public repository, with CodeQL, dependency review, Dependabot, production dependency audit, and app checks in CI.
 
+## Design System
+
+Tally uses a small product design system documented in `docs/design-system.md`. The app-wide tokens live in `src/app/globals.css`: paper surfaces, sage as the only brand accent, muted semantic colors, Instrument Serif headings, Inter Tight UI text, and JetBrains Mono for money, counts, masks, and timestamps.
+
+Reusable primitives live in `src/components/ui/primitives.tsx` for buttons, panels, section headings, metrics, badges, and notices. Prefer those primitives before adding page-local versions of the same controls.
+
 ## Main Workflows
 
 ### Sign In
@@ -76,9 +82,9 @@ Each initial, manual, or scheduled sync also writes a persisted run summary with
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
-If Plaid account and balance data are available but Transactions Sync is not enabled or ready for an item, Ledger can still import accounts, balances, and balance snapshots. The sync summary records skipped transaction rows and safe error metadata without advancing the transaction cursor.
+If Plaid account and balance data are available but Transactions Sync is not enabled or ready for an item, Tally can still import accounts, balances, and balance snapshots. The sync summary records skipped transaction rows and safe error metadata without advancing the transaction cursor.
 
-Disconnecting a Plaid item stops future syncs and keeps historical Ledger rows visible. The revoked Plaid item row remains as a disconnected tombstone with a marker token and cleared cursor, while accounts, balances, transactions, reviews, recurring rows, and reimbursements are preserved. If old token encryption cannot be decrypted during disconnect, Ledger can still mark the item revoked locally so it no longer syncs.
+Disconnecting a Plaid item stops future syncs and keeps historical Tally rows visible. The revoked Plaid item row remains as a disconnected tombstone with a marker token and cleared cursor, while accounts, balances, transactions, reviews, recurring rows, and reimbursements are preserved. If old token encryption cannot be decrypted during disconnect, Tally can still mark the item revoked locally so it no longer syncs.
 
 Destructive Plaid data cleanup is a separate service-role CLI for revoked items only. It dry-runs by default:
 
@@ -108,15 +114,15 @@ Plaid import automatically applies high-confidence, ordinary merchant/category/i
 Users can accept ready suggestions one at a time, generate a suggestion for one review item, dismiss non-peer-to-peer review items, edit a transaction inline, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows require an explanation and split allocation before leaving review.
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
-Core reimbursement-link helpers can attach a received positive inflow to an existing reimbursement record, preserve partial outstanding balances, mark the received enriched row as reimbursable so it does not inflate income reports, and write audit events for link/unlink decisions without changing raw provider rows. Ledger can also rank likely peer-to-peer reimbursement inflows against outstanding shared or reimbursable expenses, but those deterministic suggestions still require explicit user confirmation before any write.
+Core reimbursement-link helpers can attach a received positive inflow to an existing reimbursement record, preserve partial outstanding balances, mark the received enriched row as reimbursable so it does not inflate income reports, and write audit events for link/unlink decisions without changing raw provider rows. Tally can also rank likely peer-to-peer reimbursement inflows against outstanding shared or reimbursable expenses, but those deterministic suggestions still require explicit user confirmation before any write.
 
-Ambiguous reimbursement matches should become concise clarification requests only when the answer would materially change accounting and the system has at least medium confidence. The v1 path is seamless bank data plus Ledger/OpenClaw reasoning: Plaid imports activity, Ledger drafts a compact clarification request, and OpenClaw asks one short question only when needed. CSV exports or future manual imports can support optional historical backfill, but they are not required for automated v1 reimbursement clarification.
+Ambiguous reimbursement matches should become concise clarification requests only when the answer would materially change accounting and the system has at least medium confidence. The v1 path is seamless bank data plus Tally/OpenClaw reasoning: Plaid imports activity, Tally drafts a compact clarification request, and OpenClaw asks one short question only when needed. CSV exports or future manual imports can support optional historical backfill, but they are not required for automated v1 reimbursement clarification.
 
 ### Agent Inbox
 
 The `/agent-inbox` route remains available as a secondary proposal/audit queue for finance-agent recommendations. It derives sanitized proposals from open review items and stored suggestions; it is not a separate autonomous mutation store. The primary workflow is `/review`; the main navigation points there so high-confidence automation stays out of the way and only exceptions need attention.
 
-Ledger also has a persistent `agent_proposals` store for longer-lived assistant proposals and clarification requests. The store is user-owned, RLS-protected, and accepts only minimized evidence/proposed-patch JSON that passes forbidden-field checks. Persisted proposals can be dismissed, answered, or accepted only through Ledger-owned helpers that re-read the current finance rows and write audit events.
+Tally also has a persistent `agent_proposals` store for longer-lived assistant proposals and clarification requests. The store is user-owned, RLS-protected, and accepts only minimized evidence/proposed-patch JSON that passes forbidden-field checks. Persisted proposals can be dismissed, answered, or accepted only through Tally-owned helpers that re-read the current finance rows and write audit events.
 
 Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Import-time auto-categorization is limited to conservative high-confidence cleanup and records audit events.
 
@@ -132,7 +138,7 @@ The transaction edit view lets the user change app-facing fields:
 
 Raw Plaid fields stay preserved for context and auditability.
 
-Transactions can be filtered by search, month, date range, account, category, direction, intent, review state, review reason, quality state, row limit, and transfer exclusion. CSV export uses the same filter model so exported rows match the visible ledger slice.
+Transactions can be filtered by search, month, date range, account, category, direction, intent, review state, review reason, quality state, row limit, and transfer exclusion. CSV export uses the same filter model so exported rows match the visible transaction slice.
 
 The transaction list also includes a merchant cleanup control for user-initiated repeated fixes, such as applying a food category to all McDonald's rows or moving Retail Wash rows into Auto / Car Maintenance. The cleanup updates matching enriched rows, writes audit events, and can save a merchant rule for future imports.
 
@@ -285,10 +291,12 @@ Set `ENABLE_DEMO_MODE=false` when testing only the real Supabase sign-in path. S
 
 ```text
 src/app/                         Next.js pages, route handlers, server actions, layouts
+src/components/brand/            Tally brand mark
 src/components/finance/          Dashboard, transactions, review, recurring, accounts, settings UI
-src/components/ledger/           Seeded Ledger data and legacy prototype UI used by demo cases
+src/components/ledger/           Seeded Tally data and legacy prototype UI used by demo cases
 src/components/plaid/            Plaid Link connection panel
 src/components/shell/            Authenticated app navigation shell
+src/components/ui/               Reusable Tally primitives
 src/lib/agents/                  Agent-safe finance manifest and derived proposal helpers
 src/lib/ai/                      AI provider interface, deterministic fallback, optional OpenAI provider
 src/lib/calendar/                Google Calendar OAuth, token vault, event listing, and safe context builder

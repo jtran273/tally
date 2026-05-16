@@ -480,7 +480,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
     }
 
     const confirmed = window.confirm(
-      `Disconnect ${connection.institutionName}? Historical transactions will stay in Ledger, but future Plaid syncs will stop.`
+      `Disconnect ${connection.institutionName}? Historical transactions will stay in Tally, but future Plaid syncs will stop.`
     );
     if (!confirmed) return;
 

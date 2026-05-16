@@ -844,7 +844,7 @@ function TrendChart({
   );
 }
 
-const categoryTrendPalette = ["#2f6f4e", "#2f5f8f", "#9a6b1f", "#7a4f9f", "#b55353"];
+const categoryTrendPalette = ["#4F6A4D", "#5A7298", "#8A6620", "#A85543", "#6C8A6A"];
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
 
@@ -1611,14 +1611,14 @@ function NetWorthCompositionPanel({
   const groups = [
     {
       accounts: liquidAccounts,
-      color: "#2f6f4e",
+      color: "var(--sage-ink)",
       key: "liquid",
       label: "Liquid assets",
       total: liquidTotal
     },
     {
       accounts: investmentAccounts,
-      color: "#2f5f8f",
+      color: "var(--info)",
       key: "investments",
       label: "Investments",
       total: investmentTotal
@@ -1652,7 +1652,7 @@ function NetWorthCompositionPanel({
             {debtTotal > 0 ? (
               <span
                 className={styles.compositionSegment}
-                style={{ background: "#b55353", width: `${(debtTotal / barTotal) * 100}%` }}
+                style={{ background: "var(--neg)", width: `${(debtTotal / barTotal) * 100}%` }}
                 title={`Debt: ${formatMoney(debtTotal)}`}
               />
             ) : null}
@@ -1686,7 +1686,7 @@ function NetWorthCompositionPanel({
           <div className={styles.compositionGroup}>
             <div className={styles.compositionGroupHead}>
               <strong>
-                <span className={styles.compositionSwatch} style={{ background: "#b55353" }} aria-hidden />
+                <span className={styles.compositionSwatch} style={{ background: "var(--neg)" }} aria-hidden />
                 Debt
               </strong>
               <span className={`${styles.compositionGroupValue} ${styles.liabilityOverdue}`}>
@@ -1803,7 +1803,7 @@ function DebtSummaryPanel({ accounts }: { accounts: readonly AccountRecord[] }) 
             <span
               key={card.account.id}
               className={styles.compositionSegment}
-              style={{ background: "#b55353", width: `${(card.balance / totalOwed) * 100}%`, opacity: 0.85 }}
+              style={{ background: "var(--neg)", width: `${(card.balance / totalOwed) * 100}%`, opacity: 0.85 }}
               title={`${friendlyAccountLabel(card.account)}: ${formatMoney(card.balance)}`}
             />
           ))}
@@ -1891,7 +1891,7 @@ function SpendableComparisonPanel({
           <div className={styles.compositionBar} role="img" aria-label="Liquid assets bar">
             <span
               className={styles.compositionSegment}
-              style={{ background: "#2f6f4e", width: `${(liquidTotal / denominator) * 100}%` }}
+              style={{ background: "var(--sage-ink)", width: `${(liquidTotal / denominator) * 100}%` }}
             />
           </div>
           <span className={styles.compositionRowValue}>{formatMoney(liquidTotal)}</span>
@@ -1901,7 +1901,7 @@ function SpendableComparisonPanel({
           <div className={styles.compositionBar} role="img" aria-label="Debt bar">
             <span
               className={styles.compositionSegment}
-              style={{ background: "#b55353", width: `${(debtTotal / denominator) * 100}%` }}
+              style={{ background: "var(--neg)", width: `${(debtTotal / denominator) * 100}%` }}
             />
           </div>
           <span className={`${styles.compositionRowValue} ${styles.liabilityOverdue}`}>

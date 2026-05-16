@@ -141,7 +141,7 @@ export function GoogleCalendarConnectionPanel({
       return;
     }
 
-    const confirmed = window.confirm("Disconnect Google Calendar? Ledger will stop reading upcoming events for OpenClaw planning context.");
+    const confirmed = window.confirm("Disconnect Google Calendar? Tally will stop reading upcoming events for OpenClaw planning context.");
     if (!confirmed) return;
 
     setDisconnectingId(connection.id);

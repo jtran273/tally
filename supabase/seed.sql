@@ -305,7 +305,7 @@ values
   ('t9', '50000000-0000-0000-0000-000000000009', '60000000-0000-0000-0000-000000000009', '70000000-0000-0000-0000-000000000009', '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-05-02', 'Delta Air Lines', -487.20, 'Travel / Flights', 'business', 'Travel / Flights', 'Delta Air Lines', 'posted', 0.7100, 'large', '{"intent":"business","from":"personal","confidence":0.71,"reason":"Looks like work travel based on similar past trips."}'::jsonb, '', false),
   ('t10', '50000000-0000-0000-0000-000000000010', '60000000-0000-0000-0000-000000000010', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-05-02', 'Whole Foods', -82.14, 'Groceries', 'personal', 'Groceries', 'Whole Foods', 'posted', 0.9500, null, '{}'::jsonb, '', false),
   ('t11', '50000000-0000-0000-0000-000000000011', '60000000-0000-0000-0000-000000000011', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-05-01', 'Vercel', -20.00, 'Software / Hosting', 'business', 'Software / Hosting', 'Vercel', 'posted', 0.9500, null, '{}'::jsonb, '', true),
-  ('t12', '50000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000012', '70000000-0000-0000-0000-000000000012', '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-05-01', 'Zelle - Alex K.', -68.00, 'Uncategorized', 'shared', 'Transfer', 'ZELLE PAYMENT TO ALEX K', 'posted', 0.4800, 'venmo', '{"category":"Transport / Rideshare","intent":"shared","confidence":0.63,"reason":"Peer-to-peer transfer. Explain it before Ledger trusts the spend bucket."}'::jsonb, '', false),
+  ('t12', '50000000-0000-0000-0000-000000000012', '60000000-0000-0000-0000-000000000012', '70000000-0000-0000-0000-000000000012', '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-05-01', 'Zelle - Alex K.', -68.00, 'Uncategorized', 'shared', 'Transfer', 'ZELLE PAYMENT TO ALEX K', 'posted', 0.4800, 'venmo', '{"category":"Transport / Rideshare","intent":"shared","confidence":0.63,"reason":"Peer-to-peer transfer. Explain it before Tally trusts the spend bucket."}'::jsonb, '', false),
   ('t13', '50000000-0000-0000-0000-000000000013', '60000000-0000-0000-0000-000000000013', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-30', 'Joe''s Pizza', -14.50, 'Food / Restaurants', 'personal', 'Food / Restaurants', 'Joe''s Pizza', 'posted', 0.9500, null, '{}'::jsonb, '', false),
   ('t14', '50000000-0000-0000-0000-000000000014', '60000000-0000-0000-0000-000000000014', '70000000-0000-0000-0000-000000000014', '30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2026-04-29', 'CHASE PMT THANK YOU', 1200.00, 'Transfer', 'transfer', 'Payment', 'CHASE PMT THANK YOU', 'posted', 0.6000, 'transfer-pair', '{"intent":"transfer","confidence":0.60,"reason":"Possible matching credit-card payment."}'::jsonb, '', false),
   ('t15', '50000000-0000-0000-0000-000000000015', '60000000-0000-0000-0000-000000000015', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-29', 'CHASE CARD PAYMENT', -1200.00, 'Transfer', 'transfer', 'Payment', 'CHASE CARD PAYMENT', 'posted', 0.9500, null, '{}'::jsonb, '', false),
@@ -444,13 +444,13 @@ select
   review_reason,
   'open',
   case review_reason
-    when 'venmo' then 'Peer-to-peer payment. Ledger needs to know what this was actually for.'
+    when 'venmo' then 'Peer-to-peer payment. Tally needs to know what this was actually for.'
     when 'large' then 'Larger than typical for this category. Confirm the label is right.'
     when 'transfer-pair' then 'Looks like a transfer between your accounts. Exclude from spending?'
-    when 'new-recurring' then 'Charged more than once. Should Ledger track it as recurring?'
-    when 'missing-category' then 'Choose a real category before Ledger counts this transaction as trusted.'
+    when 'new-recurring' then 'Charged more than once. Should Tally track it as recurring?'
+    when 'missing-category' then 'Choose a real category before Tally counts this transaction as trusted.'
     when 'unclear-transfer' then 'Transfer-like wording is present, but the matching account pair is unclear.'
-    when 'recurring-candidate' then 'Looks repeatable. Confirm whether Ledger should track it as recurring.'
+    when 'recurring-candidate' then 'Looks repeatable. Confirm whether Tally should track it as recurring.'
     else 'The suggestion is low confidence and needs a human check.'
   end,
   ai_suggestion,

@@ -93,14 +93,14 @@ const reasonLabel = (reason: ReviewReason | null) => {
 const reasonExplanation = (reason: ReviewReason | null) => {
   if (!reason) return "Needs review";
   return ({
-    venmo: "Peer-to-peer payment. Ledger needs to know what this was actually for.",
+    venmo: "Peer-to-peer payment. Tally needs to know what this was actually for.",
     large: "Larger than typical for this category. Confirm the label is right.",
     "transfer-pair": "Looks like a transfer between your accounts. Exclude from spending?",
-    "new-recurring": "Charged more than once. Should Ledger track it as recurring?",
+    "new-recurring": "Charged more than once. Should Tally track it as recurring?",
     "low-confidence": "The suggestion is low confidence and needs a human check.",
-    "missing-category": "Choose a real category before Ledger counts this transaction as trusted.",
+    "missing-category": "Choose a real category before Tally counts this transaction as trusted.",
     "unclear-transfer": "Transfer-like wording is present, but the matching account pair is unclear.",
-    "recurring-candidate": "Looks repeatable. Confirm whether Ledger should track it as recurring."
+    "recurring-candidate": "Looks repeatable. Confirm whether Tally should track it as recurring."
   } satisfies Record<ReviewReason, string>)[reason];
 };
 
@@ -1137,7 +1137,7 @@ function SettingsView({ ctx }: { ctx: LedgerContext }) {
         <div className="settings-panel-head">
           <div>
             <div className="card-eyebrow">Workspace</div>
-            <div className="settings-title">Personal Ledger</div>
+            <div className="settings-title">Tally workspace</div>
           </div>
           <span className="settings-pill">Mock data</span>
         </div>

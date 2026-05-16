@@ -61,7 +61,7 @@ test("Plaid token decryption errors ask for reconnect while preserving balance c
     })),
     {
       action: "reconnect",
-      detail: "Ledger can still show saved balances for SchoolsFirst Federal Credit Union, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports.",
+      detail: "Tally can still show saved balances for SchoolsFirst Federal Credit Union, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports.",
       title: "Reconnect SchoolsFirst Federal Credit Union"
     }
   );
@@ -174,7 +174,7 @@ test("Plaid sync result messages explain token decryption reconnects", () => {
 
   assert.equal(
     getPlaidSyncResultErrorDetails(sync),
-    "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Ledger can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable."
+    "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Tally can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable."
   );
 });
 

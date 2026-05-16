@@ -13,6 +13,7 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
+import { TallyMark } from "@/components/brand/tally-mark";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -267,10 +268,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="ledger-app">
       <aside className="sidebar" ref={sidebarRef}>
-        <Link className="brand" href={routeHref.dashboard} aria-label="Ledger dashboard">
-          <div className="brand-mark">L</div>
-          <div className="brand-name">Ledger</div>
-          <div className="brand-sub">Personal</div>
+        <Link className="brand" href={routeHref.dashboard} aria-label="Tally dashboard">
+          <div className="brand-mark"><TallyMark aria-hidden /></div>
+          <div className="brand-name">Tally</div>
         </Link>
 
         <nav className="nav" aria-label="Main navigation">

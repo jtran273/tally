@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AccountType as PlaidAccountType, type AccountBase, type Transaction } from "plaid";
+import { AccountType as PlaidAccountType, Products, type AccountBase, type Transaction } from "plaid";
 import {
+  buildPlaidLinkTokenCreateRequest,
   deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
@@ -101,6 +102,42 @@ export const plaidAccountSourceMergeFixture = mergePlaidAccountSourcesForSync({
 
 export const plaidAccountSourceMergeStaticAssertions = assertPlaidAccountSourceMergeFixtures();
 export const plaidPendingReplacementStaticAssertions = assertPlaidPendingReplacementFixtures();
+
+test("Plaid Link token request uses Tally branding for new connections", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    redirectUri: null,
+    userEmail: "james@example.com",
+    userId
+  });
+
+  assert.equal(request.client_name, "Tally");
+  assert.deepEqual(request.products, [Products.Transactions]);
+  assert.equal("access_token" in request, false);
+  assert.deepEqual(request.country_codes, ["US"]);
+  assert.equal(request.language, "en");
+  assert.equal(request.redirect_uri, undefined);
+  assert.deepEqual(request.user, {
+    client_user_id: userId,
+    email_address: "james@example.com"
+  });
+});
+
+test("Plaid Link token request uses update mode without product creation fields", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    accessToken: "access-sandbox-update",
+    redirectUri: "https://app.example.com/settings",
+    userEmail: null,
+    userId
+  });
+
+  assert.equal(request.client_name, "Tally");
+  assert.equal(request.access_token, "access-sandbox-update");
+  assert.equal("products" in request, false);
+  assert.equal(request.redirect_uri, "https://app.example.com/settings");
+  assert.ok(request.user);
+  assert.equal(request.user.client_user_id, userId);
+  assert.equal(request.user.email_address, undefined);
+});
 
 test("pending raw transaction is planned for in-place posted replacement", () => {
   assert.deepEqual(
