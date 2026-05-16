@@ -57,6 +57,17 @@ const transactionIntents = new Set(transactionIntentOptions.map((option) => opti
 const reviewStatuses = new Set(transactionReviewOptions.map((option) => option.value));
 const qualityStates = new Set(transactionQualityOptions.map((option) => option.value));
 const DEFAULT_LIMIT = 250;
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric"
+});
+const monthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric"
+});
 
 function firstParam(value: TransactionSearchParamValue) {
   return Array.isArray(value) ? value[0] : value;
@@ -94,6 +105,21 @@ function monthBounds(value: string) {
   const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 
   return { start, end };
+}
+
+function formatDate(value: string) {
+  return dateFormatter.format(new Date(`${value}T12:00:00.000Z`));
+}
+
+function formatRange(fromDate: string, toDate: string) {
+  const from = new Date(`${fromDate}T12:00:00.000Z`);
+  const to = new Date(`${toDate}T12:00:00.000Z`);
+
+  if (from.getUTCFullYear() === to.getUTCFullYear() && from.getUTCMonth() === to.getUTCMonth()) {
+    return `${from.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${from.getUTCDate()}-${to.getUTCDate()}, ${to.getUTCFullYear()}`;
+  }
+
+  return `${formatDate(fromDate)}-${formatDate(toDate)}`;
 }
 
 function maxDate(left?: string, right?: string) {
@@ -229,4 +255,29 @@ export function transactionFiltersHref(pathname: string, filters: TransactionFil
   const params = transactionFiltersToSearchParams(filters);
   const query = params.toString();
   return `${pathname}${query ? `?${query}` : ""}`;
+}
+
+export function transactionPeriodTitle(
+  filters: Pick<TransactionFilterState, "effectiveFromDate" | "effectiveToDate" | "isDateRangeInverted" | "month">
+) {
+  if (filters.isDateRangeInverted) return "No matching period";
+
+  if (filters.effectiveFromDate && filters.effectiveToDate) {
+    const bounds = filters.month ? monthBounds(filters.month) : null;
+
+    if (
+      bounds &&
+      filters.effectiveFromDate === bounds.start &&
+      filters.effectiveToDate === bounds.end
+    ) {
+      return monthFormatter.format(new Date(`${filters.month}-01T12:00:00.000Z`));
+    }
+
+    return formatRange(filters.effectiveFromDate, filters.effectiveToDate);
+  }
+
+  if (filters.effectiveFromDate) return `Since ${formatDate(filters.effectiveFromDate)}`;
+  if (filters.effectiveToDate) return `Through ${formatDate(filters.effectiveToDate)}`;
+
+  return "All transactions";
 }

@@ -5,6 +5,7 @@ import {
   normalizeTransactionFilters,
   parseTransactionFilters,
   toTransactionListFilters,
+  transactionPeriodTitle,
   transactionFiltersHref
 } from "./filters";
 
@@ -133,5 +134,24 @@ test("toTransactionListFilters and export href preserve the same filter fields",
   assert.equal(
     transactionFiltersHref("/api/export/transactions", filters),
     "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&intent=personal&review=open&quality=low-confidence&exclude_transfers=1&limit=100"
+  );
+});
+
+test("transactionPeriodTitle summarizes all, monthly, bounded, and inverted periods", () => {
+  assert.equal(transactionPeriodTitle(parseTransactionFilters({})), "All transactions");
+  assert.equal(transactionPeriodTitle(parseTransactionFilters({ month: "2026-05" })), "May 2026");
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2026-05-12", month: "2026-05", to: "2026-05-20" })),
+    "May 12-20, 2026"
+  );
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2025-12-28", to: "2026-01-04" })),
+    "December 28, 2025-January 4, 2026"
+  );
+  assert.equal(transactionPeriodTitle(parseTransactionFilters({ from: "2026-05-12" })), "Since May 12, 2026");
+  assert.equal(transactionPeriodTitle(parseTransactionFilters({ to: "2026-05-20" })), "Through May 20, 2026");
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2026-06-01", month: "2026-05", to: "2026-05-20" })),
+    "No matching period"
   );
 });
