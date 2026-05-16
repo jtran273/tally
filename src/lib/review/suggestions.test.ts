@@ -3,6 +3,7 @@ import test from "node:test";
 import type { CategoryRecord, Json } from "@/lib/db";
 import {
   buildAcceptedReviewSuggestionPatch,
+  describeReviewSuggestionRefresh,
   hasReviewSuggestionValue,
   normalizeReviewSuggestion
 } from "./suggestions";
@@ -66,7 +67,40 @@ test("normalizeReviewSuggestion: extracts all fields from serialized Transaction
   assert.equal(result.recurring, true);
   assert.equal(result.confidence, 0.94);
   assert.equal(result.reason, "Known AI software subscription merchant.");
+  assert.equal(result.sourceKind, "deterministic");
+  assert.equal(result.sourceLabel, "Deterministic heuristics");
   assert.deepEqual(result.signals, ["merchant cue: OPENAI"]);
+});
+
+test("normalizeReviewSuggestion: labels OpenAI provider suggestions", () => {
+  const result = normalizeReviewSuggestion(mockAiSuggestion({
+    category: {
+      confidence: 0.95,
+      reason: "Model matched merchant context.",
+      source: "openai",
+      value: { id: "cat-ai", name: "Software / AI Tools" }
+    },
+    provider: { id: "openai", kind: "openai", label: "OpenAI", version: "gpt-test" }
+  }));
+
+  assert.equal(result.sourceKind, "openai");
+  assert.equal(result.sourceLabel, "OpenAI");
+  assert.match(result.sourceDetail ?? "", /configured OpenAI provider/);
+});
+
+test("normalizeReviewSuggestion: labels saved merchant rule suggestions", () => {
+  const result = normalizeReviewSuggestion(mockAiSuggestion({
+    category: {
+      confidence: 0.98,
+      reason: "Matched a saved rule.",
+      source: "merchant-rule",
+      value: { id: "cat-food", name: "Food / Restaurants" }
+    },
+    provider: undefined
+  }));
+
+  assert.equal(result.sourceKind, "merchant-rule");
+  assert.equal(result.sourceLabel, "Saved merchant rule");
 });
 
 test("normalizeReviewSuggestion: handles flat categoryName string", () => {
@@ -109,6 +143,8 @@ test("normalizeReviewSuggestion: handles heuristic-only suggestion payload (no r
   assert.equal(result.intent, undefined);
   assert.equal(result.merchantName, undefined);
   assert.equal(result.recurring, undefined);
+  assert.equal(result.sourceKind, "review-rule");
+  assert.equal(result.sourceLabel, "Review rule");
   assert.deepEqual(result.signals, ["plaid-category-missing"]);
 });
 
@@ -145,6 +181,31 @@ test("hasReviewSuggestionValue: true when any meaningful field is present", () =
 test("hasReviewSuggestionValue: false for heuristic-only payload", () => {
   assert.equal(hasReviewSuggestionValue({ reason: "Some reason", signals: ["signal"] }), false);
   assert.equal(hasReviewSuggestionValue({ signals: [] }), false);
+});
+
+test("describeReviewSuggestionRefresh: describes generated source and changed fields", () => {
+  const before = normalizeReviewSuggestion({
+    reason: "Choose the right category.",
+    signals: ["plaid-category-missing"]
+  } as Json);
+  const after = normalizeReviewSuggestion(mockAiSuggestion({
+    provider: { id: "openai", kind: "openai", label: "OpenAI", version: "gpt-test" }
+  }));
+
+  assert.equal(
+    describeReviewSuggestionRefresh(before, after),
+    "Suggestion generated: updated merchant, category, intent, recurring, confidence. Source: OpenAI."
+  );
+});
+
+test("describeReviewSuggestionRefresh: describes refreshes with no field changes", () => {
+  const before = normalizeReviewSuggestion(mockAiSuggestion());
+  const after = normalizeReviewSuggestion(mockAiSuggestion());
+
+  assert.equal(
+    describeReviewSuggestionRefresh(before, after),
+    "Suggestion refreshed: no accept-ready fields changed. Source: Deterministic heuristics."
+  );
 });
 
 test("buildAcceptedReviewSuggestionPatch: uses known category ID when valid", () => {

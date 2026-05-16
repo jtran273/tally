@@ -229,12 +229,38 @@
   min-width: 0;
 }
 
+.suggestionSourceLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .columnLabel {
-  display: block;
-  margin-bottom: 7px;
+  display: inline-flex;
   color: var(--muted);
   font-size: 10.5px;
   text-transform: uppercase;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid color-mix(in oklab, var(--info) 24%, var(--line));
+  border-radius: 5px;
+  padding: 0 7px;
+  background: color-mix(in oklab, var(--info) 6%, var(--surface));
+  color: var(--ink);
+  font-size: 11.5px;
+}
+
+.sourceDetail {
+  margin: 0 0 9px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .detailList {

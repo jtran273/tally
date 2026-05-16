@@ -14,12 +14,19 @@ interface ReviewItemActionsProps {
   canAccept: boolean;
   canDismiss: boolean;
   canSuggest: boolean;
+  hasSuggestion: boolean;
   reviewItemId: string;
 }
 
 const initialState: ReviewActionState = {};
 
-export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewItemId }: ReviewItemActionsProps) {
+export function ReviewItemActions({
+  canAccept,
+  canDismiss,
+  canSuggest,
+  hasSuggestion,
+  reviewItemId
+}: ReviewItemActionsProps) {
   const [acceptState, acceptAction, accepting] = useActionState(acceptReviewSuggestionAction, initialState);
   const [dismissState, dismissAction, dismissing] = useActionState(dismissReviewItemAction, initialState);
   const [suggestState, suggestAction, suggesting] = useActionState(generateReviewSuggestionAction, initialState);
@@ -32,7 +39,7 @@ export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewIte
           <input name="reviewItemId" type="hidden" value={reviewItemId} />
           <button className={styles.secondaryButton} disabled={busy} type="submit">
             <Sparkles size={14} aria-hidden />
-            {suggesting ? "Suggesting..." : "Suggest with AI"}
+            {suggesting ? "Refreshing..." : hasSuggestion ? "Refresh suggestion" : "Generate suggestion"}
           </button>
         </form>
       ) : null}

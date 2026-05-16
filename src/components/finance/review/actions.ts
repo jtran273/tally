@@ -30,7 +30,10 @@ import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import {
   buildAcceptedReviewSuggestionPatch,
+  describeReviewSuggestionRefresh,
   hasReviewSuggestionValue,
+  normalizeReviewSuggestion,
+  reviewSuggestionFieldSummary,
   type NormalizedReviewSuggestion
 } from "@/lib/review/suggestions";
 import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
@@ -209,16 +212,6 @@ function revalidateReviewListPaths() {
   revalidatePath("/transactions");
 }
 
-function suggestionFieldSummary(suggestion: NormalizedReviewSuggestion) {
-  return [
-    suggestion.merchantName ? "merchant" : null,
-    suggestion.categoryName ? "category" : null,
-    suggestion.intent ? "intent" : null,
-    suggestion.recurring !== undefined ? "recurring" : null,
-    suggestion.confidence !== undefined ? "confidence" : null
-  ].filter((field): field is string => Boolean(field));
-}
-
 function reviewItemAuditData(item: ReviewQueueItem): Record<string, Json | undefined> {
   return {
     aiSuggestion: item.aiSuggestion,
@@ -308,7 +301,7 @@ async function applyAcceptedReviewSuggestion(
     userId,
     item.id,
     "resolved",
-    `Accepted suggestion fields: ${suggestionFieldSummary(suggestion).join(", ")}.`
+    `Accepted suggestion fields: ${reviewSuggestionFieldSummary(suggestion).join(", ")}.`
   );
 
   await recordAuditEvent(client, userId, {
@@ -461,6 +454,7 @@ export async function generateReviewSuggestionAction(
       return { error: "Use the peer-to-peer split form to explain this item." };
     }
 
+    const previousSuggestion = normalizeReviewSuggestion(item.aiSuggestion);
     const [categories, merchantRules, transactionRow, rawTransaction, userCorrections] = await Promise.all([
       listCategories(client, userId),
       listMerchantRules(client, userId),
@@ -536,7 +530,12 @@ export async function generateReviewSuggestionAction(
     });
 
     revalidateReviewPaths(item.transaction.id);
-    return { message: "Suggestion generated." };
+    return {
+      message: describeReviewSuggestionRefresh(
+        previousSuggestion,
+        normalizeReviewSuggestion(suggestion.ai_suggestion)
+      )
+    };
   } catch (error) {
     return errorState(error);
   }

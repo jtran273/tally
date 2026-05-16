@@ -77,9 +77,11 @@ function ReviewCard({
 }) {
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
   const peerToPeer = isPeerToPeerReview(item.reason);
-  const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
+  const hasSuggestion = hasReviewSuggestionValue(suggestion);
+  const canAccept = !peerToPeer && hasSuggestion;
   const canDismiss = !peerToPeer;
   const canSuggest = !peerToPeer;
+  const sourceLabel = suggestion.sourceLabel ?? "Review rule";
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
@@ -108,10 +110,16 @@ function ReviewCard({
             <span>Venmo, Zelle, Cash App, and PayPal hide the real merchant. Split it into real categories below.</span>
           </div>
         </div>
-      ) : hasReviewSuggestionValue(suggestion) ? (
+      ) : hasSuggestion ? (
         <div className={styles.suggestionGrid}>
           <div className={styles.suggestionColumn}>
-            <span className={styles.columnLabel}>AI suggests</span>
+            <div className={styles.suggestionSourceLine}>
+              <span className={styles.columnLabel}>Suggested cleanup</span>
+              <span className={styles.sourceBadge}>{sourceLabel}</span>
+            </div>
+            {suggestion.sourceDetail ? (
+              <p className={styles.sourceDetail}>{suggestion.sourceDetail}</p>
+            ) : null}
             <dl className={styles.detailList}>
               <div>
                 <dt>Category</dt>
@@ -134,8 +142,10 @@ function ReviewCard({
         <div className={styles.reasonCallout}>
           <TriangleAlert size={14} aria-hidden />
           <div>
-            <strong>No AI suggestion yet.</strong>
-            <span>Pick a category below to finalize this transaction.</span>
+            <strong>No accept-ready suggestion yet.</strong>
+            <span>
+              This was flagged by {sourceLabel.toLowerCase()}. Generate a fresh suggestion or edit the transaction below.
+            </span>
           </div>
         </div>
       )}
@@ -155,6 +165,7 @@ function ReviewCard({
               canAccept={canAccept}
               canDismiss={canDismiss}
               canSuggest={canSuggest}
+              hasSuggestion={hasSuggestion}
               reviewItemId={item.id}
             />
             <ReviewTransactionEditForm
@@ -174,7 +185,7 @@ function EmptyQueue() {
     <div className={styles.emptyState}>
       <CheckCircle2 size={28} aria-hidden />
       <h2>Nothing needs review</h2>
-      <p>All transactions are auto-categorized. New imports will show up here only when AI is uncertain.</p>
+      <p>All transactions are finalized. New imports show up here when rules or suggestions still need human judgment.</p>
       <Link className={styles.secondaryButton} href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />
@@ -256,8 +267,8 @@ export function ReviewQueueView({
           {aiProviderKind === "openai"
             ? aiAutoReviewEnabled
               ? "Automatic OpenAI cleanup is enabled. Suggestions stay advisory and high-confidence cleanup is audit-backed."
-              : "OpenAI is configured, but automatic cleanup is off to save tokens. Use Suggest with AI on only the review items that need it."
-            : "OpenAI is not configured. Review suggestions use deterministic merchant rules only."}
+              : "OpenAI is configured, but automatic cleanup is off to save tokens. Generate suggestions only on the review items that need it."
+            : "OpenAI is not configured. Refresh uses saved merchant rules and deterministic heuristics."}
         </div>
       ) : null}
 
@@ -282,8 +293,8 @@ export function ReviewQueueView({
           {aiItems.length > 0 ? (
             <section className={styles.reviewGroup}>
               <div className={styles.reviewGroupHead}>
-                <h2>AI was uncertain ({aiItems.length})</h2>
-                <span>Generate a suggestion when useful, accept a ready one, or relabel manually.</span>
+                <h2>Needs cleanup ({aiItems.length})</h2>
+                <span>Source labels show whether the suggestion came from OpenAI, saved rules, or local heuristics.</span>
               </div>
               <div className={styles.cardStack}>
                 {aiItems.map((item) => (
