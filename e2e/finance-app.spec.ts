@@ -13,6 +13,7 @@ const responsiveRoutes = [
 ] as const;
 
 const responsiveViewports = [
+  { height: 812, name: "mobile-375", width: 375 },
   { height: 844, name: "mobile-390", width: 390 },
   { height: 932, name: "mobile-430", width: 430 },
   { height: 1024, name: "tablet", width: 768 },
@@ -83,21 +84,205 @@ async function expectNoSensitiveFinanceText(page: Page) {
   expect(bodyText).not.toMatch(/sk-[A-Za-z0-9]/);
 }
 
+async function expectNoVisibleLegacyBrand(page: Page) {
+  await expect(page.getByText(/\bLedger\b/)).toHaveCount(0);
+}
+
+async function expectDesignSystemTypography(page: Page) {
+  const metrics = await page.evaluate(() => {
+    function isVisible(element: Element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    }
+
+    const root = window.getComputedStyle(document.documentElement);
+    const body = window.getComputedStyle(document.body);
+    const title = document.querySelector(".topbar-title");
+    const titleStyle = title ? window.getComputedStyle(title) : null;
+    const interactive = Array.from(document.querySelectorAll("button, a, input, select, textarea"))
+      .filter(isVisible)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        const text = (element.textContent ?? (element as HTMLInputElement).value ?? "").trim().replace(/\s+/g, " ");
+
+        return {
+          fontSize: Number.parseFloat(style.fontSize),
+          height: Math.round(rect.height),
+          scrollDelta: Math.round(element.scrollWidth - element.clientWidth),
+          tag: element.tagName.toLowerCase(),
+          text: text.slice(0, 60),
+          width: Math.round(rect.width)
+        };
+      });
+
+    const clippedControls = interactive
+      .filter((element) => element.width > 0 && element.scrollDelta > 2)
+      .slice(0, 8);
+    const tinyControls = interactive
+      .filter((element) => element.fontSize < 10)
+      .slice(0, 8);
+
+    return {
+      bodyFont: Number.parseFloat(body.fontSize),
+      bodyLineHeight: Number.parseFloat(body.lineHeight),
+      clippedControls,
+      fontMono: root.getPropertyValue("--font-mono").trim(),
+      fontSerif: root.getPropertyValue("--font-serif").trim(),
+      fontSans: root.getPropertyValue("--font-sans").trim(),
+      sage: root.getPropertyValue("--sage").trim().toLowerCase(),
+      sageInk: root.getPropertyValue("--sage-ink").trim().toLowerCase(),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase(),
+      textBody: root.getPropertyValue("--text-body").trim(),
+      tinyControls,
+      titleFont: titleStyle?.fontFamily ?? "",
+      titleSize: titleStyle ? Number.parseFloat(titleStyle.fontSize) : null,
+      viewportWidth: window.innerWidth
+    };
+  });
+
+  expect(metrics.sage).toBe("#6c8a6a");
+  expect(metrics.sageInk).toBe("#4f6a4d");
+  expect(metrics.sageSoft).toBe("#e1ebe0");
+  expect(metrics.textBody).toBe("15px");
+  expect(metrics.fontSans).toContain("Inter Tight");
+  expect(metrics.fontSerif).toContain("Instrument Serif");
+  expect(metrics.fontMono).toContain("JetBrains Mono");
+  expect(metrics.bodyFont).toBeGreaterThanOrEqual(15);
+  expect(metrics.bodyLineHeight).toBeGreaterThanOrEqual(21);
+  expect(metrics.titleSize, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).not.toBeNull();
+  expect(metrics.titleSize!, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toBeGreaterThanOrEqual(
+    metrics.viewportWidth < 720 ? 20 : 34
+  );
+  expect(metrics.titleFont, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toMatch(/Instrument Serif|Georgia|Times/);
+  expect(metrics.tinyControls, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toHaveLength(0);
+  expect(metrics.clippedControls, `Typography metrics: ${JSON.stringify(metrics, null, 2)}`).toHaveLength(0);
+}
+
+async function expectReducedMotionSafe(page: Page) {
+  const metrics = await page.evaluate(() => {
+    function isVisible(element: Element) {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+    }
+
+    function durationToMs(value: string) {
+      return value.split(",").map((raw) => {
+        const token = raw.trim();
+        if (token.endsWith("ms")) return Number.parseFloat(token);
+        if (token.endsWith("s")) return Number.parseFloat(token) * 1000;
+        return Number.parseFloat(token) || 0;
+      });
+    }
+
+    const offenders = Array.from(document.querySelectorAll("body *"))
+      .filter(isVisible)
+      .map((element) => {
+        const style = window.getComputedStyle(element);
+        const maxAnimation = Math.max(...durationToMs(style.animationDuration), 0);
+        const maxTransition = Math.max(...durationToMs(style.transitionDuration), 0);
+
+        return {
+          animationDuration: style.animationDuration,
+          className: typeof element.className === "string" ? element.className.slice(0, 120) : "",
+          maxAnimation,
+          maxTransition,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80),
+          transitionDuration: style.transitionDuration
+        };
+      })
+      .filter((element) => element.maxAnimation > 5 || element.maxTransition > 5)
+      .slice(0, 8);
+
+    return { offenders };
+  });
+
+  expect(metrics.offenders, `Reduced motion offenders: ${JSON.stringify(metrics.offenders, null, 2)}`).toHaveLength(0);
+}
+
+async function expectTransactionControlsVisible(page: Page) {
+  const metrics = await page.evaluate(() => {
+    const tableScroll = document.querySelector("[class*='tableScroll']");
+    const amount = document.querySelector("td[data-label='Amount']");
+    const edit = document.querySelector("td[data-label='Edit']");
+    const amountRect = amount?.getBoundingClientRect();
+    const editRect = edit?.getBoundingClientRect();
+
+    return {
+      amountRight: amountRect ? Math.round(amountRect.right) : null,
+      editRight: editRect ? Math.round(editRect.right) : null,
+      scrollDelta: tableScroll ? tableScroll.scrollWidth - tableScroll.clientWidth : null,
+      viewportWidth: window.innerWidth
+    };
+  });
+
+  expect(metrics.amountRight, `Amount cell metrics: ${JSON.stringify(metrics, null, 2)}`).not.toBeNull();
+  expect(metrics.editRight, `Edit cell metrics: ${JSON.stringify(metrics, null, 2)}`).not.toBeNull();
+  expect(metrics.amountRight!, `Amount cell metrics: ${JSON.stringify(metrics, null, 2)}`).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.editRight!, `Edit cell metrics: ${JSON.stringify(metrics, null, 2)}`).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.scrollDelta!, `Transaction table scroll metrics: ${JSON.stringify(metrics, null, 2)}`).toBeLessThanOrEqual(1);
+}
+
+async function expectTransactionStatusBadgesVisible(page: Page) {
+  const metrics = await page.evaluate(() => {
+    const badges = Array.from(document.querySelectorAll("[class*='statusTags'] > span"))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          height: Math.round(rect.height),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          text: (element.textContent ?? "").trim(),
+          width: Math.round(rect.width)
+        };
+      });
+
+    return {
+      badges,
+      viewportWidth: window.innerWidth
+    };
+  });
+
+  expect(metrics.badges.length, `Status badge metrics: ${JSON.stringify(metrics, null, 2)}`).toBeGreaterThan(0);
+  for (const badge of metrics.badges) {
+    expect(badge.width, `Status badge metrics: ${JSON.stringify(metrics, null, 2)}`).toBeGreaterThan(12);
+    expect(badge.height, `Status badge metrics: ${JSON.stringify(metrics, null, 2)}`).toBeGreaterThan(16);
+    expect(badge.left, `Status badge metrics: ${JSON.stringify(metrics, null, 2)}`).toBeGreaterThanOrEqual(0);
+    expect(badge.right, `Status badge metrics: ${JSON.stringify(metrics, null, 2)}`).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  }
+}
+
 test("demo login opens the seeded finance workspace", async ({ page }) => {
   await page.goto("/login");
 
+  await expect(page).toHaveTitle("Tally - Personal Finance Copilot");
+  await expect(page.getByText("Tally", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personal finance copilot", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
   await expect(page.getByRole("button", { name: /enter demo/i })).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
   await page.getByRole("button", { name: /enter demo/i }).click();
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tally dashboard" })).toBeVisible();
   await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
 });
 
 test("app shell navigation and global search reach the primary workspace routes", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
+
+  const brand = page.getByRole("link", { name: "Tally dashboard" });
+  await expect(brand).toBeVisible();
+  await expect(brand).toContainText("Tally");
+  await expect(brand).not.toContainText("Copilot");
+  await expectNoVisibleLegacyBrand(page);
 
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   const routes = [
@@ -121,7 +306,9 @@ test("app shell navigation and global search reach the primary workspace routes"
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
   await page.getByRole("button", { name: /open transaction search/i }).click();
+  await expect(page.locator(".search-layer")).toHaveClass(/search-open/);
   const search = page.locator("#mobile-transaction-search input[name='q']");
+  await expect(search).toBeFocused();
   await search.fill("Retail Wash");
   await search.press("Enter");
   await expect(page).toHaveURL(/\/transactions\?.*q=Retail\+Wash/);
@@ -144,31 +331,147 @@ for (const route of responsiveRoutes) {
   }
 }
 
+test("desktop sidebar wheel input scrolls long workspace pages", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/accounts");
+
+  const contentPane = page.locator(".page");
+  await expect(page.getByRole("heading", { exact: true, name: "Accounts" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(contentPane).toHaveJSProperty("scrollTop", 0);
+
+  await page.mouse.move(120, 450);
+  await page.mouse.wheel(0, 900);
+
+  await expect.poll(async () => contentPane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expectNoPageOverflow(page);
+});
+
+test("design tokens and typography stay cohesive across finance routes", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+
+  for (const viewport of [
+    { height: 844, width: 390 },
+    { height: 900, width: 1440 }
+  ]) {
+    await page.setViewportSize(viewport);
+
+    for (const route of responsiveRoutes) {
+      await page.goto(route.path);
+      await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible();
+      await expectDesignSystemTypography(page);
+      await expectNoPageOverflow(page);
+    }
+  }
+});
+
+test("Tally brand surfaces stay tokenized and readable at minimum width", async ({ baseURL, context, page }) => {
+  await page.setViewportSize({ height: 568, width: 320 });
+  await page.goto("/login");
+
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
+  await expect(page.getByText("Tally", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personal finance copilot", { exact: true })).toBeVisible();
+  await expectNoVisibleLegacyBrand(page);
+  const loginTokenMetrics = await page.evaluate(() => {
+    const root = window.getComputedStyle(document.documentElement);
+    const body = window.getComputedStyle(document.body);
+
+    return {
+      bodyFont: Number.parseFloat(body.fontSize),
+      fontSans: root.getPropertyValue("--font-sans").trim(),
+      sage: root.getPropertyValue("--sage").trim().toLowerCase(),
+      sageInk: root.getPropertyValue("--sage-ink").trim().toLowerCase(),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase()
+    };
+  });
+  expect(loginTokenMetrics.sage).toBe("#6c8a6a");
+  expect(loginTokenMetrics.sageInk).toBe("#4f6a4d");
+  expect(loginTokenMetrics.sageSoft).toBe("#e1ebe0");
+  expect(loginTokenMetrics.fontSans).toContain("Inter Tight");
+  expect(loginTokenMetrics.bodyFont).toBeGreaterThanOrEqual(15);
+  await expectNoPageOverflow(page);
+
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/dashboard");
+
+  const brandMetrics = await page.evaluate(() => {
+    const root = window.getComputedStyle(document.documentElement);
+    const brand = document.querySelector(".brand");
+    const mark = document.querySelector(".brand-mark");
+    const markSvg = document.querySelector(".brand-mark svg");
+    const activeNav = document.querySelector(".nav-item.active");
+    const markStyle = mark ? window.getComputedStyle(mark) : null;
+    const activeStyle = activeNav ? window.getComputedStyle(activeNav) : null;
+
+    return {
+      activeBackground: activeStyle?.backgroundColor ?? "",
+      activeColor: activeStyle?.color ?? "",
+      brandText: brand?.textContent?.replace(/\s+/g, " ").trim() ?? "",
+      markBackground: markStyle?.backgroundColor ?? "",
+      markHasSvg: Boolean(markSvg),
+      sageSoft: root.getPropertyValue("--sage-soft").trim().toLowerCase()
+    };
+  });
+
+  expect(brandMetrics.brandText).toContain("Tally");
+  expect(brandMetrics.brandText).not.toContain("Copilot");
+  expect(brandMetrics.markHasSvg).toBe(true);
+  expect(brandMetrics.sageSoft).toBe("#e1ebe0");
+  expect(brandMetrics.activeBackground).not.toBe("rgb(26, 28, 25)");
+  expect(brandMetrics.activeColor).not.toBe("rgb(244, 244, 239)");
+  await expectNoVisibleLegacyBrand(page);
+  await expectNoPageOverflow(page);
+});
+
+test("Tally surfaces respect reduced motion preferences", async ({ baseURL, context, page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ height: 568, width: 320 });
+  await page.goto("/login");
+
+  await expect(page.getByRole("heading", { name: "Sign in to Tally" })).toBeVisible();
+  await expectReducedMotionSafe(page);
+  await expectNoPageOverflow(page);
+
+  await enableDemoMode(context, baseURL!);
+  for (const route of [
+    { heading: "Dashboard", path: "/dashboard" },
+    { heading: "Settings", path: "/settings" }
+  ] as const) {
+    await page.goto(route.path);
+    await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible();
+    await expectReducedMotionSafe(page);
+    await expectNoPageOverflow(page);
+  }
+});
+
 test("dashboard trend range controls update the change-over-time view", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
-  let chart = page.locator("svg[aria-label='Cash - liabilities balance trend']");
+  let chart = page.locator("svg[aria-label='Spendable balance trend']");
   await expect(chart).toBeVisible();
-  const cashMinusLiabilitiesView = page.getByRole("button", { exact: true, name: "Cash - liabilities balance view" });
+  const spendableView = page.getByRole("button", { exact: true, name: "Spendable balance view" });
   const balanceRangeControls = page.getByLabel("Balance trend range");
-  await expect(cashMinusLiabilitiesView).toHaveAttribute("aria-pressed", "true");
+  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
   await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
 
-  const cashView = page.getByRole("button", { exact: true, name: "Cash balance view" });
-  await cashView.click();
-  await expect(cashView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Cash balance trend']")).toBeVisible();
+  const liquidView = page.getByRole("button", { exact: true, name: "Liquid assets balance view" });
+  await liquidView.click();
+  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
 
-  const liabilitiesView = page.getByRole("button", { exact: true, name: "Liabilities balance view" });
-  await liabilitiesView.click();
-  await expect(liabilitiesView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Liabilities balance trend']")).toBeVisible();
+  const debtView = page.getByRole("button", { exact: true, name: "Debt balance view" });
+  await debtView.click();
+  await expect(debtView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
 
-  await cashMinusLiabilitiesView.click();
-  await expect(cashMinusLiabilitiesView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Cash - liabilities balance trend']")).toBeVisible();
+  await spendableView.click();
+  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Spendable balance trend']")).toBeVisible();
 
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
   await netWorthView.click();
@@ -189,13 +492,24 @@ test("dashboard trend range controls update the change-over-time view", async ({
   expect(chartBox?.height ?? 0).toBeGreaterThan(100);
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
   await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
-  await expect(page.getByText("Transactions in selected period")).toBeVisible();
 
-  const categoryMonthView = page.getByRole("button", { exact: true, name: "Month" });
+  await spendableView.click();
+  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await expect(chart).toBeVisible();
+  await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  await expect(page.getByLabel("Selected balance transactions").getByRole("link", { name: "Open transactions" })).toHaveAttribute("href", /month=2026-05/);
+
+  await debtView.click();
+  await expect(debtView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
+
+  const categoryViewControls = page.getByLabel("Category spending view");
+  const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
 
-  const categoryTrendView = page.getByRole("button", { exact: true, name: "Trend" });
+  const categoryTrendView = categoryViewControls.getByRole("button", { exact: true, name: "Trend" });
   await categoryTrendView.click();
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
@@ -210,10 +524,47 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
+  const spendingPanel = page.getByLabel("Spending by category");
+  const spendingTrendLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
+    links.map((link) => link.getAttribute("href") ?? "")
+  ));
+  expect(spendingTrendLinks.length).toBeGreaterThan(1);
+  for (const href of spendingTrendLinks) {
+    expect(href).toContain("direction=spending");
+    expect(href).toContain("exclude_transfers=1");
+  }
+
+  await categoryMonthView.click();
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
+  const spendingMonthLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
+    links.map((link) => link.getAttribute("href") ?? "")
+  ));
+  expect(spendingMonthLinks.length).toBeGreaterThan(1);
+  for (const href of spendingMonthLinks) {
+    expect(href).toContain("direction=spending");
+    expect(href).toContain("exclude_transfers=1");
+  }
+
+  await liquidView.click();
+  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
+
   const incomePanel = page.getByLabel("Income by category");
   await expect(incomePanel).toBeVisible();
   await expect(incomePanel).toContainText("transfers excluded");
   await expect(page.getByLabel("Income month").getByRole("button").first()).toBeVisible();
+  const incomeLinks = await incomePanel.getByRole("link").evaluateAll((links) => (
+    links.map((link) => link.getAttribute("href") ?? "")
+  ));
+  expect(incomeLinks.length).toBeGreaterThan(0);
+  for (const href of incomeLinks) {
+    expect(href).toContain("direction=income");
+  }
+
+  await spendableView.click();
+  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await expect(chart).toBeVisible();
 
   const trendPoints = chart.locator("g[role='button']");
   const trendPointCount = await trendPoints.count();
@@ -221,13 +572,22 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await trendPoints.nth(Math.min(1, trendPointCount - 1)).hover();
   await expect(page.getByText("Selected point", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Selected balance transactions")).toBeVisible();
-  await expect(page.getByRole("button", { exact: true, name: "Point" })).toHaveAttribute("aria-pressed", "true");
+  const transactionScope = page.getByLabel("Transaction scope");
+  await expect(transactionScope.getByRole("button")).toHaveCount(3);
+  await expect(transactionScope.getByRole("button", { exact: true, name: "Up to point" })).toHaveCount(0);
+  await expect(transactionScope.getByRole("button", { exact: true, name: "Point" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Transactions for selected point")).toBeVisible();
   await trendPoints.nth(Math.min(2, trendPointCount - 1)).click();
   await expect(page.getByText("Selected point", { exact: true })).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "Up to point" }).click();
-  await expect(page.getByRole("button", { exact: true, name: "Up to point" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Transactions up to selected point")).toBeVisible();
+  await transactionScope.getByRole("button", { exact: true, name: "Before" }).click();
+  await expect(transactionScope.getByRole("button", { exact: true, name: "Before" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Transactions before selected point")).toBeVisible();
+  await transactionScope.getByRole("button", { exact: true, name: "After" }).click();
+  await expect(transactionScope.getByRole("button", { exact: true, name: "After" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Transactions after selected point")).toBeVisible();
+  await transactionScope.getByRole("button", { exact: true, name: "Point" }).click();
+  await expect(transactionScope.getByRole("button", { exact: true, name: "Point" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Transactions for selected point")).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Clear point" }).click();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
   await expectNoPageOverflow(page);
@@ -238,35 +598,61 @@ test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, c
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
 
-  const chart = page.locator("svg[aria-label='Cash - liabilities balance trend']");
-  await expect(chart).toBeVisible();
-  const chartBox = await chart.boundingBox();
+  const chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await expect(chart).toBeHidden();
 
-  expect(chartBox?.width).toBeGreaterThan(300);
-  expect(chartBox?.height).toBeGreaterThan(160);
+  await expect(page.getByLabel("Mobile balance trend summary")).toBeHidden();
 
   const oneMonth = page.getByLabel("Balance trend range").getByRole("button", { exact: true, name: "1M" });
-  await oneMonth.click();
-  await expect(oneMonth).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Period change")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open transactions" }).first()).toBeVisible();
+  await expect(oneMonth).toBeHidden();
+
+  const shellMetrics = await page.evaluate(() => {
+    const nav = document.querySelector("nav[aria-label='Main navigation']");
+    const topbar = document.querySelector(".topbar");
+    const navRect = nav?.getBoundingClientRect();
+    const topbarRect = topbar?.getBoundingClientRect();
+
+    return {
+      navBottom: navRect ? Math.round(navRect.bottom) : null,
+      navTop: navRect ? Math.round(navRect.top) : null,
+      topbarTop: topbarRect ? Math.round(topbarRect.top) : null,
+      viewportHeight: window.innerHeight
+    };
+  });
+
+  expect(shellMetrics.topbarTop, `Mobile shell metrics: ${JSON.stringify(shellMetrics, null, 2)}`).toBe(0);
+  expect(shellMetrics.navTop, `Mobile shell metrics: ${JSON.stringify(shellMetrics, null, 2)}`).toBeGreaterThan(760);
+  expect(shellMetrics.navBottom, `Mobile shell metrics: ${JSON.stringify(shellMetrics, null, 2)}`).toBeLessThanOrEqual(shellMetrics.viewportHeight);
   await expectNoPageOverflow(page);
 });
 
 test("transaction search filters, topbar search, and CSV export stay aligned", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto("/transactions");
+  await page.goto("/transactions?direction=spending&exclude_transfers=1");
 
   const filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("spending");
+  await expect(filterForm.locator("input[name='exclude_transfers']")).toHaveValue("1");
+  await expect(filterForm.getByRole("link", { name: /export csv/i })).toHaveAttribute(
+    "href",
+    /\/api\/export\/transactions\?direction=spending&exclude_transfers=1/
+  );
   await filterForm.locator("input[name='q']").fill("Lyft");
   await filterForm.getByRole("button", { name: /apply/i }).click();
 
   await expect(page).toHaveURL(/\/transactions\?.*q=Lyft/);
-  await expect(page.getByText("Rows shown")).toBeVisible();
+  await expect(page).toHaveURL(/direction=spending/);
+  await expect(page).toHaveURL(/exclude_transfers=1/);
+  await expect(page.getByText("Transaction period")).toBeVisible();
   await expect(page.getByText("Lyft").first()).toBeVisible();
+  await expect(filterForm.getByRole("link", { name: /export csv/i })).toHaveAttribute("href", /q=Lyft/);
+  await expect(filterForm.getByRole("link", { name: /export csv/i })).toHaveAttribute("href", /direction=spending/);
+  await expect(filterForm.getByRole("link", { name: /export csv/i })).toHaveAttribute("href", /exclude_transfers=1/);
 
-  const exportResponse = await page.request.get("/api/export/transactions?q=Lyft");
+  const exportResponse = await page.request.get("/api/export/transactions?q=Lyft", {
+    headers: { referer: `${baseURL!}/transactions` }
+  });
   expect(exportResponse.status()).toBe(200);
   const csv = await exportResponse.text();
   expect(csv).toContain("Lyft");
@@ -278,12 +664,14 @@ test("transaction search filters, topbar search, and CSV export stay aligned", a
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth
   }));
-  expect(tableMetrics.scrollWidth).toBeGreaterThanOrEqual(tableMetrics.clientWidth);
+  expect(tableMetrics.scrollWidth - tableMetrics.clientWidth).toBeLessThanOrEqual(1);
+  await expectTransactionControlsVisible(page);
 
   await page.getByRole("button", { name: /open transaction search/i }).click();
   await expect(page.locator(".search-layer")).toHaveClass(/search-open/);
 
   const topbarSearch = page.locator("#mobile-transaction-search input[name='q']");
+  await expect(topbarSearch).toBeFocused();
   await topbarSearch.fill("OpenAI");
   await topbarSearch.press("Enter");
   await expect(page).toHaveURL(/\/transactions\?.*q=OpenAI/);
@@ -292,51 +680,94 @@ test("transaction search filters, topbar search, and CSV export stay aligned", a
   await expectNoPageOverflow(page);
 });
 
+test("transaction review cards stay readable on narrow mobile", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto("/transactions?q=Retail+Wash&review=open");
+
+  const transactionTable = page.getByLabel("Persisted transactions");
+  await expect(transactionTable).toContainText("Retail Wash");
+  await expect(transactionTable).toContainText("Needs review");
+  await expect(transactionTable).toContainText("Needs a real category");
+  await expect(transactionTable).toContainText(/\$18\.50|\-\$18\.50/);
+  await expect(transactionTable.getByRole("link", { name: /edit retail wash/i }).first()).toBeVisible();
+  await expectTransactionControlsVisible(page);
+  await expectTransactionStatusBadgesVisible(page);
+  await expectNoPageOverflow(page);
+});
+
+test("transactions keep amount and edit controls visible at laptop width", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 844, width: 1100 });
+  await page.goto("/transactions");
+
+  await expect(page.getByRole("heading", { exact: true, name: "Transactions" })).toBeVisible();
+  await expectTransactionControlsVisible(page);
+  await expectNoPageOverflow(page);
+});
+
 test("transaction filters, detail view, cleanup guardrail, and export safety work together", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/transactions");
 
+  await expectTransactionControlsVisible(page);
+
   const filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("select[name='category']")).toContainText("Software");
+  await expect(filterForm.locator("select[name='category']")).not.toContainText("Transfer");
   await filterForm.locator("input[name='q']").fill("Retail Wash");
   await filterForm.locator("select[name='review']").selectOption("open");
-  await filterForm.locator("select[name='reason']").selectOption("missing-category");
-  await filterForm.locator("select[name='quality']").selectOption("needs-cleanup");
-  await filterForm.locator("select[name='limit']").selectOption("100");
   await filterForm.getByRole("button", { name: /apply/i }).click();
 
   await expect(page).toHaveURL(/\/transactions\?.*q=Retail\+Wash/);
   await expect(page).toHaveURL(/review=open/);
-  await expect(page).toHaveURL(/reason=missing-category/);
-  await expect(page).toHaveURL(/quality=needs-cleanup/);
   const transactionTable = page.getByLabel("Persisted transactions");
+  await expect(transactionTable.locator("thead")).not.toContainText("Review");
   await expect(transactionTable).toContainText("Retail Wash");
-  await expect(transactionTable).toContainText("Missing category");
+  await expect(transactionTable).toContainText("Needs review");
   await expect(transactionTable).toContainText("Uncategorized");
+  await expect(transactionTable).not.toContainText("Service");
+  await expect(transactionTable).not.toContainText("4421");
 
-  const filteredExport = await page.request.get("/api/export/transactions?q=Retail+Wash&review=open&reason=missing-category&quality=needs-cleanup");
+  const filteredExport = await page.request.get("/api/export/transactions?q=Retail+Wash&review=open&reason=missing-category&quality=needs-cleanup", {
+    headers: { referer: `${baseURL!}/transactions` }
+  });
   expect(filteredExport.status()).toBe(200);
   expect(filteredExport.headers()["cache-control"]).toContain("no-store");
   const csv = await filteredExport.text();
   expect(csv).toContain("Retail Wash");
+  expect(csv).not.toContain("plaid_transaction_id");
   expect(csv).not.toMatch(/demo-token|access_token|SUPABASE_SERVICE_ROLE_KEY|PLAID_SECRET|sk-[A-Za-z0-9]/i);
 
-  await page.getByLabel("Merchant cleanup").getByRole("button", { name: /apply cleanup/i }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /demo mode is read-only/i })).toBeVisible();
+  const cleanupPanel = page.getByLabel("Merchant cleanup");
+  await expect(cleanupPanel).toContainText("preview-only in the demo");
+  await expect(cleanupPanel.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
 
-  await filterForm.locator("input[name='from']").fill("2026-05-10");
-  await filterForm.locator("input[name='to']").fill("2026-05-01");
-  await filterForm.getByRole("button", { name: /apply/i }).click();
+  await page.goto("/transactions?from=2026-05-10&to=2026-05-01");
   await expect(page.getByText(/selected date filters do not overlap/i)).toBeVisible();
 
-  await page.getByRole("link", { exact: true, name: /reset/i }).click();
+  await page.getByRole("link", { exact: true, name: "Reset" }).click();
   await expect(page).toHaveURL(/\/transactions$/);
   await page.goto("/transactions/t21");
 
   await expect(page.getByRole("heading", { name: "OpenAI" })).toBeVisible();
   await expect(page.getByLabel("Read-only transaction details")).toContainText("Raw Plaid merchant");
-  await expect(page.getByLabel("Read-only transaction details")).toContainText("Plaid transaction");
+  await expect(page.getByLabel("Read-only transaction details")).not.toContainText("Plaid transaction");
   await expect(page.locator("input[name='merchantName']")).toHaveValue("OpenAI");
+  await expect(page.getByText("Category / subcategory")).toHaveCount(0);
+  await expect(page.locator("select[name='baseIntent']")).toContainText("Personal");
+  await expect(page.locator("select[name='baseIntent']")).toContainText("Business");
+  await expect(page.locator("select[name='baseIntent']")).not.toContainText("Transfer");
+  await expect(page.locator("select[name='baseIntent']")).not.toContainText("Reimbursable");
+  await expect(page.locator("select[name='tag']")).toHaveCount(0);
+  await expect(page.getByLabel("Transaction flags").getByLabel("Recurring")).toBeVisible();
+  await expect(page.getByLabel("Transaction flags").getByLabel("Reimbursable")).toBeVisible();
+  await expect(page.getByLabel("Transaction flags").getByLabel("Transfer")).toBeVisible();
+  await expect(page.locator("select[name='categoryId']")).not.toContainText("Transfer");
+  await page.locator("select[name='categoryId']").selectOption("__new_category__");
+  await expect(page.locator("input[name='newCategoryName']")).toBeVisible();
+  await expect(page.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });
@@ -348,24 +779,26 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
 
   await expect(page.getByLabel("Review queue summary")).toContainText("Needs your input");
   await expect(page.getByRole("heading", { name: /peer-to-peer/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /AI was uncertain/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Needs categorization/i })).toBeVisible();
 
   const peerCard = page.locator("article", { has: page.getByRole("heading", { name: "Venmo - Maya R." }) });
   await expect(peerCard).toContainText("Explain this peer-to-peer payment.");
+  await expect(peerCard).toContainText("preview-only in demo mode");
   await expect(peerCard.getByText("Fully allocated")).toBeVisible();
-  await expect(peerCard.getByRole("button", { name: /save and resolve/i })).toBeDisabled();
+  await expect(peerCard.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
   await peerCard.getByLabel("Explanation").fill("Dinner split with Maya");
-  await expect(peerCard.getByRole("button", { name: /save and resolve/i })).toBeEnabled();
+  await expect(peerCard.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
   await peerCard.getByRole("button", { name: /add split/i }).click();
   await expect(peerCard.getByRole("button", { name: /remove split row 2/i })).toBeVisible();
 
   const aiCard = page.locator("article", { has: page.getByRole("heading", { name: "Delta Air Lines" }) });
-  await expect(aiCard.getByRole("button", { name: /suggest with AI/i })).toBeVisible();
-  await expect(aiCard.getByRole("button", { name: /accept suggestion/i })).toBeVisible();
-  await expect(aiCard.getByRole("button", { name: /dismiss/i })).toBeVisible();
+  await expect(aiCard).toContainText("Demo review actions are read-only");
+  await expect(aiCard.getByRole("button", { name: /preview suggestion/i })).toBeDisabled();
+  await expect(aiCard.getByRole("button", { name: /read-only demo/i }).first()).toBeDisabled();
   await aiCard.getByRole("button", { name: /edit here/i }).click();
   await expect(aiCard.locator("input[name='merchantName']")).toHaveValue("Delta Air Lines");
-  await expect(aiCard.getByRole("button", { name: /save and finalize/i })).toBeVisible();
+  await expect(aiCard).toContainText("Inline transaction edits are preview-only");
+  await expect(aiCard.getByRole("button", { name: /read-only demo/i }).last()).toBeDisabled();
   await aiCard.getByRole("button", { name: /cancel/i }).click();
   await expect(aiCard.getByRole("button", { name: /edit here/i })).toBeVisible();
 
@@ -395,7 +828,7 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expectNoSensitiveFinanceText(page);
 });
 
-test("recurring and accounts pages render cashflow, account groups, and seeded finance rows", async ({ baseURL, context, page }) => {
+test("recurring and accounts pages render cashflow, accounts, and seeded finance rows", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
 
@@ -404,21 +837,59 @@ test("recurring and accounts pages render cashflow, account groups, and seeded f
   await expect(page.getByLabel("Recurring summary")).toContainText("Monthly estimate");
   await expect(page.getByRole("heading", { name: "Next 30 days" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recurring expenses" })).toBeVisible();
+  await expect(page.getByText("Demo recurring patterns are read-only")).toBeVisible();
   await expect(page.getByText("Equinox").first()).toBeVisible();
   await expect(page.getByText("Substack").first()).toBeVisible();
+  const recurringReadOnlyButtons = page.getByRole("button", { name: /read-only demo/i });
+  if (await recurringReadOnlyButtons.count()) {
+    await expect(recurringReadOnlyButtons.first()).toBeDisabled();
+  }
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 
   await page.goto("/accounts");
-  await expect(page.getByLabel("Account summary")).toContainText("Net worth");
-  await expect(page.getByRole("heading", { name: "Cash" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Credit / liabilities" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Investments" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Retirement" })).toBeVisible();
-  await expect(page.getByText("Schools First Checking")).toBeVisible();
-  await expect(page.getByText("Chase Sapphire")).toBeVisible();
+  const connectedAccounts = page.getByLabel("Connected accounts");
+  await expect(connectedAccounts).toContainText("Balances first");
+  await expect(connectedAccounts).toContainText("Schools First");
+  await expect(connectedAccounts).toContainText("Chase");
+  await expect(connectedAccounts).toContainText("Vanguard Roth IRA");
+  await expect(connectedAccounts).toContainText("Recent");
+  await expect(connectedAccounts).toContainText("PAYROLL DEPOSIT");
+  await expect(connectedAccounts).not.toContainText("Net balance");
+  await expect(connectedAccounts).not.toContainText("No recent transactions");
+  await expect(connectedAccounts).not.toContainText("Never synced");
+  await expect(connectedAccounts).not.toContainText("No sync yet");
+  await expect(page.getByLabel("Accounts summary")).toHaveCount(0);
+  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(5);
+  await expect(connectedAccounts.getByRole("link", { exact: true, name: "Manage connections" })).toHaveAttribute("href", "/settings");
+  const schwabCard = connectedAccounts.locator("article").filter({ hasText: "Charles Schwab Checking" });
+  await expect(schwabCard).not.toContainText("Recent");
+  await expect(page.getByRole("button", { name: /^Sync$/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /disconnect/i })).toHaveCount(0);
+  await expect(page.getByLabel("Bank connections")).toHaveCount(0);
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
+
+  const accountLinks = await connectedAccounts.getByRole("link", { name: /View transactions for/i }).evaluateAll((links) => (
+    links.map((link) => ({
+      href: link.getAttribute("href") ?? "",
+      label: link.getAttribute("aria-label") ?? ""
+    }))
+  ));
+  expect(accountLinks.length).toBeGreaterThan(1);
+  const accountParams = new Set<string>();
+  for (const accountLink of accountLinks) {
+    expect(accountLink.href).toMatch(/^\/transactions\?account=/);
+    const accountParam = new URL(accountLink.href, "http://ledger.test").searchParams.get("account");
+    expect(accountParam, accountLink.label).toBeTruthy();
+    accountParams.add(accountParam!);
+
+    await page.goto(accountLink.href);
+    await expect(page).toHaveURL(new RegExp(`/transactions\\?account=${accountParam}`));
+    await expect(page.getByRole("heading", { exact: true, name: "Transactions" })).toBeVisible();
+    await expect(page.getByLabel("Active filters")).toContainText("Account:");
+  }
+  expect(accountParams.size).toBe(accountLinks.length);
 });
 
 test("settings keeps bank connections and access controls simple", async ({ baseURL, context, page }) => {
@@ -427,6 +898,11 @@ test("settings keeps bank connections and access controls simple", async ({ base
   await page.goto("/settings");
 
   await expect(page.getByText("Bank connections", { exact: true })).toBeVisible();
+  await expect(page.getByText("Demo mode uses seeded Plaid-style data")).toBeVisible();
+  await expect(page.getByText("Demo mode keeps calendar integration off")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Sync$/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /connect a bank with plaid/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Read-only$/ }).first()).toBeDisabled();
   await expect(page.getByText("Last successful sync")).toBeVisible();
   await expect(page.getByText("Schools First FCU")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Access" })).toBeVisible();
@@ -437,13 +913,13 @@ test("settings keeps bank connections and access controls simple", async ({ base
   await expect(page.getByText("Institutions", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Production mode imports real account balances")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Setup checklist" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Personal Ledger" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Latest Plaid run" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Spending categories" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Saved category automation" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Suggestion status" })).toHaveCount(0);
   await expect(page.getByText(/OpenAI auto review|Manual AI ready|Fallback active/)).toHaveCount(0);
 
+  await expectNoVisibleLegacyBrand(page);
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });

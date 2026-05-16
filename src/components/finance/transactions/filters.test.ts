@@ -5,7 +5,8 @@ import {
   normalizeTransactionFilters,
   parseTransactionFilters,
   toTransactionListFilters,
-  transactionFiltersHref
+  transactionFiltersHref,
+  transactionPeriodTitle
 } from "./filters";
 
 const account = {
@@ -40,9 +41,10 @@ const category = {
 
 test("parseTransactionFilters sanitizes input and combines month/date bounds", () => {
   const filters = parseTransactionFilters({
-    account: account.id,
-    category: category.id,
-    exclude_transfers: "1",
+	    account: account.id,
+	    category: category.id,
+	    direction: "income",
+	    exclude_transfers: "1",
     from: "2026-05-12",
     intent: "business",
     limit: "500",
@@ -55,9 +57,10 @@ test("parseTransactionFilters sanitizes input and combines month/date bounds", (
   });
 
   assert.equal(filters.search, "Lyft");
-  assert.equal(filters.accountId, account.id);
-  assert.equal(filters.categoryId, category.id);
-  assert.equal(filters.intent, "business");
+	  assert.equal(filters.accountId, account.id);
+	  assert.equal(filters.categoryId, category.id);
+	  assert.equal(filters.direction, "income");
+	  assert.equal(filters.intent, "business");
   assert.equal(filters.reviewStatus, "open");
   assert.equal(filters.reviewReason, "low-confidence");
   assert.equal(filters.quality, "needs-cleanup");
@@ -70,8 +73,9 @@ test("parseTransactionFilters sanitizes input and combines month/date bounds", (
 
 test("parseTransactionFilters rejects invalid options and inverted ranges", () => {
   const filters = parseTransactionFilters({
-    from: "2026-06-01",
-    intent: "bad",
+	    from: "2026-06-01",
+	    direction: "bad",
+	    intent: "bad",
     limit: "999",
     month: "2026-05",
     quality: "bad",
@@ -80,8 +84,9 @@ test("parseTransactionFilters rejects invalid options and inverted ranges", () =
     to: "2026-05-05"
   });
 
-  assert.equal(filters.intent, "all");
-  assert.equal(filters.reviewStatus, "all");
+	  assert.equal(filters.intent, "all");
+	  assert.equal(filters.direction, "all");
+	  assert.equal(filters.reviewStatus, "all");
   assert.equal(filters.reviewReason, "all");
   assert.equal(filters.quality, "all");
   assert.equal(filters.limit, 250);
@@ -106,9 +111,10 @@ test("normalizeTransactionFilters clears stale account/category ids", () => {
 test("toTransactionListFilters and export href preserve the same filter fields", () => {
   const filters = normalizeTransactionFilters(
     parseTransactionFilters({
-      account: account.id,
-      category: category.id,
-      exclude_transfers: "1",
+	      account: account.id,
+	      category: category.id,
+	      direction: "spending",
+	      exclude_transfers: "1",
       from: "2026-05-01",
       intent: "personal",
       limit: "100",
@@ -123,9 +129,10 @@ test("toTransactionListFilters and export href preserve the same filter fields",
   );
 
   assert.deepEqual(toTransactionListFilters(filters), {
-    accountIds: [account.id],
-    categoryIds: [category.id],
-    excludeTransfers: true,
+	    accountIds: [account.id],
+	    categoryIds: [category.id],
+	    direction: "spending",
+	    excludeTransfers: true,
     fromDate: "2026-05-01",
     intent: "personal",
     limit: 100,
@@ -136,8 +143,27 @@ test("toTransactionListFilters and export href preserve the same filter fields",
     toDate: "2026-05-31"
   });
 
+	  assert.equal(
+	    transactionFiltersHref("/api/export/transactions", filters),
+	    "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&direction=spending&intent=personal&review=open&reason=low-confidence&quality=low-confidence&exclude_transfers=1&limit=100"
+	  );
+});
+
+test("transactionPeriodTitle describes month and open-ended ranges", () => {
   assert.equal(
-    transactionFiltersHref("/api/export/transactions", filters),
-    "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&intent=personal&review=open&reason=low-confidence&quality=low-confidence&exclude_transfers=1&limit=100"
+    transactionPeriodTitle(parseTransactionFilters({ month: "2026-05" })),
+    "May 2026"
+  );
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2026-05-12" })),
+    "Since May 12, 2026"
+  );
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2026-05-12", to: "2026-05-18" })),
+    "May 12-18, 2026"
+  );
+  assert.equal(
+    transactionPeriodTitle(parseTransactionFilters({ from: "2026-06-01", to: "2026-05-01" })),
+    "No matching period"
   );
 });

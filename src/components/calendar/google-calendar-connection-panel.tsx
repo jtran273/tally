@@ -33,6 +33,7 @@ type RequestState = "idle" | "loading" | "connecting" | "disconnecting";
 interface GoogleCalendarConnectionPanelProps {
   initialError?: string | null;
   initialSuccessMessage?: string | null;
+  isDemo?: boolean;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -59,7 +60,8 @@ function formatDate(value: string | null) {
 
 export function GoogleCalendarConnectionPanel({
   initialError = null,
-  initialSuccessMessage = null
+  initialSuccessMessage = null,
+  isDemo = false
 }: GoogleCalendarConnectionPanelProps) {
   const router = useRouter();
   const [connections, setConnections] = useState<GoogleCalendarConnectionSummary[]>([]);
@@ -112,6 +114,11 @@ export function GoogleCalendarConnectionPanel({
   const startConnection = async () => {
     setError(null);
     setSuccessMessage(null);
+    if (isDemo) {
+      setSuccessMessage("Demo mode does not connect Google Calendar. Sign in to enable real calendar context.");
+      return;
+    }
+
     setRequestState("connecting");
 
     try {
@@ -129,8 +136,12 @@ export function GoogleCalendarConnectionPanel({
 
   const disconnectConnection = async (connection: GoogleCalendarConnectionSummary) => {
     if (connection.status === "revoked") return;
+    if (isDemo) {
+      setSuccessMessage("Demo calendar context is read-only.");
+      return;
+    }
 
-    const confirmed = window.confirm("Disconnect Google Calendar? Ledger will stop reading upcoming events for OpenClaw planning context.");
+    const confirmed = window.confirm("Disconnect Google Calendar? Tally will stop reading upcoming events for OpenClaw planning context.");
     if (!confirmed) return;
 
     setDisconnectingId(connection.id);
@@ -168,12 +179,19 @@ export function GoogleCalendarConnectionPanel({
             <RefreshCw size={14} />
             Refresh
           </button>
-          <button className="btn btn-primary" disabled={isBusy} onClick={() => void startConnection()} type="button">
+          <button className="btn btn-primary" disabled={isDemo || isBusy} onClick={() => void startConnection()} type="button">
             {requestState === "connecting" ? <RefreshCw size={14} /> : <Plus size={14} />}
-            {activeConnection ? "Reconnect" : "Connect"}
+            {isDemo ? "Read-only" : activeConnection ? "Reconnect" : "Connect"}
           </button>
         </div>
       </div>
+
+      {isDemo ? (
+        <div className="plaid-alert warning" role="status">
+          <ShieldCheck size={14} />
+          <span>Demo mode keeps calendar integration off. Sign in to connect Google Calendar.</span>
+        </div>
+      ) : null}
 
       <div className="plaid-sync-summary">
         <span>Last calendar read</span>
@@ -223,7 +241,7 @@ export function GoogleCalendarConnectionPanel({
             {connection.status !== "revoked" ? (
               <button
                 className="btn btn-danger plaid-disconnect"
-                disabled={isBusy}
+                disabled={isDemo || isBusy}
                 onClick={() => void disconnectConnection(connection)}
                 type="button"
               >

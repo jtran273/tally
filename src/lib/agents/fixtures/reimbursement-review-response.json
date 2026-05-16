@@ -32,5 +32,5 @@
       "type": "clarification_request"
     }
   ],
-  "summary": "Potential reimbursement match found. Ledger should show the proposed match for explicit user approval before changing reimbursement status."
+  "summary": "Potential reimbursement match found. Tally should show the proposed match for explicit user approval before changing reimbursement status."
 }

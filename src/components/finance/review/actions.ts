@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import {
   getEnrichedTransactionRow,
   getReviewQueueItemById,
-  listReviewItems,
   listCategories,
   listMerchantRules,
   recordAuditEvent,
@@ -13,7 +12,6 @@ import {
   updateTransactionEnrichment,
   upsertMerchantRule,
   type CategoryRecord,
-  type EnrichedTransactionRow,
   type FinanceSupabaseClient,
   type Json,
   type RawTransactionRow,
@@ -25,12 +23,21 @@ import {
 } from "@/lib/db";
 import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
 import { buildAcceptedAiMerchantRuleCandidate } from "@/lib/merchant-rules";
+import {
+  displayTransactionIntent,
+  transactionIntentFromUi,
+  transactionTagFromIntent,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import { isSpendingIntent } from "@/lib/finance/spending";
 import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
-import { isPeerToPeerReview } from "@/lib/review/reasons";
+import { isManualTransactionEditResolvableReview, isPeerToPeerReview } from "@/lib/review/reasons";
 import {
   buildAcceptedReviewSuggestionPatch,
+  describeReviewSuggestionRefresh,
   hasReviewSuggestionValue,
+  normalizeReviewSuggestion,
   type NormalizedReviewSuggestion
 } from "@/lib/review/suggestions";
 import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
@@ -55,6 +62,8 @@ const transactionIntents = new Set<TransactionIntent>([
   "reimbursable",
   "transfer"
 ]);
+const userTransactionIntents = new Set<UserTransactionIntent>(["personal", "business"]);
+const transactionTags = new Set<TransactionTag>(["none", "reimbursable", "transfer"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -71,6 +80,21 @@ function cleanOptionalUuid(value: FormDataEntryValue | null) {
   const text = cleanString(value, 80);
   if (!text || text === "none") return null;
   return uuidPattern.test(text) ? text : undefined;
+}
+
+function requestedTagFromForm(formData: FormData, fallback: TransactionTag = "none") {
+  const checkboxTags = [
+    formData.get("isReimbursable") === "1" ? "reimbursable" : null,
+    formData.get("isTransfer") === "1" ? "transfer" : null
+  ].filter((tag): tag is Exclude<TransactionTag, "none"> => tag !== null);
+
+  if (checkboxTags.length > 1) return { error: "Choose Reimbursable or Transfer, not both." };
+  const checkboxTag = checkboxTags[0];
+  if (checkboxTag) return { tag: checkboxTag };
+
+  const requestedTag = (cleanString(formData.get("tag"), 24) || fallback) as TransactionTag;
+  if (!transactionTags.has(requestedTag)) return { error: "Choose a valid transaction flag." };
+  return { tag: requestedTag };
 }
 
 function errorState(error: unknown): ReviewActionState {
@@ -173,8 +197,17 @@ async function getFinanceContext() {
 
   return {
     client: context.client,
+    isDemo: context.isDemo,
     userId: context.userId
   };
+}
+
+async function getWritableFinanceContext(action: string) {
+  const context = await getFinanceContext();
+  if (context.isDemo) {
+    throw new Error(`Demo mode is read-only. Sign in to ${action} real review items.`);
+  }
+  return context;
 }
 
 function expectRows<T>(
@@ -263,6 +296,36 @@ function transactionEditableAuditData(item: ReviewQueueItem): Record<string, Jso
 function getSelectedCategory(categories: CategoryRecord[], categoryId: string | null) {
   if (!categoryId) return null;
   return categories.find((category) => category.id === categoryId) ?? null;
+}
+
+async function listOpenReviewItemsForTransaction(
+  client: FinanceSupabaseClient,
+  userId: string,
+  item: ReviewQueueItem
+): Promise<ReviewQueueItem[]> {
+  const rows = expectRows<ReviewItemRow>(
+    await client
+      .from("review_items")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("enriched_transaction_id", item.transaction.id)
+      .eq("status", "open"),
+    "Load related open review items"
+  );
+
+  return rows.map((row) => ({
+    aiSuggestion: row.ai_suggestion,
+    confidence: row.confidence,
+    createdAt: row.created_at,
+    explanation: row.explanation,
+    id: row.id,
+    reason: row.reason,
+    resolutionNote: row.resolution_note,
+    resolvedAt: row.resolved_at,
+    status: row.status,
+    transaction: item.transaction,
+    transactionId: row.enriched_transaction_id
+  }));
 }
 
 async function applyAcceptedReviewSuggestion(
@@ -373,9 +436,9 @@ export async function acceptReviewSuggestionAction(
 ): Promise<ReviewActionState> {
   try {
     const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    const { client, userId } = await getWritableFinanceContext("accept suggestions for");
     if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
 
-    const { client, userId } = await getFinanceContext();
     const item = await getOpenReviewItem(client, userId, reviewItemId);
 
     if (isPeerToPeerReview(item.reason)) {
@@ -409,9 +472,9 @@ export async function dismissReviewItemAction(
 ): Promise<ReviewActionState> {
   try {
     const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    const { client, userId } = await getWritableFinanceContext("dismiss");
     if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
 
-    const { client, userId } = await getFinanceContext();
     const item = await getOpenReviewItem(client, userId, reviewItemId);
 
     if (isPeerToPeerReview(item.reason)) {
@@ -452,9 +515,9 @@ export async function generateReviewSuggestionAction(
 ): Promise<ReviewActionState> {
   try {
     const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    const { client, userId } = await getWritableFinanceContext("generate suggestions for");
     if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
 
-    const { client, userId } = await getFinanceContext();
     const item = await getOpenReviewItem(client, userId, reviewItemId);
 
     if (isPeerToPeerReview(item.reason)) {
@@ -473,6 +536,7 @@ export async function generateReviewSuggestionAction(
       return { error: "Unable to load the transaction context for this suggestion." };
     }
 
+    const previousSuggestion = normalizeReviewSuggestion(item.aiSuggestion);
     const targets = [{
       ai_suggestion: item.aiSuggestion,
       confidence: item.confidence,
@@ -536,7 +600,12 @@ export async function generateReviewSuggestionAction(
     });
 
     revalidateReviewPaths(item.transaction.id);
-    return { message: "Suggestion generated." };
+    return {
+      message: describeReviewSuggestionRefresh(
+        previousSuggestion,
+        normalizeReviewSuggestion(suggestion.ai_suggestion)
+      )
+    };
   } catch (error) {
     return errorState(error);
   }
@@ -548,6 +617,7 @@ export async function editReviewTransactionAction(
 ): Promise<ReviewActionState> {
   try {
     const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    const { client, userId } = await getWritableFinanceContext("edit");
     if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
 
     const merchantName = cleanString(formData.get("merchantName"), 160);
@@ -558,10 +628,15 @@ export async function editReviewTransactionAction(
       return { error: "Choose a category to finalize this review." };
     }
 
-    const requestedIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
-    if (!transactionIntents.has(requestedIntent)) return { error: "Choose a valid intent." };
+    const legacyIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
+    const requestedBaseIntent = (cleanString(formData.get("baseIntent"), 24) || displayTransactionIntent(legacyIntent)) as UserTransactionIntent;
+    if (!userTransactionIntents.has(requestedBaseIntent)) return { error: "Choose Personal or Business." };
 
-    const { client, userId } = await getFinanceContext();
+    const tagResult = requestedTagFromForm(formData, transactionTagFromIntent(legacyIntent));
+    if ("error" in tagResult) return { error: tagResult.error };
+
+    const requestedIntent = transactionIntentFromUi(requestedBaseIntent, tagResult.tag);
+
     const [item, categories] = await Promise.all([
       getOpenReviewItem(client, userId, reviewItemId),
       listCategories(client, userId)
@@ -588,10 +663,8 @@ export async function editReviewTransactionAction(
       reviewedAt,
       source: "manual" as const
     };
-    const openItems = await listReviewItems(client, userId, "open");
-    const relatedItems = openItems.filter((candidate) =>
-      candidate.transaction.id === item.transaction.id && !isPeerToPeerReview(candidate.reason)
-    );
+    const relatedItems = (await listOpenReviewItemsForTransaction(client, userId, item))
+      .filter((candidate) => isManualTransactionEditResolvableReview(candidate.reason));
     const itemsToResolve = relatedItems.length > 0 ? relatedItems : [item];
     const resolvedItems = [];
 
@@ -699,6 +772,7 @@ export async function resolvePeerToPeerReviewAction(
 ): Promise<ReviewActionState> {
   try {
     const reviewItemId = cleanString(formData.get("reviewItemId"), 80);
+    const { client, userId } = await getWritableFinanceContext("resolve");
     if (!uuidPattern.test(reviewItemId)) return { error: "Invalid review item id." };
 
     const explanation = cleanString(formData.get("explanation"), 800);
@@ -706,7 +780,6 @@ export async function resolvePeerToPeerReviewAction(
       return { error: "Explain what this peer-to-peer transaction was for." };
     }
 
-    const { client, userId } = await getFinanceContext();
     const item = await getOpenReviewItem(client, userId, reviewItemId);
 
     if (!isPeerToPeerReview(item.reason)) {

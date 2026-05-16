@@ -156,7 +156,6 @@ const transactionCsvColumns: TransactionCsvColumn[] = [
   { header: "reimbursement_due_date", value: (_transaction, reimbursement) => reimbursement?.dueDates },
   { header: "reimbursement_received_at", value: (_transaction, reimbursement) => reimbursement?.receivedDates },
   { header: "reimbursement_notes", value: (_transaction, reimbursement) => reimbursement?.notes },
-  { header: "plaid_transaction_id", value: (transaction) => transaction.plaidTransactionId },
   { header: "raw_transaction_id", value: (transaction) => transaction.rawTransactionId },
   { header: "transaction_id", value: (transaction) => transaction.id },
   { header: "account_id", value: (transaction) => transaction.accountId },

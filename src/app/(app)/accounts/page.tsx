@@ -2,11 +2,13 @@ import { AccountsView } from "@/components/finance/accounts/accounts-view";
 import {
   listAccounts,
   listBalanceSnapshots,
+  listTransactions,
   type AccountRecord,
-  type BalanceSnapshotRecord
+  type BalanceSnapshotRecord,
+  type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
-import { calculateAccountTotals, groupAccounts, summarizeSync } from "@/lib/finance/balances";
+import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
 
@@ -16,23 +18,41 @@ function errorMessage(error: unknown) {
 
 export default async function AccountsPage() {
   let accounts: AccountRecord[] = [];
+  let recentTransactionsByAccount: Record<string, TransactionRecord[]> = {};
   let snapshots: BalanceSnapshotRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
+  let isDemo = false;
   let isSignedIn = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
   if (context.client && context.userId) {
     try {
-      accounts = await listAccounts(context.client, context.userId);
+      const client = context.client;
+      const userId = context.userId;
+      accounts = await listAccounts(client, userId);
       const accountIds = accounts.map((account) => account.id);
-      snapshots = accountIds.length > 0
-        ? await listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 500 })
-        : [];
+      if (accountIds.length > 0) {
+        const [loadedSnapshots, recentTransactionEntries] = await Promise.all([
+          listBalanceSnapshots(client, userId, { accountIds, limit: 500 }),
+          Promise.all(accounts.map(async (account) => [
+            account.id,
+            await listTransactions(client, userId, {
+              accountIds: [account.id],
+              includeRawContext: false,
+              limit: 3
+            })
+          ] as const))
+        ]);
+        snapshots = loadedSnapshots;
+        recentTransactionsByAccount = Object.fromEntries(recentTransactionEntries);
+      }
+      accounts = await applyManualInvestmentValuations(accounts);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -42,12 +62,11 @@ export default async function AccountsPage() {
     <AccountsView
       accounts={accounts}
       dataError={dataError}
-      groups={groupAccounts(accounts)}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
+      recentTransactionsByAccount={recentTransactionsByAccount}
       snapshots={snapshots}
-      syncSummary={summarizeSync(accounts)}
-      totals={calculateAccountTotals(accounts)}
     />
   );
 }

@@ -10,6 +10,7 @@ import {
   OpenClawRouteConfigurationError,
   requireOpenClawAuth
 } from "@/lib/openclaw/route-helpers";
+import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore } from "@/lib/security/request";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ error: "OpenClaw integration is not configured." }, { status: 503 });
     }
 
-    console.error("openclaw_reply_failed", error);
+    logSafeError("openclaw_reply_failed", error);
     return jsonNoStore({ error: "Unable to record OpenClaw reply." }, { status: 500 });
   }
 }

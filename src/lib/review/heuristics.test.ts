@@ -102,8 +102,8 @@ export const reviewHeuristicRecurringLargeFixture = reasonsFor(transaction({
 export const reviewHeuristicStaticAssertions = assertReviewHeuristicFixtures();
 
 function assertReviewHeuristicFixtures(): true {
-  if (reviewHeuristicMappedCategoryFixture.length !== 0) {
-    throw new Error("Expected mapped Plaid category names without category ids to avoid review noise.");
+  if (!reviewHeuristicMappedCategoryFixture.includes("missing-category")) {
+    throw new Error("Expected Plaid category names without category ids to stay actionable in review.");
   }
 
   if (!reviewHeuristicUncategorizedFixture.includes("missing-category")) {

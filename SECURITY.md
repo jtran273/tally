@@ -2,7 +2,7 @@
 
 This app handles financial data. Treat the repository, deployment settings, database, Plaid dashboard, and local environment as sensitive production surfaces.
 
-## Repository Privacy
+## Public Repository Posture
 
 The `origin` remote is:
 
@@ -10,11 +10,11 @@ The `origin` remote is:
 https://github.com/jtran273/personal-finance-os.git
 ```
 
-The expected GitHub visibility is:
+The GitHub repository is public by design:
 
 ```text
-visibility: PRIVATE
-isPrivate: true
+visibility: PUBLIC
+isPrivate: false
 ```
 
 Verify it with:
@@ -23,11 +23,25 @@ Verify it with:
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
 ```
 
-If it ever becomes public again, make it private before using real financial data:
+Public source is acceptable only because real financial data, provider payload dumps, secrets, tokens, database URLs, and deployment settings are kept out of git. If real secrets or private exports are ever committed, rotate the affected secret or remove the exposed data even if the file is later deleted.
+
+If the repo should become private again, use:
 
 ```bash
 gh repo edit jtran273/personal-finance-os --visibility private --accept-visibility-change-consequences
 ```
+
+Current GitHub repository protections confirmed enabled:
+
+- secret scanning,
+- secret scanning push protection.
+
+Recommended GitHub repository settings to enable or keep enabled:
+
+- Dependabot alerts and security updates,
+- branch protection on `main` requiring pull requests and passing checks,
+- CodeQL code scanning through `.github/workflows/codeql.yml`,
+- dependency review through `.github/workflows/dependency-review.yml`.
 
 ## Secret Handling
 
@@ -48,6 +62,10 @@ Server-only secrets:
 - `GOOGLE_CALENDAR_REDIRECT_URI`
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
 - `OPENAI_API_KEY`
+- `CRON_SECRET`
+- `OPENCLAW_TOKEN`
+- `OPENCLAW_USER_ID`
+- `PROACTIVE_SCAN_USER_ID`
 
 Browser-exposed values:
 
@@ -72,9 +90,9 @@ The repo ignores:
 
 Current local secret files are not tracked by git.
 
-## Secret History Check
+## Secret And History Checks
 
-A regex scan of current files and git history did not find obvious committed API keys or private keys. This does not replace a full secret scanner. Before treating the repository as clean, run a dedicated scanner such as Gitleaks or GitHub secret scanning.
+A regex scan of current files and git history should not find real committed API keys or private keys. This does not replace GitHub secret scanning or a dedicated local scanner.
 
 Recommended local scan:
 
@@ -83,7 +101,7 @@ gitleaks detect --source . --no-git --redact
 gitleaks detect --source . --redact
 ```
 
-If a real secret was ever committed, rotate the secret even if the file was later deleted.
+If a real secret was ever committed, rotate the secret even if the file was later deleted. For this public repo, also confirm GitHub secret scanning push protection remains enabled before pushing new branches.
 
 ## Authentication
 
@@ -103,8 +121,10 @@ The database is the security boundary.
 - Every finance table includes `user_id`.
 - RLS is enabled for finance tables.
 - Policies constrain access to `auth.uid() = user_id`.
-- `plaid_items.access_token_ciphertext` has select revoked from `anon` and `authenticated`.
+- `plaid_items.access_token_ciphertext`, `plaid_items.plaid_item_id`, and `plaid_items.transaction_cursor` have select revoked from `anon` and `authenticated`.
+- `raw_transactions.raw_payload`, provider transaction ids, location, and payment metadata have select revoked from `anon` and `authenticated`; normal app reads use the narrowed raw context needed for review/search.
 - `google_calendar_connections` revokes table-level access from `anon` and `authenticated`, then grants `authenticated` only safe metadata columns; writes are service-route-only.
+- `plaid_items`, `agent_proposals`, and `audit_events` writes are service-route-only.
 - Server routes that need privileged writes use `SUPABASE_SERVICE_ROLE_KEY` and still pass the signed-in user's `userId` into every mutation.
 
 ## Plaid Token Security
@@ -135,12 +155,13 @@ The Calendar OAuth flow requests only `https://www.googleapis.com/auth/calendar.
 
 Demo mode is intended for local development, screenshots, smoke tests, and deliberate product walkthroughs. It serves seeded in-memory finance rows through the demo finance client, not real Supabase/Plaid rows.
 
-- Demo mode is enabled by default unless `ENABLE_DEMO_MODE=false`.
-- Set `ENABLE_DEMO_MODE=false` on any production deployment where the demo entry should not appear.
-- Set `ENABLE_DEMO_MODE=true` or leave it unset only for a deliberate non-sensitive demo deployment.
+- Demo mode defaults on outside production.
+- Demo mode defaults off in production.
+- Set `ENABLE_DEMO_MODE=true` only for a deliberate non-sensitive production demo deployment.
+- Set `ENABLE_DEMO_MODE=false` when local or preview testing must exercise only the real Supabase sign-in path.
 - Demo cookies are ignored when demo mode is disabled.
 
-The demo workspace does not expose real financial data, but the production choice should still be explicit because the login page will show a demo entry when demo mode is enabled.
+The demo workspace does not expose real financial data, but production demo availability should still be explicit because the login page will show a demo entry when demo mode is enabled.
 
 ## Cross-Origin Request Protection
 
@@ -160,6 +181,8 @@ Protected handlers include:
 The scheduled sync route `/api/plaid/sync/scheduled`, proactive scan route `/api/agents/proactive-scan/scheduled`, and scheduled OpenClaw briefing route `/api/openclaw/briefing/scheduled` are the exceptions: they are intended for trusted server-to-server callers and require `Authorization: Bearer <CRON_SECRET>`.
 
 The Google Calendar OAuth callback is a browser redirect and uses a short-lived HTTP-only OAuth state cookie plus Supabase session verification instead of the same-origin POST guard.
+
+The CSV export route is a credentialed read rather than a mutation. It rejects cross-site browser reads and returns `Cache-Control: no-store` so filtered enriched transaction exports cannot be read cross-origin or cached by shared intermediaries.
 
 The helper accepts the app origin, forwarded host origin, `NEXT_PUBLIC_APP_URL`, and `VERCEL_URL`. In production, requests without an `Origin` header are rejected.
 
@@ -202,16 +225,21 @@ Do not log:
 - Plaid item, account, or transaction ids in user-visible logs or agent payloads,
 - full transaction notes unless explicitly needed for a support flow.
 
+Privileged route handlers should use `logSafeError()` instead of logging raw error objects. The safe logger records only name/message/code/status-shaped metadata and redacts secret-shaped strings.
+
 ## Production Checklist
 
-- GitHub repo is private.
+- GitHub repo visibility is intentional and verified.
+- GitHub secret scanning and push protection are enabled.
+- Dependabot alerts and security updates are enabled, or any disabled setting is documented.
+- `main` has branch protection requiring pull requests and passing checks, or the lack of branch protection is documented.
 - Vercel project environment variables are set for Production and Preview separately.
-- `ENABLE_DEMO_MODE` is explicitly set for production: `false` to hide the demo entry, or `true`/unset only when a seeded product walkthrough is intentional.
+- `ENABLE_DEMO_MODE` is set to `true` in production only when a seeded product walkthrough is intentional.
 - `CRON_SECRET` is set before enabling scheduled sync, proactive scans, or scheduled OpenClaw briefings and omitted when no scheduler is configured.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set before enabling Google Calendar.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.
-- `PLAID_REDIRECT_URI` is HTTPS and registered in Plaid.
+- `PLAID_REDIRECT_URI` is unset for ordinary Plaid Link sessions, or HTTPS and registered in Plaid when OAuth redirects are required.
 - `GOOGLE_CALENDAR_REDIRECT_URI` is HTTPS and registered in Google Cloud when Calendar is enabled.
 - Supabase Auth is enabled.
 - Supabase migrations are applied.

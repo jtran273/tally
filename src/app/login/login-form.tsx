@@ -1,5 +1,6 @@
 "use client";
 
+import { TallyMark } from "@/components/brand/tally-mark";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ArrowRight, FlaskConical, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -77,10 +78,10 @@ export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redir
     <main className={styles.shell}>
       <section className={styles.panel} aria-labelledby="login-title">
         <div className={styles.brand}>
-          <div className={styles.mark}>L</div>
+          <div className={styles.mark}><TallyMark aria-hidden /></div>
           <div>
-            <div className={styles.name}>Ledger</div>
-            <div className={styles.sub}>Personal Finance OS</div>
+            <div className={styles.name}>Tally</div>
+            <div className={styles.sub}>Personal finance copilot</div>
           </div>
         </div>
 
@@ -113,7 +114,7 @@ export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redir
             <form className={styles.stack} onSubmit={handleSignIn}>
               <div>
                 <p className={styles.eyebrow}>Supabase Auth</p>
-                <h1 id="login-title" className={styles.title}>Sign in to Ledger</h1>
+                <h1 id="login-title" className={styles.title}>Sign in to Tally</h1>
               </div>
 
               {!isConfigured ? (

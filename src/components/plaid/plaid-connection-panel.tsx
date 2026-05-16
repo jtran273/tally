@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench, X } from "lucide-react";
 import {
   buildPlaidConnectionsStatusSummary,
   formatPlaidSyncResultMessage,
@@ -16,6 +16,7 @@ import {
   type PlaidLinkOnSuccessMetadata
 } from "react-plaid-link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import styles from "./plaid-connection-panel.module.css";
 
 type PlaidEnvironment = "sandbox" | "production";
 
@@ -95,6 +96,10 @@ interface DisconnectResponse {
 
 type RequestState = "idle" | "loading" | "exchanging" | "syncing";
 
+interface PlaidConnectionPanelProps {
+  isDemo?: boolean;
+}
+
 interface SyncAttemptState {
   completedAt: string | null;
   errorDetails: string | null;
@@ -118,12 +123,42 @@ function formatSyncDate(value: string | null) {
   });
 }
 
+function formatAbsoluteDate(value: string | null) {
+  if (!value) return "";
+  return new Date(value).toLocaleString("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatRelativeTime(value: string | null, now: number | null) {
+  if (!value) return "Never";
+  if (now === null) return formatAbsoluteDate(value);
+  const time = Date.parse(value);
+  if (Number.isNaN(time)) return "Never";
+  const diffSec = Math.round((time - now) / 1000);
+  const abs = Math.abs(diffSec);
+  if (abs < 45) return "just now";
+  if (abs < 90) return diffSec < 0 ? "1 minute ago" : "in 1 minute";
+  const minutes = Math.round(diffSec / 60);
+  if (Math.abs(minutes) < 60) return minutes < 0 ? `${-minutes} minutes ago` : `in ${minutes} minutes`;
+  const hours = Math.round(diffSec / 3600);
+  if (Math.abs(hours) < 24) return hours < 0 ? `${-hours} hours ago` : `in ${hours} hours`;
+  const days = Math.round(diffSec / 86400);
+  if (Math.abs(days) < 30) return days < 0 ? `${-days} days ago` : `in ${days} days`;
+  return formatAbsoluteDate(value);
+}
+
 function getEnrichedTransactionCount(summary: SyncItemSummary) {
   return summary.enrichedTransactionsInserted + summary.enrichedTransactionsUpdated;
 }
 
 function formatSyncItemMessage(summary: SyncItemSummary) {
-  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
+  const skipped = summary.rawTransactionsSkipped > 0 ? `, ${summary.rawTransactionsSkipped} skipped` : "";
+  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions${skipped}, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -180,7 +215,7 @@ function formatPlaidExitMessage(diagnostic: ReturnType<typeof buildPlaidExitDiag
     : "Plaid Link closed before the institution was connected.";
 }
 
-export function PlaidConnectionPanel() {
+export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelProps) {
   const router = useRouter();
   const [connections, setConnections] = useState<PlaidConnectionSummary[]>([]);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
@@ -192,13 +227,36 @@ export function PlaidConnectionPanel() {
   const [requestState, setRequestState] = useState<RequestState>("loading");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [syncAttempt, setSyncAttempt] = useState<SyncAttemptState | null>(null);
+  const [now, setNow] = useState<number | null>(null);
+  const connectButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const updateNow = () => setNow(Date.now());
+    const initialId = window.setTimeout(updateNow, 0);
+    const intervalId = window.setInterval(updateNow, 30_000);
+    return () => {
+      window.clearTimeout(initialId);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const focusConnectButton = useCallback(() => {
+    window.requestAnimationFrame(() => connectButtonRef.current?.focus());
+  }, []);
 
   const syncableConnectionCount = useMemo(
     () => connections.filter((connection) => connection.status !== "revoked").length,
     [connections]
   );
+  const attentionConnectionCount = useMemo(
+    () => connections.filter((connection) =>
+      connection.status !== "revoked" && connection.issue && connection.issue.title !== "Never synced"
+    ).length,
+    [connections]
+  );
   const lastSyncAt = useMemo(() => {
     const values = connections
+      .filter((connection) => connection.status !== "revoked")
       .map((connection) => connection.lastSuccessfulSyncAt)
       .filter((value): value is string => Boolean(value));
 
@@ -236,6 +294,19 @@ export function PlaidConnectionPanel() {
 
   const syncConnections = useCallback(async (connectionId?: string) => {
     const startedAt = new Date().toISOString();
+    if (isDemo) {
+      setError(null);
+      setSuccessMessage("Demo data is read-only. Sign in to sync real bank connections.");
+      setSyncAttempt({
+        completedAt: startedAt,
+        errorDetails: null,
+        message: "Demo bank data is static for walkthroughs.",
+        startedAt,
+        status: "succeeded"
+      });
+      return;
+    }
+
     setRequestState("syncing");
     setError(null);
     setSuccessMessage(null);
@@ -287,7 +358,7 @@ export function PlaidConnectionPanel() {
     } finally {
       setRequestState("idle");
     }
-  }, [router]);
+  }, [isDemo, router]);
 
   const exchangePublicToken = useCallback(async (publicToken: string, metadata: PlaidLinkOnSuccessMetadata) => {
     setRequestState("exchanging");
@@ -369,6 +440,11 @@ export function PlaidConnectionPanel() {
     setError(null);
     setSuccessMessage(null);
 
+    if (isDemo) {
+      setSuccessMessage("Demo mode does not connect banks. Sign in to link a real institution.");
+      return;
+    }
+
     if (!connection && linkToken && ready) {
       open();
       return;
@@ -398,9 +474,13 @@ export function PlaidConnectionPanel() {
 
   const disconnectConnection = async (connection: PlaidConnectionSummary) => {
     if (connection.status === "revoked") return;
+    if (isDemo) {
+      setSuccessMessage("Demo bank connections stay available for the walkthrough.");
+      return;
+    }
 
     const confirmed = window.confirm(
-      `Disconnect ${connection.institutionName}? Historical transactions will stay in the app, but future Plaid syncs will stop.`
+      `Disconnect ${connection.institutionName}? Historical transactions will stay in Tally, but future Plaid syncs will stop.`
     );
     if (!confirmed) return;
 
@@ -416,6 +496,7 @@ export function PlaidConnectionPanel() {
       setConnections(data.connections);
       setSuccessMessage(`${data.connection.institutionName} disconnected. Historical transactions were preserved.`);
       router.refresh();
+      focusConnectButton();
     } catch (disconnectError) {
       setError(disconnectError instanceof Error ? disconnectError.message : "Unable to disconnect Plaid institution.");
     } finally {
@@ -427,7 +508,7 @@ export function PlaidConnectionPanel() {
   const isSyncing = requestState === "syncing";
 
   return (
-    <section className="settings-panel plaid-panel">
+    <section className="settings-panel plaid-panel" id="sync">
       <div className="settings-panel-head">
         <div>
           <div className="card-eyebrow">
@@ -437,111 +518,214 @@ export function PlaidConnectionPanel() {
         </div>
         <div className="plaid-actions">
           <button
+            aria-busy={isSyncing}
+            aria-label={isSyncing ? "Syncing" : "Sync"}
             className="btn"
-            disabled={isBusy || isSyncing || syncableConnectionCount === 0}
+            disabled={isDemo || isBusy || isSyncing || syncableConnectionCount === 0}
             onClick={() => void syncConnections()}
             type="button"
           >
-            <RefreshCw size={14} />
-            {isSyncing ? "Syncing" : "Sync"}
+            <RefreshCw aria-hidden="true" className={isSyncing ? styles.spin : undefined} size={14} />
+            {isDemo ? "Demo" : isSyncing ? "Syncing" : "Sync"}
           </button>
-          <button className="btn btn-primary" disabled={isBusy || isSyncing} onClick={() => void startPlaidLink()} type="button">
-            {requestState === "exchanging" ? <RefreshCw size={14} /> : <Plus size={14} />}
-            {requestState === "exchanging" ? "Saving" : "Connect"}
+          <button
+            aria-busy={requestState === "exchanging" || openRequested}
+            aria-label={requestState === "exchanging" ? "Saving Plaid connection" : "Connect a bank with Plaid"}
+            className="btn btn-primary"
+            disabled={isDemo || isBusy || isSyncing}
+            onClick={() => void startPlaidLink()}
+            ref={connectButtonRef}
+            type="button"
+          >
+            {requestState === "exchanging" ? <RefreshCw aria-hidden="true" className={styles.spin} size={14} /> : <Plus aria-hidden="true" size={14} />}
+            {isDemo ? "Read-only" : requestState === "exchanging" ? "Saving" : "Connect"}
           </button>
         </div>
       </div>
 
-      <div className="plaid-sync-summary">
-        <span>Last successful sync</span>
-        <strong>{formatSyncDate(lastSyncAt)}</strong>
-      </div>
-
-      {syncAttempt ? (
-        <div className={`plaid-alert plaid-sync-attempt ${syncAttempt.status === "pending" ? "warning" : syncAttempt.status === "succeeded" ? "success" : "error"}`}>
-          {syncAttempt.status === "pending" ? <RefreshCw size={14} /> : syncAttempt.status === "succeeded" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-          <span>
-            {syncAttempt.message} Started {formatSyncDate(syncAttempt.startedAt)}
-            {syncAttempt.completedAt ? `; completed ${formatSyncDate(syncAttempt.completedAt)}` : ""}.
-            {syncAttempt.errorDetails ? ` Latest API error: ${syncAttempt.errorDetails}` : ""}
+      {isDemo ? (
+        <div aria-live="polite" className="plaid-alert warning" role="status">
+          <ShieldCheck aria-hidden="true" size={14} />
+          <span className={styles.alertBody}>
+            Demo mode uses seeded Plaid-style data. Sign in to connect, sync, repair, or disconnect real institutions.
           </span>
         </div>
       ) : null}
 
-      {statusSummary.status === "needs_attention" ? (
-        <div className="plaid-alert warning">
-          <AlertTriangle size={14} />
-          <span>
-            {statusSummary.errored} connection{statusSummary.errored === 1 ? "" : "s"} need attention.
+      <div className="plaid-sync-summary">
+        <span>Last successful sync</span>
+        <strong title={lastSyncAt ? formatAbsoluteDate(lastSyncAt) : undefined}>
+          {lastSyncAt ? formatRelativeTime(lastSyncAt, now) : "Never"}
+        </strong>
+      </div>
+
+      {syncAttempt ? (
+        <div
+          aria-live="polite"
+          className={`plaid-alert plaid-sync-attempt ${syncAttempt.status === "pending" ? "warning" : syncAttempt.status === "succeeded" ? "success" : "error"}`}
+          role="status"
+        >
+          {syncAttempt.status === "pending" ? (
+            <RefreshCw aria-hidden="true" className={styles.spin} size={14} />
+          ) : syncAttempt.status === "succeeded" ? (
+            <CheckCircle2 aria-hidden="true" size={14} />
+          ) : (
+            <AlertCircle aria-hidden="true" size={14} />
+          )}
+          <span className={styles.alertBody}>
+            {syncAttempt.message} Started {formatSyncDate(syncAttempt.startedAt)}
+            {syncAttempt.completedAt ? `; completed ${formatSyncDate(syncAttempt.completedAt)}` : ""}.
+            {syncAttempt.errorDetails ? ` Latest API detail: ${syncAttempt.errorDetails}` : ""}
+          </span>
+        </div>
+      ) : null}
+
+      {attentionConnectionCount > 0 ? (
+        <div aria-live="polite" className="plaid-alert warning" role="status">
+          <AlertTriangle aria-hidden="true" size={14} />
+          <span className={styles.alertBody}>
+            {attentionConnectionCount} connection{attentionConnectionCount === 1 ? "" : "s"} need attention.
             {statusSummary.needsRepair > 0 ? ` ${statusSummary.needsRepair} can be repaired with Plaid update mode.` : ""}
           </span>
         </div>
       ) : null}
 
       {error ? (
-        <div className="plaid-alert error">
-          <AlertCircle size={14} />
-          <span>{error}</span>
+        <div aria-live="assertive" className="plaid-alert error" role="alert">
+          <AlertCircle aria-hidden="true" size={14} />
+          <span className={styles.alertBody}>{error}</span>
+          <button
+            aria-label="Dismiss error"
+            className={styles.dismiss}
+            onClick={() => {
+              setError(null);
+              focusConnectButton();
+            }}
+            type="button"
+          >
+            <X aria-hidden="true" size={12} />
+          </button>
         </div>
       ) : null}
       {successMessage ? (
-        <div className="plaid-alert success">
-          <CheckCircle2 size={14} />
-          <span>{successMessage}</span>
+        <div aria-live="polite" className="plaid-alert success" role="status">
+          <CheckCircle2 aria-hidden="true" size={14} />
+          <span className={styles.alertBody}>{successMessage}</span>
+          <button
+            aria-label="Dismiss notification"
+            className={styles.dismiss}
+            onClick={() => {
+              setSuccessMessage(null);
+              focusConnectButton();
+            }}
+            type="button"
+          >
+            <X aria-hidden="true" size={12} />
+          </button>
         </div>
       ) : null}
 
       <div className="plaid-connection-list">
         {requestState === "loading" && connections.length === 0 ? (
-          <div className="plaid-empty">Loading institutions...</div>
+          <div className="plaid-empty" aria-busy="true">Loading institutions...</div>
         ) : null}
         {requestState !== "loading" && connections.length === 0 ? (
-          <div className="plaid-empty">No Plaid institutions connected.</div>
+          <div className={styles.emptyState}>
+            <Landmark aria-hidden="true" size={28} />
+            <strong>Connect your first bank</strong>
+            <p>Link an account with Plaid to import balances, transactions, and recurring payments automatically.</p>
+            <button
+              aria-busy={requestState === "exchanging" || openRequested}
+              className="btn btn-primary"
+              disabled={isDemo || isBusy || isSyncing}
+              onClick={() => void startPlaidLink()}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={14} />
+              {isDemo ? "Read-only demo" : "Connect a bank"}
+            </button>
+          </div>
         ) : null}
-        {connections.map((connection) => (
-          <div className="plaid-connection-row" key={connection.id}>
-            <div className="plaid-connection-icon">
-              <Landmark size={16} />
-            </div>
-            <div className="plaid-connection-copy">
-              <div className="settings-row-title">{connection.institutionName}</div>
-              <div className="settings-row-sub">
-                Connected {formatConnectedDate(connection.createdAt)}
-                {" | "}
-                Last sync {formatSyncDate(connection.lastSuccessfulSyncAt)}
+        {connections.map((connection) => {
+          const statusLabel =
+            connection.status === "active"
+              ? "Healthy"
+              : connection.status === "error"
+                ? "Needs attention"
+                : "Disconnected";
+          const StatusIcon =
+            connection.status === "active" ? CheckCircle2 : connection.status === "error" ? AlertTriangle : Unplug;
+          const isDisconnecting = disconnectingId === connection.id;
+          const isRepairing = repairConnectionId === connection.id;
+          return (
+            <div className="plaid-connection-row" key={connection.id}>
+              <div className="plaid-connection-icon">
+                <Landmark aria-hidden="true" size={16} />
               </div>
-              {connection.issue ? (
-                <div className="plaid-issue">
-                  <strong>{connection.issue.title}</strong>
-                  <span>{connection.issue.detail}</span>
+              <div className="plaid-connection-copy">
+                <div className="settings-row-title">{connection.institutionName}</div>
+                <div className="settings-row-sub">
+                  Connected <span title={formatAbsoluteDate(connection.createdAt)}>{formatConnectedDate(connection.createdAt)}</span>
+                  {" | "}
+                  Last sync{" "}
+                  <span title={connection.lastSuccessfulSyncAt ? formatAbsoluteDate(connection.lastSuccessfulSyncAt) : "Never"}>
+                    {formatRelativeTime(connection.lastSuccessfulSyncAt, now)}
+                  </span>
                 </div>
+                {connection.issue ? (
+                  <div className="plaid-issue">
+                    <strong>{connection.issue.title}</strong>
+                    <span>{connection.issue.detail}</span>
+                  </div>
+                ) : null}
+              </div>
+              <span
+                aria-label={`Status: ${statusLabel}`}
+                className={`plaid-status ${connection.status} ${styles.statusPill}`}
+              >
+                <StatusIcon aria-hidden="true" size={11} />
+                {statusLabel}
+              </span>
+              {connection.issue?.action === "repair" ? (
+                <button
+                  aria-busy={isRepairing}
+                  className={`btn btn-primary plaid-repair ${styles.repairPrimary}`}
+                  disabled={isDemo || isBusy || isSyncing}
+                  onClick={() => void startPlaidLink(connection)}
+                  type="button"
+                >
+                  <Wrench aria-hidden="true" className={isRepairing ? styles.spin : undefined} size={14} />
+                  {isRepairing ? "Opening" : "Repair"}
+                </button>
+              ) : null}
+              {connection.issue?.action === "reconnect" ? (
+                <button
+                  aria-busy={requestState === "exchanging" || openRequested}
+                  className={`btn btn-primary plaid-repair ${styles.repairPrimary}`}
+                  disabled={isDemo || isBusy || isSyncing}
+                  onClick={() => void startPlaidLink()}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={14} />
+                  Reconnect
+                </button>
+              ) : null}
+              {connection.status !== "revoked" ? (
+                <button
+                  aria-busy={isDisconnecting}
+                  aria-label={`Disconnect ${connection.institutionName}`}
+                  className="btn btn-danger plaid-disconnect"
+                  disabled={isDemo || isBusy || isSyncing}
+                  onClick={() => void disconnectConnection(connection)}
+                  type="button"
+                >
+                  <Unplug aria-hidden="true" size={14} />
+                  {isDisconnecting ? "Disconnecting" : "Disconnect"}
+                </button>
               ) : null}
             </div>
-            <span className={`plaid-status ${connection.status}`}>{connection.status}</span>
-            {connection.issue?.action === "repair" ? (
-              <button
-                className="btn plaid-repair"
-                disabled={isBusy || isSyncing}
-                onClick={() => void startPlaidLink(connection)}
-                type="button"
-              >
-                <Wrench size={14} />
-                {repairConnectionId === connection.id ? "Opening" : "Repair"}
-              </button>
-            ) : null}
-            {connection.status !== "revoked" ? (
-              <button
-                className="btn btn-danger plaid-disconnect"
-                disabled={isBusy || isSyncing}
-                onClick={() => void disconnectConnection(connection)}
-                type="button"
-              >
-                <Unplug size={14} />
-                {disconnectingId === connection.id ? "Disconnecting" : "Disconnect"}
-              </button>
-            ) : null}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

@@ -267,7 +267,7 @@ function suggestedQuestions(
     questions.push(`Do you want to clear ${context.review.openCount} open transaction review items before planning the week?`);
   }
   if (questions.length === 0) {
-    questions.push("Is there anything unusual this week that should change the plan before the next Ledger sync?");
+    questions.push("Is there anything unusual this week that should change the plan before the next Tally sync?");
   }
 
   return questions.slice(0, 4);

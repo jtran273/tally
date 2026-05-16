@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ledger - Personal Finance Copilot",
-  description: "A calm personal finance dashboard prototype for the Personal Finance OS MVP."
+  title: "Tally - Personal Finance Copilot",
+  description: "A calm personal finance dashboard for reviewing bank data, recurring spending, and trusted budget records."
+};
+
+export const viewport: Viewport = {
+  initialScale: 1,
+  themeColor: "#f7f7f4",
+  viewportFit: "cover",
+  width: "device-width"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

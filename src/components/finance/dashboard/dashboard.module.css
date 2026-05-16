@@ -15,13 +15,13 @@
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   overflow-wrap: anywhere;
 }
 
 .errorNotice {
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
-  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
@@ -44,6 +44,11 @@
 .emptyState span {
   display: block;
   margin-top: 4px;
+}
+
+.emptyState .textLink {
+  display: inline-block;
+  margin-top: 10px;
 }
 
 .hero {
@@ -69,26 +74,28 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .hero h2 {
   margin: 8px 0 0;
   overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 46px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 44px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-  line-height: 1.05;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 .heroDescription {
   max-width: 520px;
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
   line-height: 1.35;
 }
 
@@ -97,11 +104,11 @@
   align-items: center;
   gap: 7px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 7px 10px;
   background: var(--surface-2);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: var(--text-meta);
   white-space: nowrap;
 }
 
@@ -111,13 +118,13 @@
 
 .sync-fresh {
   border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
-  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  background: var(--sage-soft);
 }
 
 .sync-stale,
 .sync-never {
   border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
-  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  background: var(--warn-soft);
 }
 
 .sync-empty {
@@ -138,7 +145,7 @@
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 11px 12px;
   background: var(--surface-2);
   color: var(--ink-2);
@@ -162,7 +169,7 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   line-height: 1.25;
   text-transform: uppercase;
 }
@@ -176,7 +183,7 @@
   min-width: 0;
   margin-top: 8px;
   overflow-wrap: anywhere;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 15px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
@@ -202,7 +209,7 @@
   align-items: center;
   gap: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 3px;
   background: var(--surface-2);
   overflow-x: auto;
@@ -212,13 +219,13 @@
 .activityModeControls button {
   min-width: 44px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-meta);
   line-height: 1;
   white-space: nowrap;
 }
@@ -254,7 +261,7 @@
   justify-content: flex-end;
   gap: 6px 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .trendSummary span {
@@ -284,7 +291,7 @@
 .chartInsight span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -308,7 +315,7 @@
 .mobileTrendSummaryGrid span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -325,7 +332,7 @@
 }
 
 .mobileTrendSummary > div:first-child strong {
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 25px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -352,7 +359,7 @@
   height: clamp(200px, 20vw, 320px);
   overflow: hidden;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 62%, transparent), transparent 72%);
 }
 
@@ -361,7 +368,7 @@
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
 }
 
 .trendSource {
@@ -378,7 +385,7 @@
   min-width: 0;
   flex-direction: column;
   gap: 3px;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -390,7 +397,7 @@
 .trendAxis strong {
   color: var(--ink-2);
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--text-label);
   font-weight: 500;
 }
 
@@ -399,8 +406,8 @@
 .selectedPointDateLabel,
 .selectedPointValueLabel {
   fill: var(--muted);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
   font-variant-numeric: tabular-nums;
 }
 
@@ -427,7 +434,7 @@
 .trendPoint:hover .trendDot,
 .trendPoint:focus-visible .trendDot,
 .activeTrendDot {
-  filter: drop-shadow(0 2px 5px rgba(47, 111, 78, 0.22));
+  filter: drop-shadow(0 2px 5px color-mix(in oklab, var(--sage) 28%, transparent));
 }
 
 .emptyTrend {
@@ -473,7 +480,7 @@
 
 .textLink {
   color: var(--accent);
-  font-size: 12.5px;
+  font-size: var(--text-ui-sm);
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
@@ -486,7 +493,7 @@
   color: var(--accent);
   cursor: pointer;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-ui-sm);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -514,15 +521,31 @@
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
   background: var(--surface);
   color: inherit;
   text-decoration: none;
 }
 
-.transactionRow:hover {
+.transactionRow:hover,
+.transactionRow:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+  outline: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .transactionRow {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .transactionRow:hover,
+  .transactionRow:focus-visible {
+    transform: translateX(2px);
+  }
 }
 
 .transactionRow div {
@@ -540,19 +563,19 @@
 
 .transactionRow strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
 .transactionRow span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .amount {
   flex: 0 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--text-ui);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -569,16 +592,16 @@
 
 .emptyMini {
   border: 1px dashed var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
   text-align: center;
 }
 
 @media (max-width: 760px) {
   .hero {
-    padding: 20px 18px;
+    padding: 12px;
   }
 
   .heroTop,
@@ -588,25 +611,41 @@
     align-items: stretch;
   }
 
+  .syncActionPanel {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .hero h2 {
-    font-size: 34px;
+    font-size: 26px;
+  }
+
+  .heroDescription {
+    font-size: var(--text-meta);
+    line-height: 1.3;
   }
 
   .balanceViewControls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    margin-top: 12px;
   }
 
   .balanceViewButton {
-    min-height: 62px;
-    padding: 10px;
+    min-height: 54px;
+    padding: 8px;
   }
 
   .balanceViewLabel {
-    font-size: 10px;
+    font-size: var(--text-kbd);
   }
 
   .balanceViewButton strong {
-    font-size: 13px;
+    font-size: var(--text-meta);
+  }
+
+  .trendPanel {
+    display: none;
   }
 
   .trendAxis,
@@ -614,26 +653,23 @@
     display: none;
   }
 
-  .chartInsight {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-    border: 1px solid var(--line-2);
-    border-radius: 8px;
-    margin-top: 12px;
-    padding: 12px;
-    background: var(--surface-2);
-  }
-
-  .chartInsight strong {
-    overflow: visible;
-    font-size: 14px;
-    text-overflow: clip;
-    white-space: normal;
+  .chartInsight,
+  .trend,
+  .trendAxis,
+  .trendSource,
+  .trendSummary,
+  .activityPanel {
+    display: none;
   }
 
   .mobileTrendSummary {
-    display: none;
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-card);
+    margin-top: 12px;
+    padding: 14px;
+    background: var(--surface-2);
   }
 
   .trendControls {
@@ -642,19 +678,6 @@
 
   .trendControls button {
     flex: 1 0 auto;
-  }
-
-  .trend {
-    margin: 12px 0 0;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .trend svg {
-    width: 560px;
-    min-width: 560px;
-    height: 190px;
   }
 
   .trendScaleLabel,
@@ -666,8 +689,6 @@
     display: none;
   }
 
-  .trendSummary,
-  .trendAxis,
   .activityActions {
     align-items: flex-start;
     flex-direction: column;
@@ -724,7 +745,7 @@
 
 @media (max-width: 480px) {
   .balanceViewControls {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .transactionRow {
@@ -785,16 +806,17 @@
 
 .liabilityHeadline {
   margin: 6px 0 0;
-  font-family: inherit;
-  font-size: 28px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: var(--text-title);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
 .liabilityCoverage {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
@@ -809,12 +831,12 @@
 
 .liabilityCashBlock span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
 .liabilityCashBlock strong {
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -858,7 +880,7 @@
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .liabilityRowAmount {
@@ -870,14 +892,14 @@
 }
 
 .liabilityRowAmount strong {
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 15px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
 .liabilityRowAmount span {
-  font-size: 11.5px;
+  font-size: var(--text-meta);
   font-weight: 600;
 }
 
@@ -886,7 +908,7 @@
   flex-wrap: wrap;
   gap: 10px 16px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .liabilityCurrent {
@@ -905,6 +927,235 @@
   color: var(--pos);
 }
 
+.compositionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compositionRow {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.compositionRowLabel {
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.compositionRowValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-ui);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.compositionBar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+
+.compositionSegment {
+  display: block;
+  height: 100%;
+}
+
+.compositionSwatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.compositionGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.compositionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  background: var(--surface-2);
+}
+
+.compositionGroupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compositionGroupHead strong {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.compositionGroupValue {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.compositionAccountList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compositionAccountRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+}
+
+.compositionAccountRow strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-ui-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.utilizationTrack {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.utilizationTrack > span {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  border-radius: var(--radius-pill);
+  transition: width 200ms ease;
+}
+
+.syncActionPanel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: fit-content;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 5px;
+  background: var(--surface);
+  align-self: flex-start;
+}
+
+.syncActionMeta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.syncActionMeta strong {
+  color: var(--ink);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.syncActionStatus {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+.syncActionLink {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 0 10px;
+  background: var(--ink);
+  color: var(--bg);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.syncActionLink:hover,
+.syncActionLink:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+.syncActionLink:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@media (max-width: 760px) {
+  .syncActionPanel {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--radius-card);
+    padding: 6px;
+  }
+
+  .syncActionMeta {
+    padding: 0;
+  }
+
+  .syncActionMeta span,
+  .syncActionStatus {
+    display: none;
+  }
+
+  .syncActionLink {
+    justify-self: end;
+    min-width: 70px;
+    border-radius: var(--radius-control);
+  }
+}
+
 @media (max-width: 600px) {
   .liabilityRowMain {
     flex-direction: column;
@@ -914,6 +1165,15 @@
   .liabilityRowAmount {
     align-items: flex-start;
     text-align: left;
+  }
+
+  .syncActionPanel {
+    width: 100%;
+    justify-content: normal;
+  }
+
+  .syncActionLink {
+    width: auto;
   }
 }
 
@@ -933,25 +1193,26 @@
 
 .categoryHeadline {
   margin: 6px 0 0;
-  font-family: inherit;
-  font-size: 28px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: var(--text-title);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  letter-spacing: -0.01em;
+  line-height: 1;
 }
 
 .categorySubtitle {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-ui-sm);
 }
 
 .categoryEmpty {
   border: 1px dashed var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 18px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
   text-align: center;
 }
 
@@ -965,15 +1226,15 @@
   min-width: 0;
   height: clamp(220px, 22vw, 300px);
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 62%, transparent), transparent 72%);
 }
 
 .categoryScaleLabel,
 .categoryDateLabel {
   fill: var(--muted);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
   font-variant-numeric: tabular-nums;
 }
 
@@ -989,7 +1250,7 @@
   gap: 6px;
   min-width: 0;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
   background: var(--surface-2);
   color: inherit;
@@ -1019,13 +1280,13 @@
   width: 9px;
   height: 9px;
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .categoryRowHead strong {
   min-width: 0;
   overflow: hidden;
-  font-size: 13.5px;
+  font-size: var(--text-ui);
   font-weight: 600;
   color: var(--ink);
   text-overflow: ellipsis;
@@ -1033,7 +1294,7 @@
 }
 
 .categoryRowHead strong:last-child {
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
@@ -1043,7 +1304,7 @@
   justify-content: space-between;
   gap: 10px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .categoryOtherRow {
@@ -1055,12 +1316,12 @@
   border-top: 1px solid var(--line-2);
   padding: 10px 2px 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .categoryOtherRow strong {
   color: var(--ink-2);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1093,7 +1354,7 @@
   flex-wrap: wrap;
   gap: 4px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 3px;
   background: var(--surface-2);
 }
@@ -1111,13 +1372,13 @@
 .categoryMonthButton {
   min-width: 56px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--text-meta);
   line-height: 1;
   white-space: nowrap;
 }
@@ -1143,7 +1404,7 @@
 
 .categoryRowBar {
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--accent) 12%, var(--surface));
   overflow: hidden;
 }
@@ -1159,7 +1420,8 @@
   .hero,
   .activityPanel,
   .categoryPanel,
-  .liabilityPanel {
+  .liabilityPanel,
+  .syncActionPanel {
     animation: panel-mount var(--dur-slow) var(--ease-standard) both;
   }
 
@@ -1181,7 +1443,8 @@
   .categoryRangeControls button,
   .categoryMonthButton,
   .categoryRow,
-  .liabilityRow {
+  .liabilityRow,
+  .syncActionLink {
     transition:
       background-color var(--dur-fast) var(--ease-standard),
       border-color var(--dur-fast) var(--ease-standard),
@@ -1195,6 +1458,12 @@
   .categoryRow:focus-visible,
   .liabilityRow:hover {
     transform: translateY(-1px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

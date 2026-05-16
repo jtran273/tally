@@ -1,18 +1,25 @@
-import type { AccountRecord, BalanceSnapshotRecord } from "@/lib/db";
-import type { AccountBalanceTotals, AccountGroup, SyncSummary } from "@/lib/finance/balances";
-import { accountSyncState, balanceContribution } from "@/lib/finance/balances";
-import { Clock3, CreditCard, Database, Landmark, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { AccountRecord, BalanceSnapshotRecord, TransactionRecord } from "@/lib/db";
+import { LinkButton, Notice } from "@/components/ui/primitives";
+import { balanceContribution } from "@/lib/finance/balances";
+import {
+  ArrowUpRight,
+  Database,
+  Settings,
+  TrendingUp,
+  TriangleAlert,
+  type LucideIcon
+} from "lucide-react";
+import Link from "next/link";
 import styles from "./accounts.module.css";
 
 interface AccountsViewProps {
   accounts: AccountRecord[];
   dataError?: string;
-  groups: AccountGroup[];
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
+  recentTransactionsByAccount: Record<string, TransactionRecord[]>;
   snapshots: BalanceSnapshotRecord[];
-  syncSummary: SyncSummary;
-  totals: AccountBalanceTotals;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -28,6 +35,11 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric"
 });
 
+const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short"
+});
+
 function formatMoney(value: number) {
   return moneyFormatter.format(value);
 }
@@ -36,11 +48,15 @@ function formatDate(value: string) {
   return dateFormatter.format(new Date(`${value}T12:00:00`));
 }
 
+function formatShortDate(value: string) {
+  return shortDateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
 function formatRelativeTime(value: string | null) {
-  if (!value) return "Never synced";
+  if (!value) return "No date";
 
   const syncedAt = new Date(value);
-  if (Number.isNaN(syncedAt.getTime())) return "Never synced";
+  if (Number.isNaN(syncedAt.getTime())) return "No date";
 
   const diffMs = Math.max(0, Date.now() - syncedAt.getTime());
   const minutes = Math.floor(diffMs / 60_000);
@@ -56,6 +72,39 @@ function formatRelativeTime(value: string | null) {
   return syncedAt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatAbsoluteTime(value: string | null) {
+  if (!value) return "No date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No date";
+  return date.toLocaleString("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatAccountKind(account: AccountRecord) {
+  return account.subtype ?? account.type;
+}
+
+function isValuationOnlyAccount(account: AccountRecord) {
+  return account.type === "investment" || account.type === "retirement";
+}
+
+function sortAccountsForCards(accounts: readonly AccountRecord[]) {
+  return [...accounts].sort((a, b) => {
+    const balanceDelta = Math.abs(balanceContribution(b)) - Math.abs(balanceContribution(a));
+    if (balanceDelta !== 0) return balanceDelta;
+
+    const institutionDelta = a.institutionName.localeCompare(b.institutionName);
+    if (institutionDelta !== 0) return institutionDelta;
+
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function latestSnapshotsByAccount(snapshots: readonly BalanceSnapshotRecord[]) {
   return snapshots.reduce((map, snapshot) => {
     const current = map.get(snapshot.accountId);
@@ -66,105 +115,220 @@ function latestSnapshotsByAccount(snapshots: readonly BalanceSnapshotRecord[]) {
   }, new Map<string, BalanceSnapshotRecord>());
 }
 
-function syncSummaryText(summary: SyncSummary) {
-  if (summary.status === "empty") return "No account rows";
-  if (summary.status === "never") return "No account has synced";
-  if (summary.status === "stale") return `${summary.staleCount + summary.neverSyncedCount} accounts need sync`;
-  return "All accounts fresh";
+function formatHoldingSummary(account: AccountRecord) {
+  const valuation = account.manualValuation;
+  if (!valuation) return null;
+
+  const symbols = valuation.holdings.map((holding) => `${holding.symbol} ${holding.shares.toLocaleString("en-US")} sh`);
+  const stale = valuation.staleSymbols.length > 0 ? `; ${valuation.staleSymbols.join(", ")} not priced` : "";
+  const summary = `${symbols.join(", ")}${stale}`;
+  return summary || null;
 }
 
-function SummaryCard({
-  detail,
-  icon: Icon,
-  label,
-  tone,
-  value
-}: {
-  detail: string;
-  icon: LucideIcon;
+interface AccountDetailRow {
   label: string;
-  tone?: "negative" | "positive";
+  mono?: boolean;
+  title?: string;
   value: string;
+  wide?: boolean;
+}
+
+function accountDetailRows(account: AccountRecord, latestSnapshot?: BalanceSnapshotRecord): AccountDetailRow[] {
+  const valuation = account.manualValuation;
+  const valuationOnly = isValuationOnlyAccount(account);
+
+  if (valuation) {
+    const holdingsSummary = formatHoldingSummary(account);
+    return [
+      ...(holdingsSummary ? [{
+        label: "Holdings",
+        title: holdingsSummary,
+        value: holdingsSummary,
+        wide: true
+      }] : []),
+      {
+        label: "Cash",
+        mono: true,
+        value: formatMoney(valuation.cash)
+      }
+    ];
+  }
+
+  if (account.type === "credit") {
+    return [
+      {
+        label: "Available credit",
+        mono: true,
+        value: account.availableBalance === null ? "Not reported" : formatMoney(account.availableBalance)
+      },
+      {
+        label: "Limit",
+        mono: true,
+        value: account.creditLimit === null ? "Not reported" : formatMoney(account.creditLimit)
+      }
+    ];
+  }
+
+  if (valuationOnly) {
+    return latestSnapshot ? [{
+      label: "Latest snapshot",
+      mono: true,
+      value: formatDate(latestSnapshot.snapshotDate)
+    }] : [];
+  }
+
+  if (account.availableBalance !== null && Math.abs(account.availableBalance - account.balance) > 0.01) {
+    return [{
+      label: "Available",
+      mono: true,
+      value: formatMoney(account.availableBalance)
+    }];
+  }
+
+  return [];
+}
+
+function RecentTransactions({
+  account,
+  transactions
+}: {
+  account: AccountRecord;
+  transactions: TransactionRecord[];
 }) {
+  if (transactions.length === 0) return null;
+
+  const accountHref = `/transactions?account=${encodeURIComponent(account.id)}`;
+
   return (
-    <div className={styles.summaryCard}>
-      <span className={styles.summaryLabel}>
-        <Icon size={13} aria-hidden />
-        {label}
-      </span>
-      <strong className={tone ? styles[tone] : undefined}>{value}</strong>
-      <span>{detail}</span>
+    <div className={styles.recentBlock} aria-label={`Recent transactions for ${account.name || account.institutionName}`}>
+      <div className={styles.recentHead}>
+        <span>Recent</span>
+        <Link href={accountHref}>View all</Link>
+      </div>
+      <div className={styles.recentList}>
+        {transactions.map((transaction) => (
+          <Link className={styles.recentRow} href={`/transactions/${transaction.id}`} key={transaction.id}>
+            <span className={styles.recentMerchant}>
+              <strong>{transaction.merchant}</strong>
+              <span>{formatShortDate(transaction.date)} · {transaction.category}</span>
+            </span>
+            <span className={`tabular-nums ${transaction.amount < 0 ? styles.negative : styles.positive}`.trim()}>
+              {formatMoney(transaction.amount)}
+            </span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
 function AccountCard({
   account,
-  latestSnapshot
+  latestSnapshot,
+  recentTransactions
 }: {
   account: AccountRecord;
   latestSnapshot?: BalanceSnapshotRecord;
+  recentTransactions: TransactionRecord[];
 }) {
   const displayBalance = balanceContribution(account);
-  const syncState = accountSyncState(account);
+  const marketValuation = account.manualValuation;
+  const displayName = account.name || account.institutionName;
   const utilization = account.type === "credit" && account.creditLimit
     ? Math.min(100, Math.round((Math.abs(displayBalance) / account.creditLimit) * 100))
     : null;
-  const secondaryLabel = account.type === "credit" ? "Limit" : "Type";
-  const secondaryValue = account.type === "credit"
-    ? account.creditLimit === null ? "Not reported" : formatMoney(account.creditLimit)
-    : account.subtype ?? account.type;
+  const needsRepair = !account.isActive;
+  const href = `/transactions?account=${encodeURIComponent(account.id)}`;
+  const detailRows = accountDetailRows(account, latestSnapshot);
+  const footItems: Array<{ icon: LucideIcon; label: string; title?: string }> = [];
+
+  if (marketValuation) {
+    footItems.push({
+      icon: TrendingUp,
+      label: `Quote ${formatRelativeTime(marketValuation.asOf)}`,
+      title: `Quote ${formatAbsoluteTime(marketValuation.asOf)}`
+    });
+    if (marketValuation.staleSymbols.length > 0) {
+      footItems.push({
+        icon: TriangleAlert,
+        label: `${marketValuation.staleSymbols.join(", ")} not priced`
+      });
+    }
+  }
 
   return (
-    <article className={`${styles.accountCard} ${!account.isActive ? styles.inactiveCard : ""}`}>
+    <article className={`${styles.accountCard} ${needsRepair ? styles.inactiveCard : ""}`}>
       <div className={styles.accountHead}>
-        <span className={styles.institution}>
-          <span className={styles.swatch} style={{ background: account.color ?? "var(--ink)" }} />
-          {account.institutionName}
-        </span>
-        <span className={`${styles.syncPill} ${styles[`sync-${syncState}`]}`}>
-          {syncState}
-        </span>
-      </div>
-
-      <div className={styles.accountName}>
-        <strong>{account.name}</strong>
-        <span>{account.mask ? `...${account.mask}` : account.subtype ?? account.type}</span>
-      </div>
-
-      <div className={`${styles.balance} ${displayBalance < 0 ? styles.negative : ""}`}>
-        {formatMoney(displayBalance)}
-      </div>
-
-      <div className={styles.detailGrid}>
-        <div>
-          <span>{account.type === "credit" ? "Available credit" : "Available"}</span>
-          <strong>{account.availableBalance === null ? "Not reported" : formatMoney(account.availableBalance)}</strong>
-        </div>
-        <div>
-          <span>{secondaryLabel}</span>
-          <strong>{secondaryValue}</strong>
+        <div className={styles.accountTitle}>
+          <span className={styles.swatch} style={{ background: account.color ?? "var(--ink)" }} aria-hidden />
+          <div className={styles.accountName}>
+            <Link aria-label={`View transactions for ${displayName}`} className={styles.accountPrimaryLink} href={href}>
+              {displayName}
+              <ArrowUpRight size={13} aria-hidden />
+            </Link>
+            <span>
+              {account.institutionName}
+              {" · "}
+              {account.mask ? `•••• ${account.mask}` : formatAccountKind(account)}
+            </span>
+          </div>
         </div>
       </div>
+
+      <div className={styles.balanceRow}>
+        <div className={`${styles.balance} tabular-nums ${displayBalance < 0 ? styles.negative : ""}`}>
+          {formatMoney(displayBalance)}
+        </div>
+        <span className={styles.kind}>{formatAccountKind(account)}</span>
+      </div>
+
+      {detailRows.length > 0 ? (
+        <div className={styles.detailGrid}>
+          {detailRows.map((row) => (
+            <div className={row.wide ? styles.detailWide : undefined} key={row.label}>
+              <span>{row.label}</span>
+              <strong
+                className={row.mono ? "tabular-nums" : styles.detailTextValue}
+                title={row.title}
+              >
+                {row.value}
+              </strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {utilization !== null ? (
         <div className={styles.utilization}>
           <div>
             <span style={{ width: `${utilization}%` }} />
           </div>
-          <strong>{utilization}% utilized</strong>
+          <strong className="tabular-nums">{utilization}% utilized</strong>
         </div>
       ) : null}
 
-      <div className={styles.accountFoot}>
-        <span>
-          <Clock3 size={12} aria-hidden />
-          {formatRelativeTime(account.lastSyncedAt)}
-        </span>
-        <span>
-          {latestSnapshot ? `Snapshot ${formatDate(latestSnapshot.snapshotDate)}` : "No snapshot"}
-        </span>
-      </div>
+      {needsRepair ? (
+        <div className={styles.repairBanner} role="status">
+          <TriangleAlert size={13} aria-hidden />
+          <span>Needs repair in Settings</span>
+        </div>
+      ) : null}
+
+      {footItems.length > 0 ? (
+        <div className={styles.accountFoot}>
+          {footItems.map((item) => {
+            const FootIcon = item.icon;
+            return (
+              <span key={item.label} title={item.title}>
+                <FootIcon size={12} aria-hidden />
+                {item.label}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <RecentTransactions account={account} transactions={recentTransactions} />
     </article>
   );
 }
@@ -172,33 +336,39 @@ function AccountCard({
 export function AccountsView({
   accounts,
   dataError,
-  groups,
   isConfigured,
+  isDemo,
   isSignedIn,
-  snapshots,
-  syncSummary,
-  totals
+  recentTransactionsByAccount,
+  snapshots
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
+  const sortedAccounts = sortAccountsForCards(accounts);
 
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so persisted account data cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load your persisted accounts.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
+      ) : null}
+
+      {isDemo ? (
+        <Notice role="status">
+          Demo accounts use seeded balances. Connect or repair real institutions from a signed-in workspace.
+        </Notice>
       ) : null}
 
       {accounts.length === 0 ? (
@@ -211,49 +381,29 @@ export function AccountsView({
         </div>
       ) : (
         <>
-          <section className={styles.summaryGrid} aria-label="Account summary">
-            <SummaryCard detail={`${accounts.length} persisted account rows`} icon={Landmark} label="Net worth" value={formatMoney(totals.netWorth)} />
-            <SummaryCard detail="Cash plus investments and retirement" icon={Database} label="Assets" value={formatMoney(totals.assets)} />
-            <SummaryCard detail="Credit cards reduce net worth" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.liabilities)} />
-            <SummaryCard
-              detail={formatRelativeTime(syncSummary.latestSyncedAt)}
-              icon={syncSummary.status === "stale" || syncSummary.status === "never" ? TriangleAlert : Clock3}
-              label="Sync"
-              tone={syncSummary.status === "fresh" ? "positive" : undefined}
-              value={syncSummaryText(syncSummary)}
-            />
+          <section className={styles.accountListSection} aria-label="Connected accounts">
+            <div className={styles.accountListHead}>
+              <div>
+                <h2>Connected accounts</h2>
+                <p>Balances first, with recent activity only where Tally has transactions.</p>
+              </div>
+              <LinkButton href="/settings">
+                <Settings size={13} aria-hidden />
+                Manage connections
+              </LinkButton>
+            </div>
+
+            <div className={styles.accountGrid}>
+              {sortedAccounts.map((account) => (
+                <AccountCard
+                  account={account}
+                  key={account.id}
+                  latestSnapshot={latestSnapshotByAccount.get(account.id)}
+                  recentTransactions={recentTransactionsByAccount[account.id] ?? []}
+                />
+              ))}
+            </div>
           </section>
-
-          <div className={styles.groupStack}>
-            {groups.map((group) => (
-              <section className={styles.group} key={group.key}>
-                <div className={styles.groupHead}>
-                  <div>
-                    <span className={styles.eyebrow}>{group.accounts.length} accounts</span>
-                    <h2>{group.label}</h2>
-                    <p>{group.description}</p>
-                  </div>
-                  <strong className={`${styles.groupTotal} ${group.total < 0 ? styles.negative : ""}`}>
-                    {formatMoney(group.total)}
-                  </strong>
-                </div>
-
-                {group.accounts.length === 0 ? (
-                  <div className={styles.emptyMini}>No persisted rows in this group.</div>
-                ) : (
-                  <div className={styles.accountGrid}>
-                    {group.accounts.map((account) => (
-                      <AccountCard
-                        account={account}
-                        key={account.id}
-                        latestSnapshot={latestSnapshotByAccount.get(account.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            ))}
-          </div>
         </>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 function isProductionRuntime() {
@@ -18,7 +19,7 @@ function addOrigin(origins: Set<string>, value: string | null | undefined) {
   }
 }
 
-function getRequestOrigin(request: NextRequest) {
+export function getRequestOrigin(request: NextRequest) {
   const forwardedHost = firstHeaderValue(request.headers.get("x-forwarded-host"));
   const host = forwardedHost ?? firstHeaderValue(request.headers.get("host"));
   const forwardedProto = firstHeaderValue(request.headers.get("x-forwarded-proto"));
@@ -54,6 +55,23 @@ export function jsonNoStore(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+export function timingSafeEqualText(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+export function isAuthorizedBearerToken(headers: Headers, token: string | null | undefined) {
+  const expectedToken = token?.trim();
+  if (!expectedToken) return false;
+
+  const authorization = headers.get("authorization") ?? "";
+  const prefix = "Bearer ";
+  if (!authorization.startsWith(prefix)) return false;
+
+  return timingSafeEqualText(authorization.slice(prefix.length), expectedToken);
+}
+
 export function requireSameOriginRequest(request: NextRequest) {
   const origin = request.headers.get("origin");
 
@@ -66,4 +84,29 @@ export function requireSameOriginRequest(request: NextRequest) {
   return getAllowedOrigins(request).has(origin)
     ? null
     : jsonNoStore({ error: "Invalid request origin." }, { status: 403 });
+}
+
+export function requireSameOriginReadRequest(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin) return requireSameOriginRequest(request);
+
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite && !["none", "same-origin", "same-site"].includes(fetchSite)) {
+    return jsonNoStore({ error: "Invalid request origin." }, { status: 403 });
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      return getAllowedOrigins(request).has(new URL(referer).origin)
+        ? null
+        : jsonNoStore({ error: "Invalid request origin." }, { status: 403 });
+    } catch {
+      return jsonNoStore({ error: "Invalid request origin." }, { status: 403 });
+    }
+  }
+
+  return isProductionRuntime()
+    ? jsonNoStore({ error: "Invalid request origin." }, { status: 403 })
+    : null;
 }

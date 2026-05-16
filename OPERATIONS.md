@@ -1,6 +1,6 @@
 # Operations Runbook
 
-This runbook covers day-to-day checks, deployment verification, Plaid sync troubleshooting, and maintenance for Ledger.
+This runbook covers day-to-day checks, deployment verification, Plaid sync troubleshooting, and maintenance for Tally.
 
 ## Routine Local Checks
 
@@ -64,6 +64,12 @@ The CI job performs:
 
 CI sets `ENABLE_DEMO_MODE=true` so Playwright can smoke-test the app without Supabase, Plaid, or OpenAI credentials. If a future test needs real provider access, keep it out of the default CI path unless it uses isolated preview credentials and documents the risk.
 
+Security automation also includes:
+
+- CodeQL analysis on pushes, PRs, manual dispatch, and a weekly schedule.
+- Dependency review on PRs, failing high-severity dependency additions.
+- Dependabot update checks for npm packages and GitHub Actions.
+
 ## PR Review Workflow
 
 Before requesting review:
@@ -76,42 +82,48 @@ Before requesting review:
 
 Reviewers should focus first on secret exposure, user-owned data scoping, RLS/auth behavior, Plaid token handling, route-handler origin checks, and whether unresolved finance data could be treated as trusted budget data.
 
-## Verify Repository Privacy
+## Verify Public Repository Protection
 
 ```bash
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
 ```
 
-Expected production security posture:
+Expected visibility:
 
 ```text
-visibility: PRIVATE
-isPrivate: true
+visibility: PUBLIC
+isPrivate: false
 ```
 
-If it is public, make it private before storing real production data:
+Verify GitHub security settings:
 
 ```bash
-gh repo edit jtran273/personal-finance-os --visibility private
+gh api repos/jtran273/personal-finance-os --jq '.security_and_analysis'
+gh api repos/jtran273/personal-finance-os/branches/main/protection
 ```
+
+Required before treating `main` as protected: secret scanning, secret scanning push protection, Dependabot alerts/security updates, and branch protection requiring PRs plus passing checks. If a setting cannot be enabled on the current plan, document the gap in the PR or deployment notes.
 
 ## Deployment Verification
 
 After a Vercel deployment:
 
 1. Open `/login`.
-2. Confirm the demo button visibility matches the intended `ENABLE_DEMO_MODE` setting: `false` hides it; `true` or unset shows the seeded demo entry. Production should choose this explicitly.
+2. Confirm the demo button visibility matches the intended `ENABLE_DEMO_MODE` setting: production unset or `false` hides it; `true` shows the seeded demo entry.
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
-6. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render without page overflow.
-7. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
-8. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
-9. If Calendar is enabled, confirm Settings shows Google Calendar connection state and last successful read.
-10. Run a manual Plaid sync only after confirming the environment.
-11. Export a CSV from `/transactions` and confirm no secrets are present.
-12. Check browser devtools for blocked CSP resources.
-13. Check Vercel logs for safe, non-secret errors only.
+6. Confirm the dashboard Net worth, Liquid, Debt, and Spendable scopes, liabilities-due panel, and category trend/month views render without page overflow.
+7. In an iPhone-sized viewport, confirm the dashboard uses the simplified balance summary instead of the desktop balance chart, the top header stays visible, the bottom nav remains reachable, route loading stays compact, and no horizontal page overflow appears.
+8. In demo mode, confirm Plaid, Calendar, merchant cleanup, transaction edit, review, and recurring write controls show read-only copy instead of starting provider OAuth or write actions.
+9. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
+10. Confirm `/accounts` shows account cards first, only renders recent activity for accounts with transactions, and does not duplicate Settings connection health.
+11. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
+12. If Calendar is enabled, confirm Settings shows Google Calendar connection state and last successful read.
+13. Run a manual Plaid sync only after confirming the environment.
+14. Export a CSV from `/transactions` and confirm no secrets are present.
+15. Check browser devtools for blocked CSP resources.
+16. Check Vercel logs for safe, non-secret errors only.
 
 When validating reimbursement matching, confirm suggestions are read-only and show only safe app-owned transaction ids, amounts, dates, merchants, confidence, and reasons. A suggested Venmo, Zelle, Cash App, or PayPal inflow must not be linked automatically, must not expose raw Plaid payloads or provider ids, and must not mutate `raw_transactions`, `enriched_transactions`, or `reimbursement_records` without explicit user confirmation.
 
@@ -126,7 +138,10 @@ Expected healthy state:
 - Last successful sync is present after sync.
 - Accounts import with balances.
 - Transactions import without duplicates.
-- Revoked items remain visible as revoked and do not sync again.
+- Disconnecting a Plaid item preserves Tally finance rows and stops future syncs.
+- The revoked Plaid item remains visible as a disconnected/revoked tombstone with a marker token and cleared cursor, and it does not sync again.
+- Existing account, balance, transaction, review, recurring, and reimbursement rows for that item remain visible for history.
+- Destructive Tally row cleanup is separate: run `npm run plaid:cleanup -- --user-id <user-id> --institution-name "<institution>"` for a dry run, then add `--execute --confirm DELETE_PLAID_ITEM_DATA` only for a revoked item you intend to purge.
 - Repairable item errors show safe user copy and a Repair action. Repair opens Plaid Link update mode for the selected item, then syncs only that item.
 
 ## Plaid Sync Troubleshooting
@@ -139,8 +154,8 @@ Check:
 - `PLAID_CLIENT_ID` is set,
 - correct Plaid secret is set for `PLAID_ENV`,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production,
-- `PLAID_REDIRECT_URI` or `NEXT_PUBLIC_APP_URL` is valid when using an OAuth redirect,
-- Plaid redirect URI is registered for production OAuth institutions.
+- `PLAID_REDIRECT_URI` is unset for ordinary web Link sessions or is the exact HTTPS URI registered in the Plaid dashboard for OAuth institutions,
+- Plaid redirect URI is registered for production OAuth institutions when `PLAID_REDIRECT_URI` is set.
 
 ### Public token exchange fails
 
@@ -162,7 +177,7 @@ Check:
 - `transaction_cursor` is not corrupt,
 - Vercel logs for safe Plaid error code.
 
-If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Ledger should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
+If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Tally should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
 
 ### Sync fails with PLAID_CONFIGURATION_ERROR for every item
 
@@ -175,7 +190,7 @@ Check:
 - existing legacy-encrypted access tokens can still decrypt after Plaid secret changes,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production before adding new production connections.
 
-Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
+Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI` and the registered Plaid redirect URI separately. Production Link tokens do not infer a Plaid redirect from `NEXT_PUBLIC_APP_URL` or `VERCEL_URL`; use an explicit registered HTTPS `PLAID_REDIRECT_URI` only when OAuth redirect support is needed.
 
 ### Connection needs repair
 
@@ -188,7 +203,7 @@ Use `/settings`:
 3. Confirm the app runs a one-item sync after Link succeeds.
 4. Confirm the item returns to active status and `last_successful_sync_at` advances.
 
-If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the institution. Historical transactions should remain preserved in Ledger, but future imports require a new active Plaid item.
+If repair fails with `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`, or `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Disconnect the stale item to stop future syncs while preserving Tally history; use the cleanup CLI only if you intentionally want to purge historical rows for a revoked item.
 
 ## Google Calendar Check
 
@@ -300,9 +315,10 @@ Export route:
 Expected:
 
 - requires a signed-in user or demo mode,
+- rejects cross-site browser reads,
 - returns `Cache-Control: no-store`,
 - includes enriched labels, review/filter context, reimbursement summaries, and safe raw Plaid context,
-- excludes Plaid access tokens, service role keys, auth headers, and provider secrets.
+- excludes Plaid access tokens, provider transaction ids, service role keys, auth headers, and provider secrets.
 
 ## AI Provider Checks
 
@@ -316,12 +332,12 @@ If `OPENAI_API_KEY` is set:
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,
 - accepted suggestions and merchant rules should still require explicit user actions,
-- persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Ledger-owned helpers that write audit events,
+- persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Tally-owned helpers that write audit events,
 - raw provider secrets must stay server-only.
 
 ## OpenClaw Integration Checks
 
-Ledger exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
+Tally exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
 
 - `OPENCLAW_TOKEN`,
 - `OPENCLAW_USER_ID`,
@@ -341,13 +357,13 @@ Expected:
 - scheduled briefing requests must include `Authorization: Bearer <CRON_SECRET>`,
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
-- `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Ledger proposal carrying a question,
+- `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
 - `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
-- OpenClaw never writes finance rows directly and Ledger never sends iMessages,
+- OpenClaw never writes finance rows directly and Tally never sends iMessages,
 - signal payloads must pass the assistant forbidden-field guard before serialization.
 
-To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Ledger, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
+To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Tally, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
 
 ## Database Maintenance
 
@@ -384,7 +400,7 @@ When adding a table:
 1. Generate a new high-entropy token.
 2. Update `OPENCLAW_TOKEN` in Vercel/server environment.
 3. Update OpenClaw to send `Authorization: Bearer <new-token>`.
-4. Redeploy Ledger.
+4. Redeploy Tally.
 5. Confirm `/api/openclaw/signals` rejects the old token and accepts the new token.
 
 ### Plaid secret

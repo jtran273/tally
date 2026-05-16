@@ -52,27 +52,20 @@ function getAppUrlCandidates() {
   ].filter((value): value is string => Boolean(value));
 }
 
+function getExplicitPlaidRedirectUri() {
+  return process.env.PLAID_REDIRECT_URI?.trim() || null;
+}
+
 function buildRedirectUri(path = "/settings") {
-  const explicitRedirect = process.env.PLAID_REDIRECT_URI?.trim();
+  const explicitRedirect = getExplicitPlaidRedirectUri();
   if (explicitRedirect) return explicitRedirect;
 
   const appUrl = getAppUrlCandidates()[0];
   return appUrl ? buildRedirectUriFromAppUrl(appUrl, path) : null;
 }
 
-function buildHttpsNextPublicAppRedirectUri(path = "/settings") {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (!appUrl) return null;
-
-  const redirectUri = buildRedirectUriFromAppUrl(appUrl, path);
-  if (new URL(redirectUri).protocol === "https:") {
-    return redirectUri;
-  }
-
-  return null;
-}
-
-function normalizeProductionLinkTokenRedirectUri(redirectUri: string | null) {
+function normalizeProductionLinkTokenRedirectUri() {
+  const redirectUri = getExplicitPlaidRedirectUri();
   if (!redirectUri) return null;
 
   let parsed: URL;
@@ -85,7 +78,7 @@ function normalizeProductionLinkTokenRedirectUri(redirectUri: string | null) {
   if (parsed.protocol === "https:") return redirectUri;
 
   if (parsed.protocol === "http:" && LOCALHOST_NAMES.has(parsed.hostname)) {
-    return buildHttpsNextPublicAppRedirectUri();
+    return null;
   }
 
   throw new PlaidConfigurationError("Plaid production redirect URI must use HTTPS.");
@@ -115,14 +108,17 @@ export function getPlaidConfig(): PlaidConfig {
 }
 
 export function getPlaidLinkTokenConfig(): PlaidConfig {
-  const config = getPlaidConfig();
+  const credentialConfig = getPlaidCredentialConfig();
 
-  if (config.environment === "production") {
+  if (credentialConfig.environment === "production") {
     return {
-      ...config,
-      redirectUri: normalizeProductionLinkTokenRedirectUri(config.redirectUri)
+      ...credentialConfig,
+      redirectUri: normalizeProductionLinkTokenRedirectUri()
     };
   }
 
-  return config;
+  return {
+    ...credentialConfig,
+    redirectUri: buildRedirectUri()
+  };
 }

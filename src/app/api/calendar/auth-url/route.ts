@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   buildGoogleCalendarAuthUrl,
   createGoogleCalendarOAuthState,
@@ -7,6 +8,7 @@ import {
   GoogleCalendarConfigurationError,
   requireCalendarRouteUser
 } from "@/lib/calendar";
+import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -18,6 +20,10 @@ function isProductionRuntime() {
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({ error: "Demo mode does not connect Google Calendar." }, { status: 403 });
+  }
 
   const context = await requireCalendarRouteUser();
   if ("response" in context) return context.response;
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ error: "Google Calendar integration is not configured." }, { status: 503 });
     }
 
-    console.error("google_calendar_auth_url_failed", error);
+    logSafeError("google_calendar_auth_url_failed", error);
     return jsonNoStore({ error: "Unable to start Google Calendar connection." }, { status: 500 });
   }
 }

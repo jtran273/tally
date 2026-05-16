@@ -33,9 +33,11 @@
 
 .summaryCard strong {
   overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 30px;
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: var(--text-title);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 
@@ -45,7 +47,9 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -55,7 +59,7 @@
 
 .warn {
   border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
-  background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+  background: var(--warn-soft);
 }
 
 .notice,
@@ -63,7 +67,7 @@
 .emptyState {
   padding: 14px 16px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   overflow-wrap: anywhere;
 }
 
@@ -75,7 +79,7 @@
 
 .errorNotice {
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
-  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
@@ -116,22 +120,23 @@
 .panelHead h2 {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 25px;
+  font-family: var(--font-serif);
+  font-size: var(--text-title);
   font-weight: 400;
-  line-height: 1;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
 }
 
 .panelHead > span {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .emptyMini {
   padding: 18px 16px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .tableShell {
@@ -162,7 +167,7 @@
   padding: 10px 16px;
   background: var(--surface-2);
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -170,7 +175,7 @@
   border-bottom: 1px solid var(--line-2);
   padding: 13px 16px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .tableRow > div {
@@ -211,11 +216,32 @@
 .mutedBlock {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .attentionText {
   color: var(--warn) !important;
+}
+
+.overdueRow {
+  background: var(--neg-soft);
+  box-shadow: inset 3px 0 0 var(--neg);
+}
+
+.overdueBadge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--neg-soft);
+  color: var(--neg) !important;
+  font-size: var(--text-label) !important;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-start;
+  width: fit-content;
 }
 
 .nextDue {
@@ -243,8 +269,8 @@
 .amountCell strong {
   display: block;
   color: var(--ink);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--text-ui);
   font-variant-numeric: tabular-nums;
 }
 
@@ -258,7 +284,7 @@
 .timelineSummary div {
   min-width: 0;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
   background: var(--surface-2);
 }
@@ -267,7 +293,7 @@
 .timelineRow span {
   display: block;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .timelineSummary strong,
@@ -276,7 +302,7 @@
   margin-top: 4px;
   overflow-wrap: anywhere;
   color: var(--ink);
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
@@ -296,7 +322,7 @@
   justify-content: space-between;
   gap: 12px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
   background: var(--surface-2);
 }
@@ -341,9 +367,9 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 0 10px;
-  font-size: 12px;
+  font-size: var(--text-meta);
   font-weight: 450;
   text-decoration: none;
   white-space: nowrap;
@@ -369,7 +395,7 @@
 .inlineError,
 .inlineMessage {
   flex-basis: 100%;
-  font-size: 11.5px;
+  font-size: var(--text-meta);
   white-space: normal;
 }
 
@@ -384,22 +410,22 @@
 .statusPill {
   display: inline-flex;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 3px 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   white-space: nowrap;
 }
 
 .status-active {
   border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
-  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  background: var(--sage-soft);
   color: var(--pos);
 }
 
 .status-pending {
   border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
-  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
@@ -422,11 +448,55 @@
 
 @media (max-width: 720px) {
   .summaryGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .summaryCard {
+    min-height: 66px;
+    padding: 10px;
+  }
+
+  .summaryCard strong {
+    font-size: 22px;
+  }
+
+  .summaryLabel {
+    gap: 4px;
+    font-size: var(--text-kbd);
+    line-height: 1.15;
+  }
+
+  .notice {
+    padding: 10px 12px;
+    font-size: var(--text-meta);
   }
 
   .timelineSummary {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .timelineSummary div {
+    padding: 8px;
+  }
+
+  .timelineSummary span {
+    font-size: var(--text-kbd);
+    line-height: 1.15;
+  }
+
+  .timelineSummary strong {
+    font-size: var(--text-meta);
+  }
+
+  .timelineList {
+    padding: 10px 12px 14px;
+  }
+
+  .timelineRow {
+    padding: 10px;
   }
 
   .timelineRow {
@@ -442,5 +512,10 @@
   .panelHead {
     flex-direction: column;
     gap: 8px;
+    padding: 14px;
+  }
+
+  .panelHead h2 {
+    font-size: 22px;
   }
 }

@@ -2,9 +2,11 @@ import { DashboardView } from "@/components/finance/dashboard/dashboard-view";
 import {
   listAccounts,
   listBalanceSnapshots,
+  listRecurringExpenses,
   listTransactions,
   type AccountRecord,
   type BalanceSnapshotRecord,
+  type RecurringExpenseRecord,
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
@@ -16,6 +18,7 @@ import {
 } from "@/lib/finance/balances";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { buildCategoryBreakdownsByMonth } from "@/lib/finance/spending";
+import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +30,15 @@ export default async function DashboardPage() {
   let accounts: AccountRecord[] = [];
   let snapshots: BalanceSnapshotRecord[] = [];
   let trendTransactions: TransactionRecord[] = [];
+  let recurringExpenses: RecurringExpenseRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
+  let isDemo = false;
   let isSignedIn = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
@@ -43,13 +49,16 @@ export default async function DashboardPage() {
 
       [
         snapshots,
-        trendTransactions
+        trendTransactions,
+        recurringExpenses
       ] = await Promise.all([
         accountIds.length > 0
           ? listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 5000 })
           : Promise.resolve([]),
-        listTransactions(context.client, context.userId, { limit: 5000 })
+        listTransactions(context.client, context.userId, { includeRawContext: false, limit: 5000 }),
+        listRecurringExpenses(context.client, context.userId)
       ]);
+      accounts = await applyManualInvestmentValuations(accounts);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -57,6 +66,7 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const asOfDate = now.toISOString().slice(0, 10);
+  const plaidSyncAccounts = accounts.filter((account) => account.type === "depository" || account.type === "credit");
   const totals = calculateAccountTotals(accounts);
   const trendOptions = {
     asOfDate,
@@ -115,10 +125,12 @@ export default async function DashboardPage() {
       categoryBreakdowns={categoryBreakdowns}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
       liabilitiesDue={liabilitiesDue}
+      recurringExpenses={recurringExpenses}
       snapshotCount={snapshots.length}
-      syncSummary={summarizeSync(accounts)}
+      syncSummary={summarizeSync(plaidSyncAccounts)}
       totals={totals}
     />
   );

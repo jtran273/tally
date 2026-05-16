@@ -1,4 +1,5 @@
 import { createPlaidLinkToken } from "@/lib/plaid/service";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   createPlaidRouteWriteClient,
   plaidRouteError,
@@ -41,6 +42,10 @@ async function readLinkTokenRequest(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({ error: "Demo mode does not connect banks." }, { status: 403 });
+  }
 
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;

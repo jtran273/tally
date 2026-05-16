@@ -9,6 +9,7 @@ import {
   OpenClawSignalsBadRequestError,
   resolveOpenClawSince
 } from "@/lib/openclaw/signals";
+import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore } from "@/lib/security/request";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
       return jsonNoStore({ error: "OpenClaw integration is not configured." }, { status: 503 });
     }
 
-    console.error("openclaw_signals_failed", error);
+    logSafeError("openclaw_signals_failed", error);
     return jsonNoStore({ error: "Unable to load OpenClaw signals." }, { status: 500 });
   }
 }

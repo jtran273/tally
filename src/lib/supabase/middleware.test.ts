@@ -11,7 +11,8 @@ test("OpenClaw API routes bypass Supabase session redirects", () => {
 
 test("scheduled proactive scan bypasses Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/agents/proactive-scan/scheduled"), true);
-  assert.equal(isSessionBypassPath("/api/agents/proactive-scan"), true);
+  assert.equal(isSessionBypassPath("/api/agents/proactive-scan/scheduled/extra"), true);
+  assert.equal(isSessionBypassPath("/api/agents/proactive-scan"), false);
 });
 
 test("scheduled Plaid sync bypasses Supabase session redirects", () => {

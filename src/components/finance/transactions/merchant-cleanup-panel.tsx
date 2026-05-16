@@ -2,24 +2,26 @@
 
 import { applyMerchantCleanupAction, type MerchantCleanupActionState } from "@/app/(app)/transactions/actions";
 import type { CategoryRecord } from "@/lib/db";
+import { categoryOptionGroups, userTransactionIntentOptions } from "@/lib/finance/classification";
 import { WandSparkles } from "lucide-react";
 import { useActionState, useState } from "react";
-import { transactionIntentOptions } from "./filters";
 import styles from "./transactions.module.css";
 
 interface MerchantCleanupPanelProps {
   categories: CategoryRecord[];
   defaultQuery: string;
+  isDemo: boolean;
 }
 
 const initialState: MerchantCleanupActionState = {};
 
-export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantCleanupPanelProps) {
+export function MerchantCleanupPanel({ categories, defaultQuery, isDemo }: MerchantCleanupPanelProps) {
   const [state, formAction, isPending] = useActionState(applyMerchantCleanupAction, initialState);
   const hasDefaultQuery = defaultQuery.trim().length > 0;
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
   const expanded = expandedOverride ?? (hasDefaultQuery || Boolean(state.error || state.message));
-  const defaultCategory = categories.find((category) => category.name === "Food / Restaurants") ?? categories[0] ?? null;
+  const categoryGroups = categoryOptionGroups(categories);
+  const defaultCategory = categoryGroups.find((category) => category.label === "Food") ?? categoryGroups[0] ?? null;
 
   return (
     <section className={expanded ? styles.cleanupPanel : `${styles.cleanupPanel} ${styles.cleanupCollapsed}`} aria-label="Merchant cleanup">
@@ -38,7 +40,18 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
       </div>
       {expanded ? (
         <>
-          <form action={formAction} className={styles.cleanupForm}>
+          {isDemo ? (
+            <div className={styles.formSuccess} role="status">
+              Merchant cleanup is preview-only in the demo. Sign in to save cleanup rules against real transactions.
+            </div>
+          ) : null}
+          <form
+            action={formAction}
+            className={styles.cleanupForm}
+            onSubmit={(event) => {
+              if (isDemo) event.preventDefault();
+            }}
+          >
             <label className={styles.field}>
               <span>Match text</span>
               <input
@@ -53,10 +66,10 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
 
             <label className={styles.field}>
               <span>Category</span>
-              <select className={styles.selectControl} defaultValue={defaultCategory?.id ?? "none"} name="categoryId" required>
+              <select className={styles.selectControl} defaultValue={defaultCategory?.primaryCategoryId ?? "none"} name="categoryId" required>
                 <option value="none">Choose category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
+                {categoryGroups.map((category) => (
+                  <option key={category.primaryCategoryId} value={category.primaryCategoryId}>{category.label}</option>
                 ))}
               </select>
             </label>
@@ -64,11 +77,9 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
             <label className={styles.field}>
               <span>Intent</span>
               <select className={styles.selectControl} defaultValue="personal" name="intent">
-                {transactionIntentOptions
-                  .filter((option) => option.value !== "all")
-                  .map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
+                {userTransactionIntentOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
 
@@ -77,9 +88,9 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
               <span>Save rule</span>
             </label>
 
-            <button className={styles.primaryButton} disabled={isPending || categories.length === 0} type="submit">
+            <button className={styles.primaryButton} disabled={isDemo || isPending || categoryGroups.length === 0} type="submit">
               <WandSparkles size={14} aria-hidden />
-              {isPending ? "Applying..." : "Apply cleanup"}
+              {isDemo ? "Read-only demo" : isPending ? "Applying..." : "Apply cleanup"}
             </button>
           </form>
 

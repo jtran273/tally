@@ -1,8 +1,11 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
-import { Database, Filter, HandCoins, Hourglass, Inbox, type LucideIcon } from "lucide-react";
-import type { TransactionFilterState } from "./filters";
+import { MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
+import type { PlaidConnectionSummary } from "@/lib/plaid/service";
+import { isRecurringReview } from "@/lib/review/reasons";
+import { Database, Inbox, WalletCards } from "lucide-react";
+import { transactionPeriodTitle, type TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
@@ -14,7 +17,9 @@ interface TransactionsViewProps {
   dataError?: string;
   filters: TransactionFilterState;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
+  plaidConnections: PlaidConnectionSummary[];
   transactions: TransactionRecord[];
 }
 
@@ -35,7 +40,9 @@ function summarize(transactions: TransactionRecord[]) {
       summary.spending += transactionSpendingAmount(transaction);
 
       if (transaction.status === "pending") summary.pending += 1;
-      if (transaction.reviewItems.some((review) => review.status === "open")) summary.needsReview += 1;
+      if (transaction.reviewItems.some((review) => review.status === "open" && !isRecurringReview(review.reason))) {
+        summary.needsReview += 1;
+      }
 
       return summary;
     },
@@ -48,36 +55,15 @@ function summarize(transactions: TransactionRecord[]) {
   };
 }
 
-function SummaryCard({
-  detail,
-  icon: Icon,
-  label,
-  value
-}: {
-  detail: string;
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className={styles.summaryCard} tabIndex={0}>
-      <span className={styles.summaryLabel}>
-        <Icon size={13} aria-hidden />
-        {label}
-      </span>
-      <strong>{value}</strong>
-      <span className={styles.summaryDetail}>{detail}</span>
-    </div>
-  );
-}
-
 export function TransactionsView({
   accounts,
   categories,
   dataError,
   filters,
   isConfigured,
+  isDemo,
   isSignedIn,
+  plaidConnections,
   transactions
 }: TransactionsViewProps) {
   const summary = summarize(transactions);
@@ -88,6 +74,7 @@ export function TransactionsView({
     selectedAccount &&
     !filters.search &&
     filters.categoryId === "all" &&
+    filters.direction === "all" &&
     filters.intent === "all" &&
     filters.reviewStatus === "all" &&
     !filters.month &&
@@ -95,73 +82,97 @@ export function TransactionsView({
     !filters.toDate &&
     !filters.excludeTransfers
   );
+  const connectionByInstitutionId = new Map(plaidConnections.map((connection) => [connection.institutionId, connection]));
+  const selectedAccountIssue = selectedAccount
+    ? connectionByInstitutionId.get(selectedAccount.institutionId)?.issue ?? null
+    : null;
+  const periodTitle = transactionPeriodTitle(filters);
+  const pendingDetail = summary.pending > 0
+    ? `${summary.pending.toLocaleString("en-US")} pending`
+    : "Transactions shown";
+  const reimbursementDetail = summary.reimbursements.outstandingAmount > 0
+    ? `${formatMoney(summary.reimbursements.outstandingAmount)} reimbursement outstanding`
+    : "Owned outflow";
 
   return (
     <div className={styles.shell}>
-      <section className={styles.summaryGrid} aria-label="Transaction summary">
-        <SummaryCard
-          detail="Persisted enriched transactions"
-          icon={Database}
-          label="Rows shown"
-          value={transactions.length.toLocaleString("en-US")}
-        />
-        <SummaryCard
-          detail="Owned outflow excluding transfers and reimbursable portions"
-          icon={Filter}
-          label="Spending"
-          value={formatMoney(summary.spending)}
-        />
-        <SummaryCard
-          detail={`Outstanding from ${formatMoney(summary.reimbursements.reimbursableAmount)} reimbursable activity`}
-          icon={HandCoins}
-          label="Reimbursements"
-          value={formatMoney(summary.reimbursements.outstandingAmount)}
-        />
-        <SummaryCard
-          detail="Visually marked in the table"
-          icon={Hourglass}
-          label="Pending"
-          value={summary.pending.toLocaleString("en-US")}
-        />
-        <SummaryCard
-          detail="Open review items in view"
-          icon={Inbox}
-          label="Review"
-          value={summary.needsReview.toLocaleString("en-US")}
-        />
+      <section className={styles.headerPanel} aria-label="Transaction summary">
+        <div className={styles.headerCopy}>
+          <span>Transaction period</span>
+          <h2>{periodTitle}</h2>
+          <p>
+            {filters.hasActiveFilters
+              ? `Filtered view, latest ${filters.limit.toLocaleString("en-US")} rows.`
+              : `Latest ${filters.limit.toLocaleString("en-US")} enriched transactions.`}
+          </p>
+        </div>
+
+        <MetricGrid className={styles.summaryMetrics}>
+          <MetricCard
+            detail={reimbursementDetail}
+            label={(
+              <>
+              <WalletCards size={13} aria-hidden />
+              Spending
+              </>
+            )}
+            value={formatMoney(summary.spending)}
+          />
+          <MetricCard
+            detail={pendingDetail}
+            label={(
+              <>
+              <Database size={13} aria-hidden />
+              Rows
+              </>
+            )}
+            value={transactions.length.toLocaleString("en-US")}
+          />
+          <MetricCard
+            detail={summary.needsReview > 0 ? "Open review items" : "Ready for export"}
+            label={(
+              <>
+              <Inbox size={13} aria-hidden />
+              Review
+              </>
+            )}
+            value={summary.needsReview.toLocaleString("en-US")}
+          />
+        </MetricGrid>
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />
-      <MerchantCleanupPanel categories={categories} defaultQuery={filters.search} />
+      <MerchantCleanupPanel categories={categories} defaultQuery={filters.search} isDemo={isDemo} />
 
       {filters.isDateRangeInverted ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status" tone="warning">
           The selected date filters do not overlap. Adjust the month, from date, or to date to show transactions.
-        </div>
+        </Notice>
       ) : null}
 
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so persisted transactions cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load your persisted transaction data.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
       ) : null}
 
       <TransactionTable
         accountOnlyFilter={accountOnlyFilter}
         filtersActive={filters.hasActiveFilters}
         limit={filters.limit}
+        selectedAccountIssue={selectedAccountIssue}
         selectedAccount={selectedAccount}
         transactions={transactions}
       />

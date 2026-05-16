@@ -28,9 +28,11 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
   let isConfigured = false;
   let isSignedIn = false;
   let transaction: TransactionRecord | null = null;
+  let isDemo = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
@@ -73,5 +75,5 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
     );
   }
 
-  return <TransactionEditForm categories={categories} transaction={transaction} />;
+  return <TransactionEditForm categories={categories} isDemo={isDemo} transaction={transaction} />;
 }

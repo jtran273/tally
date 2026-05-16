@@ -3,7 +3,7 @@
   width: min(100%, var(--content-max));
   min-width: 0;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .notice,
@@ -11,17 +11,17 @@
 .emptyState {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   overflow-wrap: anywhere;
 }
 
 .errorNotice {
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
-  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
@@ -46,114 +46,99 @@
   margin-top: 4px;
 }
 
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.summaryCard,
-.group,
 .accountCard {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--surface);
-}
-
-.summaryCard {
-  display: flex;
-  min-height: 112px;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 16px;
-}
-
-.summaryLabel,
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.summaryCard strong {
-  overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 30px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.summaryCard > span:last-child {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.positive {
-  color: var(--pos);
+  color: inherit;
 }
 
 .negative {
   color: var(--neg);
 }
 
-.groupStack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.positive {
+  color: var(--pos);
 }
 
-.group {
-  padding: 20px;
-}
-
-.groupHead {
+.accountListSection {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.accountListHead {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 14px;
+  gap: 12px;
 }
 
-.groupHead h2 {
-  margin: 5px 0 4px;
-  overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 25px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.groupHead p {
+.accountListHead h2 {
   margin: 0;
-  color: var(--muted);
-  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-serif);
+  font-size: var(--text-title);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
 }
 
-.groupTotal {
+.accountListHead p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: var(--text-ui-sm);
+}
+
+.settingsLink {
+  display: inline-flex;
   flex: 0 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+  font-weight: 450;
+  text-decoration: none;
+}
+
+.settingsLink:hover {
+  border-color: var(--ink-2);
+  background: var(--surface-2);
 }
 
 .accountGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  align-items: start;
+  gap: 10px;
 }
 
 .accountCard {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 11px;
+  padding: 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.accountCard:hover,
+.accountCard:focus-visible {
+  border-color: color-mix(in oklab, var(--accent) 32%, var(--line));
+  box-shadow: var(--shadow-sm);
+}
+
+.accountCard:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
+  outline-offset: 2px;
 }
 
 .inactiveCard {
@@ -161,35 +146,32 @@
 }
 
 .accountHead,
+.accountTitle,
 .accountName,
 .accountFoot,
+.balanceRow,
 .utilization,
 .detailGrid {
   min-width: 0;
 }
 
 .accountHead,
+.accountTitle,
 .accountFoot,
+.balanceRow,
 .utilization {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
-.institution {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
+.accountHead {
+  justify-content: space-between;
+  min-height: 25px;
 }
 
-.institution {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.accountTitle {
+  flex: 1;
 }
 
 .swatch {
@@ -199,83 +181,108 @@
   border-radius: 50%;
 }
 
-.syncPill {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px 8px;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: capitalize;
-}
-
-.sync-fresh {
-  border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
-  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
-  color: var(--pos);
-}
-
-.sync-stale,
-.sync-never {
-  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
-  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
-  color: var(--warn);
-}
-
 .accountName {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex: 1;
 }
 
-.accountName strong {
+.accountPrimaryLink {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+  color: inherit;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.accountPrimaryLink:hover {
+  color: var(--accent);
+}
+
+.accountPrimaryLink svg {
+  flex: 0 0 auto;
+}
+
+.accountName span {
+  display: block;
+  margin-top: 1px;
   overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.accountName span {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 12px;
+.balanceRow {
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .balance {
+  min-width: 0;
   overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 31px;
+  font-family: var(--font-mono);
+  font-size: var(--text-title);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1;
+}
+
+.kind {
+  flex: 0 1 auto;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  padding: 3px 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .detailGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 12px;
 }
 
 .detailGrid div {
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  padding: 9px;
-  background: var(--surface-2);
+  min-width: 0;
 }
 
 .detailGrid span,
 .accountFoot,
 .utilization strong {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .detailGrid strong {
   display: block;
-  margin-top: 3px;
+  margin-top: 1px;
   overflow-wrap: anywhere;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+.detailWide {
+  grid-column: 1 / -1;
+}
+
+.detailGrid .detailTextValue {
+  overflow: hidden;
+  font-family: inherit;
+  font-variant-numeric: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .utilization {
@@ -286,7 +293,7 @@
   height: 5px;
   flex: 1;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--line-2);
 }
 
@@ -299,48 +306,138 @@
 
 .accountFoot {
   border-top: 1px solid var(--line-2);
-  padding-top: 11px;
+  padding-top: 9px;
   flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px 12px;
 }
 
-.accountFoot span:first-child {
+.accountFoot span {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.emptyMini {
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  padding: 18px;
+.recentBlock {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line-2);
+  padding-top: 9px;
+}
+
+.recentHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--muted);
-  font-size: 13px;
-  text-align: center;
+  font-size: var(--text-label);
+  text-transform: uppercase;
 }
 
-@media (max-width: 1100px) {
-  .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.recentHead a {
+  color: var(--accent);
+  font-size: var(--text-meta);
+  font-weight: 500;
+  text-decoration: none;
+  text-transform: none;
+}
+
+.recentList {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recentRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.recentRow:hover {
+  background: var(--surface-2);
+}
+
+.recentMerchant {
+  min-width: 0;
+}
+
+.recentMerchant strong,
+.recentMerchant span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentMerchant strong {
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+  font-weight: 500;
+}
+
+.recentMerchant span {
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.recentRow > span:last-child {
+  flex: 0 0 auto;
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+
+.repairBanner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in oklab, var(--neg) 30%, var(--line));
+  border-radius: var(--radius-control);
+  padding: 6px 8px;
+  background: var(--neg-soft);
+  color: var(--neg);
+  font-size: var(--text-meta);
+}
+
+.repairBanner > svg {
+  flex: 0 0 auto;
+}
+
+.repairBanner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
-  .summaryGrid,
   .accountGrid {
     grid-template-columns: 1fr;
   }
 
-  .group,
+  .accountListHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
   .accountCard {
     padding: 16px;
-  }
-
-  .groupHead {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .groupTotal {
-    font-size: 16px;
   }
 }

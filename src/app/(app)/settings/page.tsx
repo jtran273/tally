@@ -29,10 +29,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const params = searchParams ? await searchParams : {};
   let dataError: string | undefined;
   let isConfigured = false;
+  let isDemo = false;
   let isSignedIn = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
@@ -42,6 +44,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       calendarMessage={calendarMessage(firstParam(params.calendar))}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
     />
   );

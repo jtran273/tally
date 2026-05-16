@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import type {
   AccountRecord,
   AccountRow,
@@ -19,6 +20,7 @@ import type {
   InstitutionRow,
   Json,
   MerchantRuleRow,
+  PlaidItemRow,
   RawTransactionRow,
   ReimbursementRecord,
   ReimbursementRecordRow,
@@ -45,7 +47,10 @@ import {
   type AgentProposalJsonObject
 } from "../agents/proposals";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
-import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
+import { buildReimbursementLinkDecision, isReportableIncomeIntent } from "../finance/reimbursement-linking";
+import { transactionSpendingAmount } from "../finance/spending";
+import { isRecurringReview } from "../review/reasons";
+import { getSupabaseConfig } from "../supabase/env";
 
 interface QueryError {
   message: string;
@@ -71,6 +76,7 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   in(column: string, values: readonly unknown[]): FinanceFilterBuilder<Row>;
   gte(column: string, value: string | number): FinanceFilterBuilder<Row>;
   lte(column: string, value: string | number): FinanceFilterBuilder<Row>;
+  neq(column: string, value: unknown): FinanceFilterBuilder<Row>;
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FinanceFilterBuilder<Row>;
   limit(count: number): FinanceFilterBuilder<Row>;
   single(): PromiseLike<QueryResult<Row>>;
@@ -93,6 +99,26 @@ export interface FinanceSupabaseClient {
   ): FinanceTableBuilder<TableRow<Table>, TableInsert<Table>, TableUpdate<Table>>;
 }
 
+function canUseServiceRoleClient(client: FinanceSupabaseClient) {
+  return "auth" in (client as unknown as Record<string, unknown>);
+}
+
+function createServiceRoleClient(client: FinanceSupabaseClient) {
+  if (!canUseServiceRoleClient(client)) return null;
+
+  const config = getSupabaseConfig();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!config || !serviceRoleKey) return null;
+
+  return createClient<Database>(config.url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }) as unknown as FinanceSupabaseClient;
+}
+
 export class FinanceDbError extends Error {
   readonly code?: string;
   readonly details?: string;
@@ -108,10 +134,12 @@ export class FinanceDbError extends Error {
 }
 
 export type TransactionQualityFilter = "all" | "needs-cleanup" | "low-confidence" | "uncategorized";
+export type TransactionDirectionFilter = "all" | "income" | "spending";
 
 export interface TransactionListFilters {
   accountIds?: string[];
   categoryIds?: string[];
+  direction?: TransactionDirectionFilter;
   intent?: TransactionIntent | "all";
   fromDate?: string;
   toDate?: string;
@@ -120,6 +148,7 @@ export interface TransactionListFilters {
   reviewStatus?: ReviewStatus | "all";
   quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
+  includeRawContext?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -305,6 +334,21 @@ function toAccountRecord(row: AccountRow, institution?: InstitutionRow): Account
   };
 }
 
+async function listVisibleAccountIds(client: FinanceSupabaseClient, userId: string) {
+  const [accountResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("id,plaid_item_id").eq("user_id", userId).eq("is_active", true),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
+  ]);
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
+  );
+
+  return (expectData(accountResult, "List visible account ids") as Array<Pick<AccountRow, "id" | "plaid_item_id">>)
+    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) => account.id);
+}
+
 function toCategoryRecord(row: CategoryRow): CategoryRecord {
   return {
     id: row.id,
@@ -456,7 +500,19 @@ function transactionNeedsCategoryCleanup(transaction: TransactionRecord) {
   return transaction.confidence < 0.75 ||
     !transaction.categoryId ||
     transaction.category.toLowerCase() === "uncategorized" ||
-    transaction.reviewItems.some((review) => review.status === "open");
+    transaction.reviewItems.some((review) => review.status === "open" && !isRecurringReview(review.reason));
+}
+
+function transactionMatchesReviewStatus(
+  transaction: TransactionRecord,
+  status: ReviewStatus,
+  reasonFilter: ReviewReason | "all" | undefined
+) {
+  return transaction.reviewItems.some((review) => {
+    if (review.status !== status) return false;
+    if (isRecurringReview(review.reason)) return reasonFilter === review.reason;
+    return true;
+  });
 }
 
 function transactionMatchesQuality(transaction: TransactionRecord, quality: TransactionQualityFilter | undefined) {
@@ -466,13 +522,17 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
   return transactionNeedsCategoryCleanup(transaction);
 }
 
+function transactionMatchesDirection(transaction: TransactionRecord, direction: TransactionDirectionFilter | undefined) {
+  if (!direction || direction === "all") return true;
+  if (direction === "income") return transaction.amount > 0 && isReportableIncomeIntent(transaction.intent);
+  return transactionSpendingAmount(transaction) > 0;
+}
+
 function requiresHydratedTransactionFiltering(filters: TransactionListFilters) {
   return Boolean(
-    filters.excludeTransfers ||
     filters.search?.trim() ||
-    (filters.reviewReason && filters.reviewReason !== "all") ||
-    (filters.reviewStatus && filters.reviewStatus !== "all") ||
-    (filters.quality && filters.quality !== "all")
+    (filters.quality && filters.quality !== "all") ||
+    (filters.direction && filters.direction !== "all")
   );
 }
 
@@ -483,7 +543,7 @@ function transactionRowLimit(filters: TransactionListFilters) {
 
 export function filterTransactionRecordsForList(
   transactions: readonly TransactionRecord[],
-  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {}
+  filters: Pick<TransactionListFilters, "direction" | "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {}
 ) {
   const search = normalizeSearchText(filters.search ?? "");
   const searched = search
@@ -494,7 +554,7 @@ export function filterTransactionRecordsForList(
     : searched;
   const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
     ? transferFiltered.filter((transaction) =>
-      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
+      transactionMatchesReviewStatus(transaction, filters.reviewStatus as ReviewStatus, filters.reviewReason)
     )
     : transferFiltered;
   const reasonFiltered = filters.reviewReason && filters.reviewReason !== "all"
@@ -502,7 +562,8 @@ export function filterTransactionRecordsForList(
       transaction.reviewItems.some((review) => review.reason === filters.reviewReason)
     )
     : reviewFiltered;
-  const qualityFiltered = reasonFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
+  const directionFiltered = reasonFiltered.filter((transaction) => transactionMatchesDirection(transaction, filters.direction));
+  const qualityFiltered = directionFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
 
   return slicePage(qualityFiltered, filters.limit, filters.offset);
 }
@@ -518,7 +579,7 @@ function buildTransactionRecord({
   splits
 }: {
   row: EnrichedTransactionRow;
-  raw?: RawTransactionRow;
+  raw?: RawTransactionContextRow;
   account?: AccountRow;
   institution?: InstitutionRow;
   category?: CategoryRow;
@@ -526,13 +587,15 @@ function buildTransactionRecord({
   reimbursements: ReimbursementRecord[];
   splits: TransactionSplitRecord[];
 }): TransactionRecord {
-  const openReview = reviews.find((review) => review.status === "open") ?? null;
+  const openReview = reviews.find((review) => review.status === "open" && !isRecurringReview(review.reason)) ??
+    reviews.find((review) => review.status === "open") ??
+    null;
 
   return {
     id: row.id,
     userId: row.user_id,
     rawTransactionId: row.raw_transaction_id,
-    plaidTransactionId: raw?.plaid_transaction_id ?? null,
+    plaidTransactionId: null,
     accountId: row.account_id,
     accountName: account?.name ?? "Unknown account",
     accountMask: account?.mask ?? null,
@@ -559,6 +622,18 @@ function buildTransactionRecord({
   };
 }
 
+type RawTransactionContextRow = Pick<
+  RawTransactionRow,
+  "id" | "merchant_name" | "name" | "plaid_category"
+>;
+
+const RAW_TRANSACTION_CONTEXT_COLUMNS = [
+  "id",
+  "merchant_name",
+  "name",
+  "plaid_category"
+].join(",");
+
 export function transactionMatchesSearch(transaction: TransactionRecord, search: string) {
   const needle = normalizeSearchText(search);
   if (!needle) return true;
@@ -569,24 +644,34 @@ export function transactionMatchesSearch(transaction: TransactionRecord, search:
 async function hydrateTransactions(
   client: FinanceSupabaseClient,
   userId: string,
-  enrichedRows: EnrichedTransactionRow[]
+  enrichedRows: EnrichedTransactionRow[],
+  options: { includeRawContext?: boolean } = {}
 ): Promise<TransactionRecord[]> {
   if (enrichedRows.length === 0) return [];
 
   const transactionIds = enrichedRows.map((row) => row.id);
   const rawIds = unique(enrichedRows.map((row) => row.raw_transaction_id));
+  const includeRawContext = options.includeRawContext ?? true;
 
   const [
     rawResult,
     accountResult,
+    plaidItemResult,
     institutionResult,
     categoryResult,
     reviewResult,
     reimbursementResult,
     splitResult
   ] = await Promise.all([
-    client.from("raw_transactions").select("*").eq("user_id", userId).in("id", rawIds),
-    client.from("accounts").select("*").eq("user_id", userId),
+    includeRawContext
+      ? client
+        .from("raw_transactions")
+        .select(RAW_TRANSACTION_CONTEXT_COLUMNS)
+        .eq("user_id", userId)
+        .in("id", rawIds)
+      : Promise.resolve({ data: [] as RawTransactionContextRow[], error: null }),
+    client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked"),
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
     client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
@@ -595,7 +680,14 @@ async function hydrateTransactions(
   ]);
 
   const rawById = byId(expectData(rawResult, "Load raw transactions"));
-  const accountById = byId(expectData(accountResult, "Load accounts for transactions"));
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "Load active Plaid item ids for transactions") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
+  );
+  const accountById = byId(
+    expectData(accountResult, "Load accounts for transactions")
+      .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+  );
   const institutionById = byId(expectData(institutionResult, "Load institutions for transactions"));
   const categoryById = byId(expectData(categoryResult, "Load categories for transactions"));
   const reviewsByTransaction = groupBy(
@@ -613,8 +705,10 @@ async function hydrateTransactions(
     (split) => split.transactionId
   );
 
-  return enrichedRows.map((row) => {
+  return enrichedRows.flatMap((row) => {
     const account = accountById.get(row.account_id);
+    if (!account) return [];
+
     return buildTransactionRecord({
       row,
       raw: rawById.get(row.raw_transaction_id),
@@ -628,16 +722,63 @@ async function hydrateTransactions(
   });
 }
 
+async function listReviewTransactionIds(
+  client: FinanceSupabaseClient,
+  userId: string,
+  filters: Pick<TransactionListFilters, "reviewReason" | "reviewStatus">
+) {
+  const statusFilter = filters.reviewStatus && filters.reviewStatus !== "all"
+    ? filters.reviewStatus
+    : null;
+  const reasonFilter = filters.reviewReason && filters.reviewReason !== "all"
+    ? filters.reviewReason
+    : null;
+
+  if (!statusFilter && !reasonFilter) return null;
+
+  async function loadIds(filter: { reason?: ReviewReason; status?: ReviewStatus }) {
+    let query = client
+      .from("review_items")
+      .select("enriched_transaction_id")
+      .eq("user_id", userId);
+
+    if (filter.status) query = query.eq("status", filter.status);
+    if (filter.reason) query = query.eq("reason", filter.reason);
+    if (filter.status && !filter.reason) {
+      query = query.neq("reason", "new-recurring").neq("reason", "recurring-candidate");
+    }
+
+    return new Set(expectData(await query, "List review transaction ids").map((row) => row.enriched_transaction_id));
+  }
+
+  if (statusFilter && reasonFilter) {
+    const [statusIds, reasonIds] = await Promise.all([
+      loadIds({ status: statusFilter }),
+      loadIds({ reason: reasonFilter })
+    ]);
+    return [...statusIds].filter((id) => reasonIds.has(id));
+  }
+
+  return [...await loadIds(statusFilter ? { status: statusFilter } : { reason: reasonFilter! })];
+}
+
 export async function listAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {
-  const [accountResult, institutionResult] = await Promise.all([
-    client.from("accounts").select("*").eq("user_id", userId).order("type").order("name"),
-    client.from("institutions").select("*").eq("user_id", userId)
+  const [accountResult, institutionResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true).order("type").order("name"),
+    client.from("institutions").select("*").eq("user_id", userId),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
   ]);
 
   const institutionById = byId(expectData(institutionResult, "List account institutions"));
-  return expectData(accountResult, "List accounts").map((account) =>
-    toAccountRecord(account, institutionById.get(account.institution_id))
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
   );
+  return expectData(accountResult, "List accounts")
+    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) =>
+      toAccountRecord(account, institutionById.get(account.institution_id))
+    );
 }
 
 export async function listCategories(client: FinanceSupabaseClient, userId: string): Promise<CategoryRecord[]> {
@@ -798,6 +939,16 @@ export async function listTransactions(
   userId: string,
   filters: TransactionListFilters = {}
 ): Promise<TransactionRecord[]> {
+  const reviewTransactionIds = await listReviewTransactionIds(client, userId, filters);
+  if (reviewTransactionIds && reviewTransactionIds.length === 0) return [];
+  const visibleAccountIds = await listVisibleAccountIds(client, userId);
+  if (visibleAccountIds.length === 0) return [];
+  const visibleAccountIdSet = new Set(visibleAccountIds);
+  const accountIds = filters.accountIds?.length
+    ? filters.accountIds.filter((accountId) => visibleAccountIdSet.has(accountId))
+    : visibleAccountIds;
+  if (accountIds.length === 0) return [];
+
   let query = client
     .from("enriched_transactions")
     .select("*")
@@ -805,9 +956,10 @@ export async function listTransactions(
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (filters.accountIds?.length) {
-    query = query.in("account_id", filters.accountIds);
+  if (reviewTransactionIds) {
+    query = query.in("id", reviewTransactionIds);
   }
+  query = query.in("account_id", accountIds);
   if (filters.categoryIds?.length) {
     query = query.in("category_id", filters.categoryIds);
   }
@@ -823,13 +975,18 @@ export async function listTransactions(
   if (filters.recurring !== undefined) {
     query = query.eq("is_recurring", filters.recurring);
   }
+  if (filters.excludeTransfers) {
+    query = query.neq("intent", "transfer");
+  }
   const rowLimit = transactionRowLimit(filters);
   if (rowLimit !== undefined) {
     query = query.limit(rowLimit);
   }
 
   const enrichedRows = expectData(await query, "List enriched transactions");
-  const hydrated = await hydrateTransactions(client, userId, enrichedRows);
+  const hydrated = await hydrateTransactions(client, userId, enrichedRows, {
+    includeRawContext: filters.search?.trim() ? true : filters.includeRawContext
+  });
   return filterTransactionRecordsForList(hydrated, filters);
 }
 
@@ -1665,7 +1822,8 @@ export async function recordAuditEvent(
     user_id: userId
   };
 
-  const result = await client
+  const auditClient = createServiceRoleClient(client) ?? client;
+  const result = await auditClient
     .from("audit_events")
     .insert(insert)
     .select("*")

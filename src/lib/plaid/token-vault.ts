@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { getPlaidCredentialConfig, PlaidConfigurationError } from "./config";
+import { getPlaidCredentialConfig, getPlaidRuntimeEnvironment, PlaidConfigurationError } from "./config";
 
 const TOKEN_VERSION = "v1";
 const TOKEN_ALGORITHM = "aes-256-gcm";
@@ -13,6 +13,10 @@ export class PlaidTokenDecryptionError extends Error {
 
 function isProductionRuntime() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function isStableTokenKeyRequired() {
+  return getPlaidRuntimeEnvironment() === "production" || isProductionRuntime();
 }
 
 function hashKey(...parts: string[]) {
@@ -31,6 +35,18 @@ function getLegacyTokenKey() {
   );
 }
 
+function tryGetLegacyTokenKey() {
+  try {
+    return getLegacyTokenKey();
+  } catch {
+    // Legacy key requires Plaid credential config. If credentials are not
+    // configured (e.g. an explicit token key was rotated in and Plaid
+    // creds are temporarily missing during startup), skip the legacy key
+    // rather than failing the entire decrypt path.
+    return null;
+  }
+}
+
 function getExplicitTokenKey() {
   const explicitKey = process.env.PLAID_TOKEN_ENCRYPTION_KEY?.trim();
 
@@ -39,25 +55,42 @@ function getExplicitTokenKey() {
     : null;
 }
 
-function getPrimaryTokenKey() {
+function getRequiredExplicitTokenKey() {
   const explicitKey = getExplicitTokenKey();
 
   if (explicitKey) {
     return explicitKey;
   }
 
-  if (isProductionRuntime()) {
-    throw new PlaidConfigurationError("PLAID_TOKEN_ENCRYPTION_KEY is required in production.");
+  if (isStableTokenKeyRequired()) {
+    throw new PlaidConfigurationError(
+      "PLAID_TOKEN_ENCRYPTION_KEY is required when PLAID_ENV=production or the app runs in production. " +
+      "Generate one with `openssl rand -base64 32`, store it unchanged in every production-like environment, " +
+      "and reconnect any Plaid items whose existing ciphertext cannot be decrypted."
+    );
   }
 
-  return getLegacyTokenKey();
+  return null;
+}
+
+function getPrimaryTokenKey() {
+  return getRequiredExplicitTokenKey() ?? getLegacyTokenKey();
 }
 
 function getDecryptionKeys() {
-  const primary = getExplicitTokenKey();
-  const legacy = getLegacyTokenKey();
+  const primary = getRequiredExplicitTokenKey();
+  const legacy = tryGetLegacyTokenKey();
 
-  if (!primary) return [legacy];
+  if (!primary) {
+    if (!legacy) {
+      throw new PlaidConfigurationError(
+        "PLAID_TOKEN_ENCRYPTION_KEY is required when Plaid credentials are not configured."
+      );
+    }
+    return [legacy];
+  }
+
+  if (!legacy) return [primary];
 
   return primary.equals(legacy) ? [primary] : [primary, legacy];
 }

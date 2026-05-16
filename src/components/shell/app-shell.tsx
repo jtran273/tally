@@ -7,14 +7,24 @@ import {
   Landmark,
   List,
   Repeat,
+  RefreshCw,
   Search,
   Settings,
   X,
   type LucideIcon
 } from "lucide-react";
+import { TallyMark } from "@/components/brand/tally-mark";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState
+} from "react";
 
 type RouteKey = "dashboard" | "transactions" | "agentInbox" | "review" | "recurring" | "accounts" | "settings";
 
@@ -24,6 +34,14 @@ type RouteMeta = {
   label: string;
   title: string;
 };
+
+type OpportunisticSyncReason = "in_progress" | "no_items" | "recently_synced" | "synced";
+
+interface OpportunisticSyncResponse {
+  opportunisticSync?: {
+    reason: OpportunisticSyncReason;
+  };
+}
 
 const routeHref: Record<RouteKey, string> = {
   accounts: "/accounts",
@@ -97,8 +115,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentTransactionSearch = isTransactionList ? searchParams.get("q") ?? "" : "";
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const shouldRefocusSearchRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [bankDataCheckStatus, setBankDataCheckStatus] = useState<"checking" | "updated" | null>("checking");
 
   const focusSearchInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -121,7 +142,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key.toLowerCase() !== "k" || (!event.metaKey && !event.ctrlKey)) return;
 
       event.preventDefault();
@@ -135,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isSearchOpen) return;
 
-    function handleKeyDown(event: KeyboardEvent) {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key !== "Escape") return;
 
       event.preventDefault();
@@ -154,11 +175,43 @@ export function AppShell({ children }: { children: ReactNode }) {
     focusSearchInput();
   }, [currentTransactionSearch, focusSearchInput, pathname]);
 
-  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    let ignore = false;
 
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("q") ?? "").trim();
+    fetch("/api/plaid/sync/opportunistic", {
+      cache: "no-store",
+      method: "POST"
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({})) as OpportunisticSyncResponse;
+        if (!response.ok) return null;
+        return body.opportunisticSync?.reason ?? null;
+      })
+      .then((reason) => {
+        if (ignore) return;
+
+        if (reason === "synced") {
+          setBankDataCheckStatus("updated");
+          router.refresh();
+          window.setTimeout(() => {
+            if (!ignore) setBankDataCheckStatus(null);
+          }, 4000);
+          return;
+        }
+
+        setBankDataCheckStatus(null);
+      })
+      .catch(() => {
+        if (!ignore) setBankDataCheckStatus(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [router]);
+
+  function submitTransactionSearch(value: string) {
+    const query = value.trim();
     const params = isTransactionList
       ? new URLSearchParams(searchParams.toString())
       : new URLSearchParams();
@@ -174,13 +227,50 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.push(`${routeHref.transactions}${serialized ? `?${serialized}` : ""}`);
   }
 
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    submitTransactionSearch(String(formData.get("q") ?? ""));
+  }
+
+  function handleSearchInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+
+    event.preventDefault();
+    submitTransactionSearch(event.currentTarget.value);
+  }
+
+  const handleSidebarWheel = useCallback((event: WheelEvent) => {
+    if (event.deltaY === 0 || window.matchMedia("(max-width: 900px)").matches) return;
+
+    const sidebar = event.currentTarget as HTMLElement | null;
+    const page = pageRef.current;
+    if (!sidebar || !page || page.scrollHeight <= page.clientHeight) return;
+
+    const canScrollSidebarUp = sidebar.scrollTop > 0;
+    const canScrollSidebarDown = sidebar.scrollTop + sidebar.clientHeight < sidebar.scrollHeight - 1;
+    const shouldScrollSidebar = event.deltaY < 0 ? canScrollSidebarUp : canScrollSidebarDown;
+    if (shouldScrollSidebar) return;
+
+    event.preventDefault();
+    page.scrollBy({ left: event.deltaX, top: event.deltaY });
+  }, []);
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+
+    sidebar.addEventListener("wheel", handleSidebarWheel, { passive: false });
+    return () => sidebar.removeEventListener("wheel", handleSidebarWheel);
+  }, [handleSidebarWheel]);
+
   return (
     <div className="ledger-app">
-      <aside className="sidebar">
-        <Link className="brand" href={routeHref.dashboard} aria-label="Ledger dashboard">
-          <div className="brand-mark">L</div>
-          <div className="brand-name">Ledger</div>
-          <div className="brand-sub">Personal</div>
+      <aside className="sidebar" ref={sidebarRef}>
+        <Link className="brand" href={routeHref.dashboard} aria-label="Tally dashboard">
+          <div className="brand-mark"><TallyMark aria-hidden /></div>
+          <div className="brand-name">Tally</div>
         </Link>
 
         <nav className="nav" aria-label="Main navigation">
@@ -220,6 +310,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <h1 className="topbar-title">{routeMeta[route].title}</h1>
           </div>
           <div className="topbar-actions">
+            {bankDataCheckStatus ? (
+              <div className="bank-data-check" role="status">
+                <RefreshCw size={13} aria-hidden />
+                <span>{bankDataCheckStatus === "checking" ? "Checking for new bank data" : "Bank data updated"}</span>
+              </div>
+            ) : null}
             <button
               aria-controls="mobile-transaction-search"
               aria-expanded={isSearchOpen}
@@ -253,7 +349,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   id="transaction-global-search"
                   key={`${pathname}:${currentTransactionSearch}`}
                   name="q"
-                  placeholder="Search transactions, merchants, categories..."
+                  onKeyDown={handleSearchInputKeyDown}
+                  placeholder="Search transactions..."
                   ref={searchInputRef}
                   type="search"
                 />
@@ -270,7 +367,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-        <div className="page">{children}</div>
+        <div className="page" ref={pageRef}>{children}</div>
       </main>
     </div>
   );

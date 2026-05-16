@@ -3,6 +3,7 @@ import {
   listGoogleCalendarConnections,
   requireCalendarRouteUser
 } from "@/lib/calendar";
+import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ export async function GET() {
     const connections = await listGoogleCalendarConnections(context.supabase, context.user.id);
     return jsonNoStore({ connections });
   } catch (error) {
-    console.error("google_calendar_connections_list_failed", error);
+    logSafeError("google_calendar_connections_list_failed", error);
     return jsonNoStore({ error: "Unable to load Google Calendar connections." }, { status: 500 });
   }
 }

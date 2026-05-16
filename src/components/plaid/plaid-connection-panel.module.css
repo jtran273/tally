@@ -1,0 +1,89 @@
+.spin {
+  animation: plaid-spin 1s linear infinite;
+}
+
+@keyframes plaid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.dismiss {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.dismiss:hover,
+.dismiss:focus-visible {
+  opacity: 1;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 24px 18px;
+  color: var(--muted);
+  font-size: var(--text-ui);
+  text-align: center;
+  background: var(--surface-2);
+}
+
+.emptyState strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.emptyState p {
+  margin: 0;
+  max-width: 360px;
+  line-height: 1.4;
+}
+
+.repairPrimary {
+  border-color: color-mix(in oklab, var(--accent, var(--pos)) 60%, var(--line));
+}
+
+.alertBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

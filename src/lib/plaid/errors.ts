@@ -53,9 +53,12 @@ export function logPlaidError(context: string, error: unknown) {
 
 export function getPlaidErrorStatus(error: unknown) {
   if (error instanceof PlaidConfigurationError || error instanceof PlaidRouteConfigurationError) return 503;
+  if (error instanceof PlaidTokenDecryptionError) return 503;
 
   const safe = getSafePlaidError(error);
   if (safe.status === 401 || safe.status === 403) return 502;
+  if (safe.status === 429) return 429;
   if (safe.status && safe.status >= 400 && safe.status < 500) return 400;
-  return 502;
+  if (safe.status && safe.status >= 500) return 502;
+  return 500;
 }

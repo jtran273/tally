@@ -11,7 +11,7 @@
 .errorNotice {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -19,13 +19,13 @@
 .errorNotice {
   padding: 14px 16px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   overflow-wrap: anywhere;
 }
 
 .errorNotice {
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
-  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
@@ -57,7 +57,7 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -71,9 +71,13 @@
   background: var(--surface);
 }
 
+.accessRow form {
+  flex: 0 0 auto;
+}
+
 .settingTitle {
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 600;
 }
 
@@ -81,7 +85,7 @@
   margin-top: 4px;
   overflow-wrap: anywhere;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
   line-height: 1.4;
 }
 
@@ -93,11 +97,11 @@
   justify-content: center;
   gap: 6px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 0 12px;
   background: var(--surface);
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 450;
   text-decoration: none;
   white-space: nowrap;
@@ -118,7 +122,8 @@
     flex-direction: column;
   }
 
-  .secondaryButton {
+  .accessRow form,
+  .accessRow button {
     width: 100%;
   }
 }

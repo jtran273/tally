@@ -4,14 +4,14 @@
   place-items: center;
   padding: 32px;
   background:
-    linear-gradient(135deg, rgba(47, 111, 78, 0.08), transparent 34%),
+    linear-gradient(135deg, color-mix(in oklab, var(--sage-soft) 70%, transparent), transparent 34%),
     var(--bg);
 }
 
 .panel {
   width: min(100%, 420px);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 28px;
   background: var(--surface);
   box-shadow: var(--shadow-md);
@@ -35,9 +35,12 @@
 .mark {
   width: 36px;
   height: 36px;
-  border-radius: 7px;
-  font-family: inherit;
-  font-size: 24px;
+  border-radius: var(--radius-control);
+}
+
+.mark svg {
+  width: 25px;
+  height: 25px;
 }
 
 .iconWrap {
@@ -47,7 +50,7 @@
 }
 
 .name {
-  font-family: inherit;
+  font-family: var(--font-serif);
   font-size: 25px;
   line-height: 1;
 }
@@ -59,7 +62,7 @@
 
 .sub {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .stack {
@@ -71,13 +74,13 @@
 .eyebrow {
   margin: 0 0 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
 .title {
   margin: 0;
-  font-family: inherit;
+  font-family: var(--font-serif);
   font-size: 38px;
   font-weight: 400;
   line-height: 1;
@@ -93,14 +96,14 @@
   flex-direction: column;
   gap: 7px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
 .field input {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 12px;
   background: var(--surface);
   outline: none;
@@ -113,17 +116,19 @@
 
 .notice {
   margin: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .error {
-  background: rgba(181, 74, 58, 0.1);
+  border: 1px solid color-mix(in oklab, var(--neg) 24%, var(--line));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
 .success {
+  border: 1px solid color-mix(in oklab, var(--sage) 24%, var(--line));
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -142,7 +147,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 14px;
   font-weight: 600;
   text-decoration: none;
@@ -179,14 +184,14 @@
 .demoTitle {
   margin: 0;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 700;
 }
 
 .demoCopy {
   margin: 3px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .demoButton {
@@ -196,11 +201,54 @@
   justify-content: center;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 14px;
   background: var(--surface);
   color: var(--ink);
   font-weight: 700;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel {
+    animation: login-panel-in var(--dur-slow) var(--ease-emphasized) both;
+  }
+
+  .primaryButton,
+  .secondaryButton,
+  .primaryLink,
+  .demoButton,
+  .field input {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-base) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .primaryButton:not(:disabled):hover,
+  .primaryLink:hover {
+    transform: translateY(-1px);
+  }
+
+  .secondaryButton:hover,
+  .demoButton:hover {
+    border-color: color-mix(in oklab, var(--sage) 42%, var(--line));
+    background: var(--sage-soft);
+    color: var(--sage-ink);
+  }
+}
+
+@keyframes login-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 520px) {

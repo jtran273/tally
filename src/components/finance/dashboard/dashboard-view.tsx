@@ -2,6 +2,7 @@
 
 import type {
   AccountRecord,
+  RecurringExpenseRecord,
   TransactionIntent,
   TransactionStatus
 } from "@/lib/db";
@@ -12,13 +13,18 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
+import { displayCategoryName } from "@/lib/finance/classification";
+import { CADENCE_LABEL, recurringMonthlyAmount } from "@/lib/finance/recurring-cadence";
 import { isReportableIncomeIntent } from "@/lib/finance/reimbursement-linking";
 import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
+import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   Clock3,
   CreditCard,
   Database,
   Landmark,
+  RefreshCw,
   Tags,
   TrendingDown,
   TrendingUp,
@@ -26,6 +32,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
 
@@ -51,15 +58,17 @@ interface DashboardViewProps {
   categoryBreakdowns: CategoryBreakdownSummary[];
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
   liabilitiesDue: LiabilitiesDueSummary;
+  recurringExpenses: RecurringExpenseRecord[];
   snapshotCount: number;
   syncSummary: SyncSummary;
   totals: AccountBalanceTotals;
 }
 
 type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
-type ActivityMode = "point" | "through";
+type ActivityMode = "after" | "before" | "point";
 type CategoryViewMode = "trend" | "month";
 
 interface BalanceViewOption {
@@ -84,6 +93,12 @@ const compactMoneyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 1,
   notation: "compact",
+  style: "currency"
+});
+
+const axisMoneyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 0,
   style: "currency"
 });
 
@@ -113,6 +128,14 @@ function formatMoney(value: number, compact = false) {
   return (compact ? compactMoneyFormatter : moneyFormatter).format(value);
 }
 
+function formatAxisMoney(value: number, scaleRange: number) {
+  if (Math.abs(value) < 10_000 || scaleRange < 1_000) {
+    return axisMoneyFormatter.format(value);
+  }
+
+  return compactMoneyFormatter.format(value);
+}
+
 function formatSignedMoney(value: number) {
   if (value === 0) return formatMoney(0);
   return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
@@ -140,8 +163,52 @@ function addDaysIso(value: string, days: number) {
   return isoDate(date);
 }
 
+function monthStartIso(value: string) {
+  return `${value.slice(0, 7)}-01`;
+}
+
+function monthEndIso(value: string) {
+  const month = value.slice(0, 7);
+  const [yearText, monthText] = month.split("-");
+  const end = new Date(Date.UTC(Number(yearText), Number(monthText), 0));
+  return end.toISOString().slice(0, 10);
+}
+
+function transactionDateParams(fromDate: string, toDate: string, preferToDateMonth = false) {
+  const month = fromDate.slice(0, 7) === toDate.slice(0, 7) || preferToDateMonth
+    ? toDate.slice(0, 7)
+    : "";
+
+  if (!month) return { from: fromDate, to: toDate };
+
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndIso(toDate);
+
+  return {
+    from: fromDate > monthStart ? fromDate : undefined,
+    month,
+    to: toDate < monthEnd ? toDate : undefined
+  };
+}
+
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function trendScaleDomain(values: readonly number[]) {
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const rawRange = max - min;
+  const magnitude = Math.max(Math.abs(max), Math.abs(min), 1);
+  const minimumVisibleRange = Math.min(10_000, Math.max(100, magnitude * 0.04));
+  const scaleRange = Math.max(rawRange * 1.16, minimumVisibleRange);
+  const midpoint = (max + min) / 2;
+
+  return {
+    max: midpoint + scaleRange / 2,
+    min: midpoint - scaleRange / 2,
+    range: scaleRange
+  };
 }
 
 function rangeOptionForKey(rangeKey: TrendRangeKey) {
@@ -166,7 +233,9 @@ function latestTrendDelta(trend: readonly BalanceTrendPoint[]) {
   const first = trend[0];
   const latest = trend[trend.length - 1];
   const amount = latest.netWorth - first.netWorth;
-  const percent = first.netWorth === 0 ? 0 : (amount / Math.abs(first.netWorth)) * 100;
+  const percent = first.netWorth === 0
+    ? null
+    : (amount / Math.abs(first.netWorth)) * 100;
 
   return { amount, percent };
 }
@@ -177,9 +246,16 @@ function pointDelta(trend: readonly BalanceTrendPoint[], index: number) {
   const previous = trend[index - 1];
   const current = trend[index];
   const amount = current.netWorth - previous.netWorth;
-  const percent = previous.netWorth === 0 ? 0 : (amount / Math.abs(previous.netWorth)) * 100;
+  const percent = previous.netWorth === 0
+    ? null
+    : (amount / Math.abs(previous.netWorth)) * 100;
 
   return { amount, percent };
+}
+
+function formatDeltaPercentSuffix(percent: number | null) {
+  if (percent === null || !Number.isFinite(percent)) return "";
+  return ` (${percent >= 0 ? "+" : ""}${percent.toFixed(1)}%)`;
 }
 
 function deltaToneClass(amount: number, positiveIsGood: boolean) {
@@ -212,13 +288,6 @@ function transactionAmountClass(amount: number) {
   if (amount > 0) return styles.positiveAmount;
   if (amount < 0) return styles.negativeAmount;
   return "";
-}
-
-function syncLabel(summary: SyncSummary) {
-  if (summary.status === "empty") return "No accounts";
-  if (summary.status === "never") return "Never synced";
-  if (summary.status === "stale") return `${summary.staleCount + summary.neverSyncedCount} stale`;
-  return "Fresh";
 }
 
 function formatRelativeTime(value: string | null) {
@@ -355,6 +424,7 @@ function TrendChart({
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activityMode, setActivityMode] = useState<ActivityMode>("point");
+  const showActivityPanel = scope === "cash" || scope === "cashMinusLiabilities";
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(720);
 
@@ -396,9 +466,7 @@ function TrendChart({
   }
 
   const values = selectedTrend.map((point) => point.netWorth);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
+  const scale = trendScaleDomain(values);
   const compactChart = containerWidth < 520;
   const width = Math.max(compactChart ? 320 : 520, containerWidth);
   const height = compactChart ? 176 : 220;
@@ -409,7 +477,7 @@ function TrendChart({
   const plotHeight = height - padding.top - padding.bottom;
   const points = selectedTrend.map((point, index) => {
     const x = selectedTrend.length === 1 ? width / 2 : padding.left + (index / (selectedTrend.length - 1)) * plotWidth;
-    const y = padding.top + plotHeight - ((point.netWorth - min) / range) * plotHeight;
+    const y = padding.top + plotHeight - ((point.netWorth - scale.min) / scale.range) * plotHeight;
     return [x, y] as const;
   });
   const line =
@@ -442,45 +510,76 @@ function TrendChart({
     )),
     activeDelta?.amount ?? null
   ).slice(0, 10) : periodTransactions;
-  const throughTransactions = hasSelectedPoint ? sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= activePoint.date)
+  const activityPeriodStartDate = hasSelectedPoint && rangeKey === "1M" && monthStartIso(activePoint.date) > start.date
+    ? monthStartIso(activePoint.date)
+    : start.date;
+  const beforePointEndDate = hasSelectedPoint ? addDaysIso(activePoint.date, -1) : end.date;
+  const afterPointStartDate = hasSelectedPoint ? addDaysIso(activePoint.date, 1) : start.date;
+  const beforeTransactions = hasSelectedPoint ? sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => (
+      beforePointEndDate >= activityPeriodStartDate &&
+      transaction.date >= activityPeriodStartDate &&
+      transaction.date <= beforePointEndDate
+    ))
   ).slice(0, 10) : periodTransactions;
-  const visibleTransactions = !hasSelectedPoint
+  const afterTransactions = hasSelectedPoint ? sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => (
+      afterPointStartDate <= end.date &&
+      transaction.date >= afterPointStartDate &&
+      transaction.date <= end.date
+    ))
+  ).slice(0, 10) : periodTransactions;
+  const rawVisibleTransactions = !hasSelectedPoint
     ? periodTransactions
     : activityMode === "point"
       ? pointTransactions
-      : throughTransactions;
-  const activityFromDate = !hasSelectedPoint
+      : activityMode === "before"
+        ? beforeTransactions
+        : afterTransactions;
+  const visibleTransactions = scope === "cash"
+    ? rawVisibleTransactions.filter((transaction) => dashboardTransactionIncomeAmount(transaction) > 0)
+    : rawVisibleTransactions;
+  const candidateActivityFromDate = !hasSelectedPoint
     ? start.date
     : activityMode === "point"
       ? previousPoint ? addDaysIso(previousPoint.date, 1) : start.date
-      : start.date;
-  const activityToDate = hasSelectedPoint ? activePoint.date : end.date;
+      : activityMode === "before"
+        ? activityPeriodStartDate
+        : afterPointStartDate;
+  const candidateActivityToDate = !hasSelectedPoint
+    ? end.date
+    : activityMode === "before"
+      ? beforePointEndDate
+      : activityMode === "after"
+        ? end.date
+        : activePoint.date;
+  const hasValidActivityRange = candidateActivityFromDate <= candidateActivityToDate;
+  const activityFromDate = hasValidActivityRange ? candidateActivityFromDate : start.date;
+  const activityToDate = hasValidActivityRange ? candidateActivityToDate : end.date;
   const activityHref = transactionsHref({
     exclude_transfers: true,
-    from: activityFromDate,
-    to: activityToDate
+    ...transactionDateParams(activityFromDate, activityToDate, rangeKey === "1M")
   });
   const gridLines = [
-    { label: max, y: padding.top },
-    { label: min + range / 2, y: padding.top + plotHeight / 2 },
-    { label: min, y: padding.top + plotHeight }
+    { label: scale.max, y: padding.top },
+    { label: scale.min + scale.range / 2, y: padding.top + plotHeight / 2 },
+    { label: scale.min, y: padding.top + plotHeight }
   ];
   const sourceLabel = hasSnapshotTrend
     ? `${snapshotCount.toLocaleString("en-US")} balance snapshots available`
     : hasTransactionTrend
-      ? "Estimated from posted non-transfer transaction history"
+      ? "Based on posted non-transfer transaction history"
       : "Snapshot trend unavailable; using current persisted balances";
   const activeSourceLabel = activePoint.source === "snapshot"
     ? "Daily Plaid balance snapshot"
     : activePoint.source === "transaction"
-      ? "Estimated from posted transactions"
+      ? "Based on posted transactions"
       : "Current persisted balance";
   const selectedPeriodDeltaLabel = delta
-    ? `${formatSignedMoney(delta.amount)} (${delta.percent >= 0 ? "+" : ""}${delta.percent.toFixed(1)}%)`
+    ? `${formatSignedMoney(delta.amount)}${formatDeltaPercentSuffix(delta.percent)}`
     : "No change yet";
   const selectedPointDeltaLabel = activeDelta
-    ? `${formatSignedMoney(activeDelta.amount)} (${activeDelta.percent >= 0 ? "+" : ""}${activeDelta.percent.toFixed(1)}%)`
+    ? `${formatSignedMoney(activeDelta.amount)}${formatDeltaPercentSuffix(activeDelta.percent)}`
     : "Range start";
   const selectedPointX = activeCoords
     ? Math.min(Math.max(activeCoords[0], padding.left + 48), width - padding.right - 48)
@@ -496,11 +595,14 @@ function TrendChart({
   const selectedPointValueY = activeCoords
     ? Math.max(padding.top + 12, activeCoords[1] - 10)
     : 0;
+  const activityNoun = scope === "cash" ? "Income" : "Transactions";
   const activityTitle = !hasSelectedPoint
-    ? "Transactions in selected period"
+    ? `${activityNoun} in selected period`
     : activityMode === "point"
-      ? "Transactions for selected point"
-      : "Transactions up to selected point";
+      ? `${activityNoun} for selected point`
+      : activityMode === "before"
+        ? `${activityNoun} before selected point`
+        : `${activityNoun} after selected point`;
 
   return (
     <div className={styles.trendPanel}>
@@ -526,7 +628,7 @@ function TrendChart({
             <DeltaIcon size={14} aria-hidden />
             {delta ? (
               <>
-                {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%)
+                {formatSignedMoney(delta.amount)}{formatDeltaPercentSuffix(delta.percent)}
               </>
             ) : (
               "No period delta yet"
@@ -593,7 +695,7 @@ function TrendChart({
                 y2={y}
               />
               <text className={styles.trendScaleLabel} x="4" y={y + 4}>
-                {formatMoney(label, true)}
+                {formatAxisMoney(label, scale.range)}
               </text>
             </g>
           ))}
@@ -687,52 +789,62 @@ function TrendChart({
       </div>
       <div className={styles.trendSource}>{sourceLabel}</div>
 
-      <section className={styles.activityPanel} aria-label="Selected balance transactions">
-        <div className={styles.activityHead}>
-          <div>
-            <span className={styles.eyebrow}>Transactions</span>
-            <h3>{activityTitle}</h3>
-          </div>
-          <div className={styles.activityActions}>
-            {hasSelectedPoint ? (
-              <div className={styles.activityModeControls} aria-label="Transaction scope">
+      {showActivityPanel ? (
+        <section className={styles.activityPanel} aria-label="Selected balance transactions">
+          <div className={styles.activityHead}>
+            <div>
+              <span className={styles.eyebrow}>{activityNoun}</span>
+              <h3>{activityTitle}</h3>
+            </div>
+            <div className={styles.activityActions}>
+              {hasSelectedPoint ? (
+                <div className={styles.activityModeControls} aria-label="Transaction scope">
+                  <button
+                    aria-pressed={activityMode === "point"}
+                    className={activityMode === "point" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("point")}
+                    type="button"
+                  >
+                    Point
+                  </button>
+                  <button
+                    aria-pressed={activityMode === "before"}
+                    className={activityMode === "before" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("before")}
+                    type="button"
+                  >
+                    Before
+                  </button>
+                  <button
+                    aria-pressed={activityMode === "after"}
+                    className={activityMode === "after" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("after")}
+                    type="button"
+                  >
+                    After
+                  </button>
+                </div>
+              ) : null}
+              {hasSelectedPoint ? (
                 <button
-                  aria-pressed={activityMode === "point"}
-                  className={activityMode === "point" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("point")}
+                  className={styles.textButton}
+                  onClick={() => setActiveIndex(null)}
                   type="button"
                 >
-                  Point
+                  Clear point
                 </button>
-                <button
-                  aria-pressed={activityMode === "through"}
-                  className={activityMode === "through" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("through")}
-                  type="button"
-                >
-                  Up to point
-                </button>
-              </div>
-            ) : null}
-            {hasSelectedPoint ? (
-              <button
-                className={styles.textButton}
-                onClick={() => setActiveIndex(null)}
-                type="button"
-              >
-                Clear point
-              </button>
-            ) : null}
-            <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
+              ) : null}
+              <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
+            </div>
           </div>
-        </div>
-        <TransactionRows transactions={visibleTransactions} />
-      </section>
+          <TransactionRows transactions={visibleTransactions} />
+        </section>
+      ) : null}
     </div>
   );
 }
 
-const categoryTrendPalette = ["#2f6f4e", "#2f5f8f", "#9a6b1f", "#7a4f9f", "#b55353"];
+const categoryTrendPalette = ["#4F6A4D", "#5A7298", "#8A6620", "#A85543", "#6C8A6A"];
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
 
@@ -824,6 +936,10 @@ function sourceSummary(sources: Map<string, { amount: number; count: number }>) 
 
   if (sorted.length <= 1) return topSource;
   return `${topSource} + ${sorted.length - 1} more`;
+}
+
+function categoryIdsValue(categoryIds: Set<string>) {
+  return categoryIds.size > 0 ? [...categoryIds].sort().join(",") : null;
 }
 
 function buildIncomeBreakdownForRange(
@@ -950,6 +1066,7 @@ function buildCategoryTrend(
 ) {
   const grouped = new Map<string, {
     byDate: Map<string, number>;
+    categoryIds: Set<string>;
     count: number;
     id: string | null;
     label: string;
@@ -966,12 +1083,14 @@ function buildCategoryTrend(
     const amount = dashboardTransactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
-    const key = transaction.categoryId ?? transaction.category;
+    const label = displayCategoryName(transaction.category);
+    const key = label;
     const group = grouped.get(key) ?? {
       byDate: new Map<string, number>(),
+      categoryIds: new Set<string>(),
       count: 0,
-      id: transaction.categoryId,
-      label: transaction.category,
+      id: null,
+      label,
       pendingAmount: 0,
       total: 0
     };
@@ -979,6 +1098,7 @@ function buildCategoryTrend(
     group.byDate.set(transaction.date, roundMoney((group.byDate.get(transaction.date) ?? 0) + amount));
     group.count += 1;
     group.total = roundMoney(group.total + amount);
+    if (transaction.categoryId) group.categoryIds.add(transaction.categoryId);
     if (transaction.status === "pending") group.pendingAmount = roundMoney(group.pendingAmount + amount);
     grouped.set(key, group);
 
@@ -996,7 +1116,7 @@ function buildCategoryTrend(
       return {
         color: categoryTrendPalette[index % categoryTrendPalette.length],
         count: group.count,
-        id: group.id,
+        id: categoryIdsValue(group.categoryIds),
         label: group.label,
         pendingAmount: group.pendingAmount,
         points: dates.map((date) => {
@@ -1052,7 +1172,7 @@ function IncomeByCategoryPanel({
         </div>
         <Link
           className={styles.textLink}
-          href={transactionsHref({ from: breakdown.fromDate, to: breakdown.toDate })}
+          href={transactionsHref({ direction: "income", from: breakdown.fromDate, to: breakdown.toDate })}
         >
           Open transactions
         </Link>
@@ -1088,6 +1208,7 @@ function IncomeByCategoryPanel({
                 className={styles.categoryRow}
                 href={transactionsHref({
                   category: row.id ?? undefined,
+                  direction: "income",
                   from: breakdown.fromDate,
                   q: row.id ? undefined : row.label,
                   to: breakdown.toDate
@@ -1174,8 +1295,8 @@ function CategorySpendingPanel({
     ? `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
     : `${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
   const openTransactionsHref = viewMode === "trend"
-    ? transactionsHref({ exclude_transfers: true, from: fromDate, to: toDate })
-    : transactionsHref({ exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
+    ? transactionsHref({ direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
+    : transactionsHref({ direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
@@ -1284,6 +1405,7 @@ function CategorySpendingPanel({
                 className={styles.categoryRow}
                 href={transactionsHref({
                   category: row.id ?? undefined,
+                  direction: "spending",
                   exclude_transfers: true,
                   from: fromDate,
                   q: row.id ? undefined : row.label,
@@ -1344,6 +1466,7 @@ function CategorySpendingPanel({
                     className={styles.categoryRow}
                     href={transactionsHref({
                       category: row.id ?? undefined,
+                      direction: "spending",
                       exclude_transfers: true,
                       from: breakdown.fromDate,
                       q: row.id ? undefined : row.label,
@@ -1457,6 +1580,421 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
   );
 }
 
+function NetWorthCompositionPanel({
+  accounts,
+  totals
+}: {
+  accounts: readonly AccountRecord[];
+  totals: AccountBalanceTotals;
+}) {
+  if (accounts.length === 0) return null;
+
+  const liquidAccounts = accounts
+    .filter((account) => account.type === "depository")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+  const investmentAccounts = accounts
+    .filter((account) => account.type === "investment" || account.type === "retirement")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+  const debtAccounts = accounts
+    .filter((account) => account.type === "credit")
+    .map((account) => ({ account, value: Math.abs(account.balance) }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const liquidTotal = liquidAccounts.reduce((sum, row) => sum + row.value, 0);
+  const investmentTotal = investmentAccounts.reduce((sum, row) => sum + row.value, 0);
+  const debtTotal = debtAccounts.reduce((sum, row) => sum + row.value, 0);
+  const grossAssets = Math.max(liquidTotal, 0) + Math.max(investmentTotal, 0);
+
+  const groups = [
+    {
+      accounts: liquidAccounts,
+      color: "var(--sage-ink)",
+      key: "liquid",
+      label: "Liquid assets",
+      total: liquidTotal
+    },
+    {
+      accounts: investmentAccounts,
+      color: "var(--info)",
+      key: "investments",
+      label: "Investments",
+      total: investmentTotal
+    }
+  ].filter((group) => group.accounts.length > 0);
+
+  return (
+    <section aria-label="Net worth composition" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Composition</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(totals.netWorth)}</h3>
+          <p className={styles.liabilityCoverage}>
+            {formatMoney(grossAssets)} assets minus {formatMoney(debtTotal)} debt.
+          </p>
+        </div>
+      </div>
+
+      {grossAssets + debtTotal > 0 ? (() => {
+        const barTotal = grossAssets + debtTotal;
+        return (
+          <div className={styles.compositionBar} role="img" aria-label="Net worth composition bar">
+            {groups.map((group) => (
+              <span
+                key={group.key}
+                className={styles.compositionSegment}
+                style={{ background: group.color, width: `${(Math.max(0, group.total) / barTotal) * 100}%` }}
+                title={`${group.label}: ${formatMoney(group.total)}`}
+              />
+            ))}
+            {debtTotal > 0 ? (
+              <span
+                className={styles.compositionSegment}
+                style={{ background: "var(--neg)", width: `${(debtTotal / barTotal) * 100}%` }}
+                title={`Debt: ${formatMoney(debtTotal)}`}
+              />
+            ) : null}
+          </div>
+        );
+      })() : null}
+
+      <div className={styles.compositionGroups}>
+        {groups.map((group) => (
+          <div className={styles.compositionGroup} key={group.key}>
+            <div className={styles.compositionGroupHead}>
+              <strong>
+                <span className={styles.compositionSwatch} style={{ background: group.color }} aria-hidden />
+                {group.label}
+              </strong>
+              <span className={styles.compositionGroupValue}>{formatMoney(group.total)}</span>
+            </div>
+            <ul className={styles.compositionAccountList}>
+              {group.accounts.map(({ account, value }) => (
+                <li key={account.id} className={styles.compositionAccountRow}>
+                  <span>{friendlyAccountLabel(account)}</span>
+                  <strong className={value < 0 ? styles.liabilityOverdue : undefined}>
+                    {formatMoney(value)}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {debtAccounts.length > 0 ? (
+          <div className={styles.compositionGroup}>
+            <div className={styles.compositionGroupHead}>
+              <strong>
+                <span className={styles.compositionSwatch} style={{ background: "var(--neg)" }} aria-hidden />
+                Debt
+              </strong>
+              <span className={`${styles.compositionGroupValue} ${styles.liabilityOverdue}`}>
+                −{formatMoney(debtTotal)}
+              </span>
+            </div>
+            <ul className={styles.compositionAccountList}>
+              {debtAccounts.map(({ account, value }) => (
+                <li key={account.id} className={styles.compositionAccountRow}>
+                  <span>{friendlyAccountLabel(account)}</span>
+                  <strong className={styles.liabilityOverdue}>−{formatMoney(value)}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function RecurringBillsPanel({
+  recurringExpenses
+}: {
+  recurringExpenses: readonly RecurringExpenseRecord[];
+}) {
+  const active = recurringExpenses
+    .filter((expense) => expense.status === "active")
+    .map((expense) => ({ expense, monthly: recurringMonthlyAmount(expense) }))
+    .sort((a, b) => b.monthly - a.monthly);
+
+  if (active.length === 0) return null;
+
+  const monthlyTotal = active.reduce((sum, row) => sum + row.monthly, 0);
+  const maxMonthly = Math.max(...active.map((row) => row.monthly), 1);
+
+  return (
+    <section aria-label="Recurring bills" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Recurring bills</span>
+          <h3 className={styles.liabilityHeadline}>~{formatMoney(monthlyTotal)} / mo</h3>
+          <p className={styles.liabilityCoverage}>
+            {active.length} validated {active.length === 1 ? "subscription" : "subscriptions"} from the recurring tab, normalized to monthly.
+          </p>
+        </div>
+      </div>
+      <div className={styles.liabilityRows}>
+        {active.map(({ expense, monthly }) => {
+          const barWidth = (monthly / maxMonthly) * 100;
+          const nextDue = expense.nextDueDate ? formatDate(expense.nextDueDate) : null;
+          const category = expense.category ?? "Uncategorized";
+          return (
+            <div className={styles.liabilityRow} key={expense.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{expense.merchant}</strong>
+                  <span>
+                    {CADENCE_LABEL[expense.cadence]} · {category}
+                    {nextDue ? ` · next ${nextDue}` : ""}
+                  </span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong>{formatMoney(Math.abs(expense.amount))}</strong>
+                  <span className={styles.liabilityCurrent}>per charge</span>
+                </div>
+              </div>
+              <div className={styles.utilizationTrack} aria-hidden>
+                <span style={{ width: `${barWidth}%` }} className={styles.liabilityDueSoon} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DebtSummaryPanel({ accounts }: { accounts: readonly AccountRecord[] }) {
+  const cards = accounts
+    .filter((account) => account.type === "credit")
+    .map((account) => {
+      const balance = Math.abs(account.balance);
+      const limit = account.creditLimit ?? null;
+      const utilization = limit && limit > 0 ? Math.min(100, (balance / limit) * 100) : null;
+      return { account, balance, limit, utilization };
+    })
+    .filter((card) => card.balance > 0 || card.limit !== null)
+    .sort((a, b) => b.balance - a.balance);
+
+  if (cards.length === 0) return null;
+
+  const totalOwed = cards.reduce((sum, card) => sum + card.balance, 0);
+  const totalLimit = cards.reduce((sum, card) => sum + (card.limit ?? 0), 0);
+  const overall = totalLimit > 0 ? (totalOwed / totalLimit) * 100 : null;
+
+  return (
+    <section aria-label="Debt summary" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Debt</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(totalOwed)}</h3>
+          <p className={styles.liabilityCoverage}>
+            {totalLimit > 0
+              ? `${formatMoney(totalLimit)} total limit${overall !== null ? ` · ${overall.toFixed(0)}% utilized` : ""}`
+              : `Across ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+          </p>
+        </div>
+      </div>
+
+      {totalOwed > 0 ? (
+        <div className={styles.compositionBar} role="img" aria-label="Debt by card">
+          {cards.map((card) => (
+            <span
+              key={card.account.id}
+              className={styles.compositionSegment}
+              style={{ background: "var(--neg)", width: `${(card.balance / totalOwed) * 100}%`, opacity: 0.85 }}
+              title={`${friendlyAccountLabel(card.account)}: ${formatMoney(card.balance)}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div className={styles.liabilityRows}>
+        {cards.map(({ account, balance, limit, utilization }) => {
+          const tone = utilization === null
+            ? styles.liabilityCurrent
+            : utilization >= 80
+              ? styles.liabilityOverdue
+              : utilization >= 30
+                ? styles.liabilityDueSoon
+                : styles.liabilityPaid;
+          return (
+            <div className={styles.liabilityRow} key={account.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{friendlyAccountLabel(account)}</strong>
+                  <span>
+                    {limit
+                      ? `${formatMoney(balance)} of ${formatMoney(limit)} limit`
+                      : "No limit reported"}
+                  </span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong>{formatMoney(balance)}</strong>
+                  <span className={tone}>
+                    {utilization !== null ? `${utilization.toFixed(0)}% used` : "—"}
+                  </span>
+                </div>
+              </div>
+              {utilization !== null ? (
+                <div className={styles.utilizationTrack} aria-hidden>
+                  <span style={{ width: `${utilization}%` }} className={tone} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SpendableComparisonPanel({
+  accounts,
+  liabilitiesDue,
+  totals
+}: {
+  accounts: readonly AccountRecord[];
+  liabilitiesDue: LiabilitiesDueSummary;
+  totals: AccountBalanceTotals;
+}) {
+  const liquidTotal = accounts
+    .filter((account) => account.type === "depository")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const debtTotal = totals.liabilities;
+  const spendable = liquidTotal - debtTotal;
+  const denominator = Math.max(liquidTotal, debtTotal, 1);
+  const coverageOk = liquidTotal >= debtTotal;
+  const ratio = debtTotal > 0 ? liquidTotal / debtTotal : null;
+
+  return (
+    <section aria-label="Spendable comparison" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Spendable math</span>
+          <h3 className={`${styles.liabilityHeadline} ${coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}`}>
+            {formatMoney(spendable)}
+          </h3>
+          <p className={styles.liabilityCoverage}>
+            {coverageOk
+              ? `Liquid assets cover debt with ${formatMoney(spendable)} to spare.`
+              : `Debt exceeds liquid assets by ${formatMoney(Math.abs(spendable))}.`}
+            {ratio !== null ? ` Liquid is ${ratio.toFixed(1)}× debt.` : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className={styles.compositionStack} aria-label="Liquid versus debt">
+        <div className={styles.compositionRow}>
+          <span className={styles.compositionRowLabel}>Liquid assets</span>
+          <div className={styles.compositionBar} role="img" aria-label="Liquid assets bar">
+            <span
+              className={styles.compositionSegment}
+              style={{ background: "var(--sage-ink)", width: `${(liquidTotal / denominator) * 100}%` }}
+            />
+          </div>
+          <span className={styles.compositionRowValue}>{formatMoney(liquidTotal)}</span>
+        </div>
+        <div className={styles.compositionRow}>
+          <span className={styles.compositionRowLabel}>Debt</span>
+          <div className={styles.compositionBar} role="img" aria-label="Debt bar">
+            <span
+              className={styles.compositionSegment}
+              style={{ background: "var(--neg)", width: `${(debtTotal / denominator) * 100}%` }}
+            />
+          </div>
+          <span className={`${styles.compositionRowValue} ${styles.liabilityOverdue}`}>
+            −{formatMoney(debtTotal)}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.liabilityRows}>
+        <div className={styles.liabilityRow}>
+          <div className={styles.liabilityRowMain}>
+            <div>
+              <strong>Liquid assets − Debt</strong>
+              <span>What&apos;s truly available after paying off cards.</span>
+            </div>
+            <div className={styles.liabilityRowAmount}>
+              <strong className={coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}>
+                {formatMoney(spendable)}
+              </strong>
+            </div>
+          </div>
+        </div>
+        {liabilitiesDue.totalOwed > 0 ? (
+          <div className={styles.liabilityRow}>
+            <div className={styles.liabilityRowMain}>
+              <div>
+                <strong>Coverage</strong>
+                <span>{liabilitiesDue.hasOverdue ? "Includes overdue balances." : liabilitiesDue.hasDueSoon ? "Includes balances due soon." : "No urgent balances."}</span>
+              </div>
+              <div className={styles.liabilityRowAmount}>
+                <strong className={liabilitiesDue.coverageDelta >= 0 ? styles.liabilityPaid : styles.liabilityOverdue}>
+                  {liabilitiesDue.coverageDelta >= 0
+                    ? `+${formatMoney(liabilitiesDue.coverageDelta)}`
+                    : `−${formatMoney(Math.abs(liabilitiesDue.coverageDelta))}`}
+                </strong>
+                <span className={styles.liabilityCurrent}>after paying due cards</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function CashAccountsPanel({ accounts }: { accounts: readonly AccountRecord[] }) {
+  const cashAccounts = accounts
+    .filter((account) => account.type === "depository")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+
+  if (cashAccounts.length === 0) return null;
+
+  const total = cashAccounts.reduce((sum, row) => sum + row.value, 0);
+
+  const maxValue = Math.max(...cashAccounts.map((row) => row.value), 1);
+
+  return (
+    <section aria-label="Liquid accounts" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Liquid accounts</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(total)} across {cashAccounts.length}</h3>
+          <p className={styles.liabilityCoverage}>Checking and savings — money available right now.</p>
+        </div>
+      </div>
+      <div className={styles.liabilityRows}>
+        {cashAccounts.map(({ account, value }) => {
+          const share = total > 0 ? (value / total) * 100 : 0;
+          const barWidth = (value / maxValue) * 100;
+          return (
+            <div className={styles.liabilityRow} key={account.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{friendlyAccountLabel(account)}</strong>
+                  <span>{accountGroupLabel(account)}</span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong className={value < 0 ? styles.liabilityOverdue : undefined}>{formatMoney(value)}</strong>
+                  <span className={styles.liabilityCurrent}>{share.toFixed(1)}% of liquid</span>
+                </div>
+              </div>
+              <div className={styles.utilizationTrack} aria-hidden>
+                <span style={{ width: `${barWidth}%` }} className={styles.liabilityPaid} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardView({
   accounts,
   asOfDate,
@@ -1465,17 +2003,23 @@ export function DashboardView({
   categoryBreakdowns,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
   liabilitiesDue,
+  recurringExpenses,
   snapshotCount,
   syncSummary,
   totals
 }: DashboardViewProps) {
+  const router = useRouter();
   const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("cashMinusLiabilities");
   const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
   const [categoryRangeKey, setCategoryRangeKey] = useState<TrendRangeKey>("1M");
+  const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const cashScopeValue = totals.cash;
   const cashMinusLiabilities = totals.cash - totals.liabilities;
-  const balanceViews: BalanceViewOption[] = [
+  const balanceViews: BalanceViewOption[] = useMemo(() => [
     {
       description: "All assets minus credit card balances.",
       icon: Landmark,
@@ -1485,61 +2029,92 @@ export function DashboardView({
       value: totals.netWorth
     },
     {
-      description: "Checking, savings, and other cash accounts.",
+      description: "Checking and savings balances available right now.",
       icon: Database,
       key: "cash",
-      label: "Cash",
+      label: "Liquid assets",
       positiveIsGood: true,
-      value: totals.cash
+      value: cashScopeValue
     },
     {
       description: "Credit card balances owed.",
       icon: CreditCard,
       key: "liabilities",
-      label: "Liabilities",
+      label: "Debt",
       positiveIsGood: false,
       tone: "negative",
       value: totals.liabilities
     },
     {
-      description: "Cash accounts after subtracting liabilities.",
+      description: "Liquid assets minus debt — what's truly yours to spend.",
       icon: WalletCards,
       key: "cashMinusLiabilities",
-      label: "Cash - liabilities",
+      label: "Spendable",
       positiveIsGood: true,
       tone: cashMinusLiabilities < 0 ? "negative" : "positive",
       value: cashMinusLiabilities
     }
-  ];
+  ], [cashMinusLiabilities, cashScopeValue, totals.liabilities, totals.netWorth]);
   const selectedBalanceView = balanceViews.find((option) => option.key === balanceViewKey) ?? balanceViews[0];
   const selectedBalanceTone = selectedBalanceView.tone ?? (selectedBalanceView.value < 0 ? "negative" : undefined);
+  const lastSyncedLabel = formatRelativeTime(syncSummary.latestSyncedAt);
+
+  async function syncPlaidData() {
+    if (isDemo) {
+      setSyncMessage("Demo data is static.");
+      return;
+    }
+
+    setSyncState("syncing");
+    setSyncMessage(null);
+
+    try {
+      const response = await fetch("/api/plaid/sync", {
+        cache: "no-store",
+        method: "POST"
+      });
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Unable to sync Plaid data.");
+      }
+
+      setSyncMessage("Synced");
+      router.refresh();
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : "Unable to sync Plaid data.");
+    } finally {
+      setSyncState("idle");
+    }
+  }
 
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so persisted dashboard data cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load your persisted dashboard data.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
       ) : null}
 
       {accounts.length === 0 ? (
-        <div className={styles.emptyState}>
+        <div className={styles.emptyState} role="status">
           <Database size={24} aria-hidden />
           <div>
             <strong>No persisted accounts yet</strong>
             <span>Connect Plaid to populate account balances and net worth.</span>
+            <LinkButton href="/accounts">Go to accounts</LinkButton>
           </div>
         </div>
       ) : (
@@ -1552,11 +2127,26 @@ export function DashboardView({
               </h2>
               <p className={styles.heroDescription}>{selectedBalanceView.description}</p>
             </div>
-            <div className={`${styles.syncPill} ${styles[`sync-${syncSummary.status}`]}`}>
-              <Clock3 size={13} aria-hidden />
-              <span>{syncLabel(syncSummary)}</span>
-              <span>{formatRelativeTime(syncSummary.latestSyncedAt)}</span>
-            </div>
+            <section className={styles.syncActionPanel} aria-label="Plaid sync">
+              <div className={styles.syncActionMeta}>
+                <Clock3 size={13} aria-hidden />
+                <span>Plaid sync</span>
+                <strong>{lastSyncedLabel}</strong>
+              </div>
+              <button
+                aria-busy={syncState === "syncing"}
+                className={styles.syncActionLink}
+                disabled={isDemo || syncState === "syncing"}
+                onClick={() => void syncPlaidData()}
+                type="button"
+              >
+                <RefreshCw className={syncState === "syncing" ? styles.spin : undefined} size={13} aria-hidden />
+                {isDemo ? "Demo" : syncState === "syncing" ? "Syncing" : "Sync"}
+              </button>
+              <span className={styles.syncActionStatus} role="status">
+                {syncMessage ?? (isDemo ? "Read-only sample data" : "")}
+              </span>
+            </section>
           </div>
 
           <div className={styles.balanceViewControls} aria-label="Balance view">
@@ -1603,22 +2193,50 @@ export function DashboardView({
         </section>
       )}
 
-      {accounts.length > 0 ? <LiabilitiesDuePanel summary={liabilitiesDue} /> : null}
-      {accounts.length > 0 ? (
-        <CategorySpendingPanel
-          asOfDate={asOfDate}
-          breakdowns={categoryBreakdowns}
-          rangeKey={categoryRangeKey}
-          setRangeKey={setCategoryRangeKey}
-          transactions={balanceTransactions}
-        />
-      ) : null}
-      {accounts.length > 0 ? (
-        <IncomeByCategoryPanel
-          asOfDate={asOfDate}
-          transactions={balanceTransactions}
-        />
-      ) : null}
+      {accounts.length > 0 ? (() => {
+        const scope = selectedBalanceView.key;
+        const accountTypeById = new Map(accounts.map((account) => [account.id, account.type] as const));
+        const scopedTransactions = balanceTransactions.filter((transaction) =>
+          transactionIncludedInScope(transaction, accountTypeById, scope)
+        );
+
+        if (scope === "netWorth") {
+          return <NetWorthCompositionPanel accounts={accounts} totals={totals} />;
+        }
+
+        if (scope === "cash") {
+          return (
+            <>
+              <CashAccountsPanel accounts={accounts} />
+              <IncomeByCategoryPanel asOfDate={asOfDate} transactions={scopedTransactions} />
+            </>
+          );
+        }
+
+        if (scope === "liabilities") {
+          return (
+            <>
+              <DebtSummaryPanel accounts={accounts} />
+              <CategorySpendingPanel
+                asOfDate={asOfDate}
+                breakdowns={categoryBreakdowns}
+                rangeKey={categoryRangeKey}
+                setRangeKey={setCategoryRangeKey}
+                transactions={scopedTransactions}
+              />
+              <RecurringBillsPanel recurringExpenses={recurringExpenses} />
+            </>
+          );
+        }
+
+        return (
+          <SpendableComparisonPanel
+            accounts={accounts}
+            liabilitiesDue={liabilitiesDue}
+            totals={totals}
+          />
+        );
+      })() : null}
     </div>
   );
 }

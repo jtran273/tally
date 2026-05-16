@@ -1,4 +1,6 @@
 import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
+import { isRecurringReview } from "@/lib/review/reasons";
+import { displayCategoryName } from "./classification";
 import { isReportableIncomeIntent } from "./reimbursement-linking";
 import { summarizeTransactionReimbursement } from "./reimbursements";
 
@@ -114,21 +116,32 @@ function inDateRange(transaction: Pick<TransactionRecord, "date">, fromDate: str
   return transaction.date >= fromDate && transaction.date <= toDate;
 }
 
+function groupedCategoryLabel(transaction: Pick<TransactionRecord, "category">) {
+  return displayCategoryName(transaction.category);
+}
+
+function groupedCategoryKey(transaction: Pick<TransactionRecord, "category">) {
+  return groupedCategoryLabel(transaction);
+}
+
+function categoryIdsValue(categoryIds: Set<string>) {
+  return categoryIds.size > 0 ? [...categoryIds].sort().join(",") : null;
+}
+
 function groupSpending(
   transactions: readonly TransactionRecord[],
   group: "category" | "merchant",
   previousTransactions: readonly TransactionRecord[] = []
 ): SpendingGroupSummary[] {
-  const grouped = new Map<string, SpendingGroupSummary>();
+  type InternalGroup = SpendingGroupSummary & { categoryIds: Set<string> };
+  const grouped = new Map<string, InternalGroup>();
   const previousGrouped = new Map<string, number>();
 
   previousTransactions.forEach((transaction) => {
     const amount = transactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
-    const id = group === "category" ? transaction.categoryId : transaction.merchant;
-    const label = group === "category" ? transaction.category : transaction.merchant;
-    const key = id ?? label;
+    const key = group === "category" ? groupedCategoryKey(transaction) : transaction.merchant;
     previousGrouped.set(key, roundMoney((previousGrouped.get(key) ?? 0) + amount));
   });
 
@@ -136,11 +149,12 @@ function groupSpending(
     const amount = transactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
-    const id = group === "category" ? transaction.categoryId : transaction.merchant;
-    const label = group === "category" ? transaction.category : transaction.merchant;
-    const key = id ?? label;
+    const id = group === "category" ? null : transaction.merchant;
+    const label = group === "category" ? groupedCategoryLabel(transaction) : transaction.merchant;
+    const key = group === "category" ? label : transaction.merchant;
     const current = grouped.get(key) ?? {
       amount: 0,
+      categoryIds: new Set<string>(),
       deltaAmount: 0,
       deltaPercent: 0,
       count: 0,
@@ -162,17 +176,20 @@ function groupSpending(
     }
     current.count += 1;
     current.transactionIds.push(transaction.id);
+    if (group === "category" && transaction.categoryId) current.categoryIds.add(transaction.categoryId);
     grouped.set(key, current);
   });
 
   return [...grouped.values()]
     .map((item) => {
-      const previousAmount = previousGrouped.get(item.id ?? item.label) ?? 0;
+      const previousAmount = previousGrouped.get(item.label) ?? 0;
       const deltaAmount = roundMoney(item.amount - previousAmount);
+      const { categoryIds, ...publicItem } = item;
       return {
-        ...item,
+        ...publicItem,
         deltaAmount,
         deltaPercent: deltaPercent(item.amount, previousAmount),
+        id: group === "category" ? categoryIdsValue(categoryIds) : item.id,
         previousAmount
       };
     })
@@ -278,8 +295,8 @@ function summarizeConfidence(transactions: readonly TransactionRecord[]): Spendi
 
     const groupKey = uncategorized
       ? `uncategorized:${transaction.merchant.toLowerCase()}`
-      : transaction.categoryId ?? transaction.category;
-    const groupLabel = uncategorized ? `Uncategorized: ${transaction.merchant}` : transaction.category;
+      : groupedCategoryKey(transaction);
+    const groupLabel = uncategorized ? `Uncategorized: ${transaction.merchant}` : groupedCategoryLabel(transaction);
     const group = cleanupGroups.get(groupKey) ?? {
       amount: 0,
       count: 0,
@@ -383,7 +400,11 @@ export function transactionSpendingAmount(
 export function hasOpenReview(
   transaction: Pick<TransactionRecord, "reviewItems" | "reviewStatus">
 ) {
-  return transaction.reviewStatus === "open" || transaction.reviewItems.some((item) => item.status === "open");
+  if (transaction.reviewItems.length > 0) {
+    return transaction.reviewItems.some((item) => item.status === "open" && !isRecurringReview(item.reason));
+  }
+
+  return transaction.reviewStatus === "open";
 }
 
 export function deltaPercent(current: number, previous: number) {
@@ -425,7 +446,13 @@ function buildCategoryBreakdownForRange(
   previousFrom: string,
   previousTo: string
 ): CategoryBreakdownSummary {
-  const currentRows = new Map<string, { id: string | null; label: string; amount: number; count: number; openReviewCount: number }>();
+  const currentRows = new Map<string, {
+    amount: number;
+    categoryIds: Set<string>;
+    count: number;
+    label: string;
+    openReviewCount: number;
+  }>();
   const previousAmounts = new Map<string, number>();
   let totalAmount = 0;
 
@@ -434,15 +461,21 @@ function buildCategoryBreakdownForRange(
     const amount = transactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
-    const id = transaction.categoryId;
-    const label = transaction.category || "Uncategorized";
-    const key = id ?? label;
+    const label = groupedCategoryLabel(transaction);
+    const key = groupedCategoryKey(transaction);
 
     if (transaction.date >= fromDate) {
-      const current = currentRows.get(key) ?? { id, label, amount: 0, count: 0, openReviewCount: 0 };
+      const current = currentRows.get(key) ?? {
+        amount: 0,
+        categoryIds: new Set<string>(),
+        count: 0,
+        label,
+        openReviewCount: 0
+      };
       current.amount = roundMoney(current.amount + amount);
       current.count += 1;
       if (hasOpenReview(transaction)) current.openReviewCount += 1;
+      if (transaction.categoryId) current.categoryIds.add(transaction.categoryId);
       currentRows.set(key, current);
       totalAmount = roundMoney(totalAmount + amount);
     } else if (transaction.date >= previousFrom && transaction.date <= previousTo) {
@@ -451,12 +484,16 @@ function buildCategoryBreakdownForRange(
   });
 
   const rows: CategoryBreakdownRow[] = [...currentRows.values()].map((row) => {
-    const previousAmount = previousAmounts.get(row.id ?? row.label) ?? 0;
+    const previousAmount = previousAmounts.get(row.label) ?? 0;
     const deltaAmount = roundMoney(row.amount - previousAmount);
     return {
-      ...row,
+      amount: row.amount,
+      count: row.count,
       deltaAmount,
       deltaPercent: deltaPercent(row.amount, previousAmount),
+      id: categoryIdsValue(row.categoryIds),
+      label: row.label,
+      openReviewCount: row.openReviewCount,
       percent: totalAmount > 0 ? Math.round((row.amount / totalAmount) * 1000) / 10 : 0,
       previousAmount
     };

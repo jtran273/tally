@@ -1,16 +1,12 @@
 import { createPlaidRouteWriteClient, plaidRouteError } from "@/lib/plaid/route-helpers";
 import { syncScheduledPlaidConnections } from "@/lib/plaid/service";
-import { jsonNoStore } from "@/lib/security/request";
+import { isAuthorizedBearerToken, jsonNoStore } from "@/lib/security/request";
 import { type NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
 function isAuthorizedScheduledRequest(request: NextRequest) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
-
-  const authorization = request.headers.get("authorization") ?? "";
-  return authorization === `Bearer ${secret}`;
+  return isAuthorizedBearerToken(request.headers, process.env.CRON_SECRET);
 }
 
 export async function POST(request: NextRequest) {

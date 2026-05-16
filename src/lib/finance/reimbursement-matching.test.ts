@@ -117,6 +117,14 @@ test("suggestReimbursementMatches excludes payroll, transfers, negative, and alr
   assert.deepEqual(suggestions, []);
 });
 
+test("suggestReimbursementMatches excludes inflows far above the expected reimbursement", () => {
+  const suggestions = suggestReimbursementMatches([expense()], [
+    inflow({ amount: 1000, id: "large-venmo", merchant: "Venmo - Chris L." })
+  ]);
+
+  assert.deepEqual(suggestions, []);
+});
+
 test("suggestReimbursementMatches lowers confidence when amount, timing, and category are weak", () => {
   const suggestions = suggestReimbursementMatches([
     expense({
@@ -154,10 +162,11 @@ test("suggestReimbursementMatches ranks by outstanding reimbursement amount inst
 
 test("suggestReimbursementMatches describes overmatched inflows without negative remaining copy", () => {
   const suggestions = suggestReimbursementMatches([expense()], [
-    inflow({ amount: 80, id: "small-overmatch", merchant: "Venmo - Chris L." })
+    inflow({ amount: 79, id: "small-overmatch", merchant: "Venmo - Chris L." })
   ]);
 
+  assert.equal(suggestions[0].matchedAmount, 79);
   assert.equal(suggestions[0].unmatchedAmount, 0);
-  assert.match(suggestions[0].reasons.join(" "), /5 would remain outside/);
-  assert.doesNotMatch(suggestions[0].reasons.join(" "), /-5 remains unmatched/);
+  assert.match(suggestions[0].reasons.join(" "), /exceeds the outstanding reimbursement by 4/);
+  assert.doesNotMatch(suggestions[0].reasons.join(" "), /-\d+(?:\.\d+)? remains unmatched/);
 });

@@ -26,9 +26,11 @@
 
 .summaryCard strong {
   overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 30px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: var(--text-title);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 
@@ -37,7 +39,9 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -47,7 +51,7 @@
 
 .warn {
   border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
-  background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+  background: var(--warn-soft);
 }
 
 .notice,
@@ -59,7 +63,7 @@
   padding: 14px 16px;
   background: var(--surface);
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   overflow-wrap: anywhere;
 }
 
@@ -71,7 +75,7 @@
 
 .errorNotice {
   border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
-  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  background: var(--neg-soft);
   color: var(--neg);
 }
 
@@ -100,16 +104,76 @@
 }
 
 .reviewGroupHead h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-family: inherit;
-  font-size: 22px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: var(--text-title);
+  font-weight: 400;
+  letter-spacing: -0.01em;
   line-height: 1.1;
+}
+
+.confidenceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 110px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  background: var(--surface-2);
+  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.confidenceTrack {
+  position: relative;
+  display: block;
+  flex: 1 1 60px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  overflow: hidden;
+}
+
+.confidenceFill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.confidenceValue {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.confidence-high {
+  color: var(--pos);
+  border-color: color-mix(in oklab, var(--pos) 32%, var(--line));
+}
+
+.confidence-mid {
+  color: var(--warn);
+  border-color: color-mix(in oklab, var(--warn) 28%, var(--line));
+}
+
+.confidence-low {
+  color: var(--neg);
+  border-color: color-mix(in oklab, var(--neg) 28%, var(--line));
+}
+
+.confidence-unknown {
+  color: var(--muted);
 }
 
 .reviewGroupHead span {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: var(--text-ui-sm);
 }
 
 .reviewCard {
@@ -136,9 +200,11 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--ink);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.15;
+  font-family: var(--font-serif);
+  font-size: var(--text-subtitle);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 }
 
 .metaLine {
@@ -147,7 +213,7 @@
   gap: 6px;
   margin-top: 7px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .metaLine span {
@@ -156,7 +222,7 @@
   max-width: 100%;
   min-height: 22px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   padding: 0 7px;
   background: var(--surface-2);
   overflow-wrap: anywhere;
@@ -172,7 +238,7 @@
 }
 
 .amountBlock strong {
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -181,7 +247,7 @@
 
 .amountBlock span {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .positiveAmount {
@@ -211,13 +277,13 @@
 
 .reasonCallout strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 600;
 }
 
 .reasonCallout span {
   color: var(--ink-2);
-  font-size: 12.5px;
+  font-size: var(--text-ui-sm);
 }
 
 .suggestionGrid {
@@ -230,12 +296,38 @@
   min-width: 0;
 }
 
+.suggestionSourceLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .columnLabel {
-  display: block;
-  margin-bottom: 7px;
+  display: inline-flex;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--text-label);
   text-transform: uppercase;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid color-mix(in oklab, var(--info) 24%, var(--line));
+  border-radius: var(--radius-xs);
+  padding: 0 7px;
+  background: var(--info-soft);
+  color: var(--ink);
+  font-size: var(--text-meta);
+}
+
+.sourceDetail {
+  margin: 0 0 9px;
+  color: var(--muted);
+  font-size: var(--text-meta);
 }
 
 .detailList {
@@ -253,7 +345,7 @@
 
 .detailList dt {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: var(--text-meta);
 }
 
 .detailList dd {
@@ -261,7 +353,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
@@ -295,9 +387,9 @@
   max-width: 100%;
   min-width: 0;
   border: 1px solid color-mix(in oklab, var(--info) 22%, var(--line));
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
-  background: color-mix(in oklab, var(--info) 4%, var(--surface));
+  background: var(--info-soft);
 }
 
 .inlineEditGrid {
@@ -312,8 +404,12 @@
   grid-column: span 3;
 }
 
-.inlineEditRecurring {
+.inlineEditFlags {
+  display: flex;
+  min-width: 0;
   align-self: end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .inlineEditActions {
@@ -331,9 +427,9 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 450;
   text-decoration: none;
   white-space: nowrap;
@@ -387,7 +483,7 @@
 .inlineError {
   width: 100%;
   color: var(--neg);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .peerForm {
@@ -397,9 +493,38 @@
   max-width: 100%;
   min-width: 0;
   border: 1px solid color-mix(in oklab, var(--warn) 22%, var(--line));
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 12px;
-  background: color-mix(in oklab, var(--warn) 4%, var(--surface));
+  background: var(--warn-soft);
+}
+
+.peerSummaryPanel {
+  display: flex;
+  flex: 1 1 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid color-mix(in oklab, var(--warn) 22%, var(--line));
+  border-radius: var(--radius-card);
+  padding: 10px;
+  background: var(--warn-soft);
+}
+
+.peerSummaryPanel div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.peerSummaryPanel strong {
+  font-size: var(--text-ui);
+}
+
+.peerSummaryPanel span {
+  color: var(--muted);
+  font-size: var(--text-meta);
 }
 
 .field {
@@ -413,7 +538,7 @@
 .splitRow label > span,
 .splitHeader > span {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -424,7 +549,7 @@
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 0 10px;
   background: var(--surface);
 }
@@ -442,11 +567,11 @@
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .inputControl,
@@ -481,7 +606,7 @@
 }
 
 .splitHeader strong {
-  font-size: 12px;
+  font-size: var(--text-meta);
   font-weight: 600;
 }
 
@@ -502,10 +627,11 @@
 .splitRow {
   display: grid;
   grid-template-columns:
-    minmax(130px, 1.2fr)
-    minmax(112px, 0.8fr)
-    minmax(150px, 1fr)
-    minmax(96px, 0.65fr)
+    minmax(120px, 1.1fr)
+    minmax(96px, 0.7fr)
+    minmax(108px, 0.75fr)
+    minmax(140px, 1fr)
+    minmax(92px, 0.6fr)
     minmax(120px, 1fr)
     36px;
   gap: 8px;
@@ -525,7 +651,7 @@
   align-items: center;
   justify-content: center;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--ink);
 }
@@ -542,7 +668,7 @@
 .inlineSuccess {
   width: 100%;
   color: var(--pos);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .emptyState {
@@ -554,9 +680,10 @@
 
 .emptyState h2 {
   margin: 6px 0 0;
-  font-family: inherit;
-  font-size: 24px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: var(--text-title);
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 .emptyState p {
@@ -580,11 +707,16 @@
     grid-column: 1 / -1;
   }
 
+  .inlineEditFlags {
+    grid-column: 1 / -1;
+  }
+
   .splitRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .splitLabelField,
+  .splitTagField,
   .splitCategoryField,
   .splitNotesField {
     grid-column: 1 / -1;
@@ -592,9 +724,34 @@
 }
 
 @media (max-width: 760px) {
-  .summaryGrid,
   .reviewCardHead {
     grid-template-columns: 1fr;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .summaryCard {
+    min-height: 66px;
+    padding: 10px;
+  }
+
+  .summaryCard strong {
+    font-size: 20px;
+  }
+
+  .summaryLabel {
+    gap: 4px;
+    font-size: var(--text-kbd);
+    line-height: 1.15;
+  }
+
+  .aiNotice,
+  .reviewGroupHead > span,
+  .reasonCallout span {
+    display: none;
   }
 
   .amountBlock {
@@ -619,6 +776,10 @@
     grid-column: auto;
   }
 
+  .inlineEditFlags {
+    grid-column: auto;
+  }
+
   .iconButton {
     width: 100%;
   }
@@ -631,25 +792,29 @@
 
 @media (max-width: 600px) {
   .summaryGrid {
-    gap: 10px;
+    gap: 8px;
   }
 
   .summaryCard {
-    min-height: 96px;
-    padding: 14px;
+    min-height: 64px;
+    padding: 9px;
   }
 
   .summaryCard strong {
-    font-size: 25px;
+    font-size: 18px;
   }
 
   .reviewCard {
-    gap: 12px;
-    padding: 14px;
+    gap: 10px;
+    padding: 12px;
   }
 
   .reviewCard h2 {
-    font-size: 18px;
+    font-size: 17px;
+  }
+
+  .reasonCallout {
+    display: none;
   }
 
   .metaLine span {
@@ -682,6 +847,16 @@
     padding: 10px;
   }
 
+  .peerSummaryPanel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .peerSummaryPanel .secondaryButton {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
   .checkboxField {
     width: 100%;
   }
@@ -707,7 +882,7 @@
   }
 
   .summaryCard strong {
-    font-size: 23px;
+    font-size: 17px;
   }
 
   .notice {

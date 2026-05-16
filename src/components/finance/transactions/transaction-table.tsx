@@ -1,17 +1,15 @@
-import type { AccountRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { AccountRecord, ReviewItemRecord, ReviewReason, ReviewStatus, TransactionRecord } from "@/lib/db";
+import { displayCategoryName, isTransferCategoryName } from "@/lib/finance/classification";
 import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
+import type { PlaidConnectionIssue } from "@/lib/plaid/status";
+import { isRecurringReview } from "@/lib/review/reasons";
 import {
   ArrowLeftRight,
-  Briefcase,
-  CircleHelp,
   Clock3,
   HandCoins,
   Pencil,
   Repeat,
-  Tag,
   TriangleAlert,
-  UserRound,
-  UsersRound,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +20,7 @@ interface TransactionTableProps {
   accountOnlyFilter: boolean;
   filtersActive: boolean;
   limit: number;
+  selectedAccountIssue: PlaidConnectionIssue | null;
   selectedAccount: AccountRecord | null;
   transactions: TransactionRecord[];
 }
@@ -56,14 +55,6 @@ const reviewReasonLabels: Record<ReviewReason, string> = {
   "recurring-candidate": "Recurring candidate"
 };
 
-const intentLabels: Record<TransactionIntent, string> = {
-  personal: "Personal",
-  business: "Business",
-  shared: "Shared",
-  reimbursable: "Reimbursable",
-  transfer: "Transfer"
-};
-
 const reimbursementLabels: Record<TransactionReimbursementState, string> = {
   none: "",
   reimbursable: "Reimbursable",
@@ -71,6 +62,9 @@ const reimbursementLabels: Record<TransactionReimbursementState, string> = {
   reimbursed: "Reimbursed",
   "written-off": "Written off"
 };
+
+const institutionSuffixes = new Set(["bank", "credit union", "cu", "fcu", "financial", "na", "n.a."]);
+const preservedAccountWords = new Set(["ACH", "ATM", "CD", "FCU", "FSA", "HSA", "IRA", "USB"]);
 
 function formatDate(value: string) {
   return dateFormatter.format(new Date(`${value}T12:00:00`));
@@ -88,40 +82,89 @@ function formatUnsignedMoney(value: number) {
 }
 
 function confidenceLabel(confidence: number) {
-  return `${Math.round(confidence * 100)}% confidence`;
+  return `${Math.round(confidence * 100)}%`;
 }
 
-function categoryQuality(transaction: TransactionRecord) {
-  const issues: string[] = [];
-  if (transaction.confidence < 0.75) issues.push("Low confidence");
-  if (!transaction.categoryId || transaction.category.toLowerCase() === "uncategorized") issues.push("Uncategorized");
-  if (transaction.reviewItems.some((review) => review.status === "open")) issues.push("Open review");
-  return issues;
+function confidenceCopy(transaction: TransactionRecord) {
+  if (transaction.confidence >= 0.95 || transaction.reviewedAt) {
+    return "Trusted manual review";
+  }
+  if (transaction.confidence < 0.75) {
+    return `Confidence ${confidenceLabel(transaction.confidence)} from import classification. Review before trusting.`;
+  }
+  return `Confidence ${confidenceLabel(transaction.confidence)} from import classification.`;
 }
 
-function reviewLabel(transaction: TransactionRecord) {
-  const review = transaction.reviewItems.find((item) => item.status === "open") ?? transaction.reviewItems[0];
+function needsCategory(transaction: TransactionRecord) {
+  return transaction.intent !== "transfer" &&
+    !isTransferCategoryName(transaction.category) &&
+    (!transaction.categoryId || transaction.category.toLowerCase() === "uncategorized");
+}
+
+function reviewLabel(review: ReviewItemRecord | undefined) {
   if (!review) return "None";
 
   return `${reviewStatusLabels[review.status]} - ${reviewReasonLabels[review.reason]}`;
 }
 
-function accountLabel(transaction: TransactionRecord) {
-  return [
-    transaction.accountName,
-    transaction.accountMask ? `-${transaction.accountMask}` : null
-  ].filter(Boolean).join(" ");
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
-function rawPlaidLine(transaction: TransactionRecord) {
-  return [
-    transaction.plaidMerchant && transaction.plaidMerchant !== transaction.merchant
-      ? transaction.plaidMerchant
-      : null,
-    transaction.plaidName && transaction.plaidName !== transaction.merchant && transaction.plaidName !== transaction.plaidMerchant
-      ? transaction.plaidName
-      : null
-  ].filter(Boolean).join(" / ");
+function suggestedCategoryName(transaction: TransactionRecord) {
+  const openReview = transaction.reviewItems.find((item) => item.status === "open" && !isRecurringReview(item.reason));
+  const suggestion = objectValue(openReview?.aiSuggestion);
+  const nestedCategory = objectValue(suggestion?.category);
+  const categoryName = typeof suggestion?.categoryName === "string"
+    ? suggestion.categoryName
+    : typeof suggestion?.category === "string"
+      ? suggestion.category
+      : typeof nestedCategory?.name === "string"
+        ? nestedCategory.name
+        : null;
+  const displayName = displayCategoryName(categoryName ?? "");
+  return displayName === "Uncategorized" ? null : displayName;
+}
+
+function displayName(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return normalized;
+  if (/[a-z]/.test(normalized)) return normalized;
+
+  return normalized
+    .toLowerCase()
+    .replace(/[a-z0-9]+(?:'[a-z0-9]+)?/g, (word) => {
+      const upper = word.toUpperCase();
+      if (preservedAccountWords.has(upper)) return upper;
+      return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+    });
+}
+
+function searchableInstitutionName(value: string) {
+  return displayName(value)
+    .toLowerCase()
+    .replace(/[^\w\s.]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word && !institutionSuffixes.has(word))
+    .join(" ");
+}
+
+function accountLabel(transaction: TransactionRecord) {
+  const accountName = displayName(transaction.accountName);
+  const institutionName = displayName(transaction.institutionName);
+  if (!institutionName || institutionName === "Unknown institution") return accountName;
+  const normalizedAccount = accountName.toLowerCase();
+  const normalizedInstitution = institutionName.toLowerCase();
+  const compactInstitution = searchableInstitutionName(institutionName);
+  if (
+    normalizedAccount.includes(normalizedInstitution) ||
+    (compactInstitution && normalizedAccount.includes(compactInstitution))
+  ) {
+    return accountName;
+  }
+  return `${institutionName} ${accountName}`;
 }
 
 function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
@@ -129,8 +172,17 @@ function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolea
   return filtersActive ? "No rows match the current filters" : "No persisted transactions yet";
 }
 
-function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
+function emptyTransactionCopy(
+  filtersActive: boolean,
+  accountOnlyFilter: boolean,
+  selectedAccount: AccountRecord | null,
+  selectedAccountIssue: PlaidConnectionIssue | null
+) {
   if (accountOnlyFilter && selectedAccount) {
+    if (selectedAccountIssue?.action === "reconnect") {
+      return `${selectedAccountIssue.detail} The saved balance can remain visible even though no transaction rows are importing.`;
+    }
+
     if (selectedAccount.type === "investment" || selectedAccount.type === "retirement") {
       return "This account can be connected and show balances even when Plaid Transactions does not return posted rows for it.";
     }
@@ -139,20 +191,8 @@ function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean
   }
 
   return filtersActive
-    ? "Reset search, date, account, review, or quality filters to bring more transactions back into view."
-    : "After Plaid syncs, Ledger will show enriched transaction rows here with merchant, category, review, and reimbursement context.";
-}
-
-function IntentIcon({ intent }: { intent: TransactionIntent }) {
-  const icons: Record<TransactionIntent, LucideIcon> = {
-    business: Briefcase,
-    personal: UserRound,
-    reimbursable: HandCoins,
-    shared: UsersRound,
-    transfer: ArrowLeftRight
-  };
-  const Icon = icons[intent];
-  return <Icon size={12} aria-hidden />;
+    ? "Reset search, month, account, category, or review filters to bring more transactions back into view."
+    : "After Plaid syncs, Tally will show enriched transaction rows here with merchant, category, review, and reimbursement context.";
 }
 
 function StatusBadge({
@@ -186,18 +226,24 @@ export function TransactionTable({
   accountOnlyFilter,
   filtersActive,
   limit,
+  selectedAccountIssue,
   selectedAccount,
   transactions
 }: TransactionTableProps) {
   if (transactions.length === 0) {
     return (
-      <div className={styles.emptyState}>
+      <div className={styles.emptyState} role="status" aria-live="polite">
         <div className={styles.emptyTitle}>
           {emptyTransactionTitle(filtersActive, accountOnlyFilter, selectedAccount)}
         </div>
         <div className={styles.emptyCopy}>
-          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount)}
+          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount, selectedAccountIssue)}
         </div>
+        {filtersActive ? (
+          <div className={styles.emptyActions}>
+            <Link className={styles.emptyResetLink} href="/transactions">Reset all filters</Link>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -210,25 +256,26 @@ export function TransactionTable({
             <tr>
               <th scope="col">Date</th>
               <th scope="col">Merchant</th>
-              <th scope="col">Quality</th>
+              <th scope="col">Category</th>
               <th scope="col">Account</th>
-              <th scope="col">Intent</th>
-              <th scope="col">Review</th>
               <th className={styles.amountHead} scope="col">Amount</th>
               <th scope="col">Edit</th>
             </tr>
           </thead>
           <tbody>
             {transactions.map((transaction) => {
-              const hasOpenReview = transaction.reviewItems.some((review) => review.status === "open");
-              const qualityIssues = categoryQuality(transaction);
+              const actionableReview = transaction.reviewItems.find((review) => review.status === "open" && !isRecurringReview(review.reason));
+              const hasRecurringSignal = transaction.reviewItems.some((review) => review.status === "open" && isRecurringReview(review.reason));
               const reimbursement = summarizeTransactionReimbursement(transaction);
-              const rawLine = rawPlaidLine(transaction);
-              const qualityText = qualityIssues.length > 0 ? qualityIssues.join(", ") : "No quality flags";
+              const transferTagged = transaction.intent === "transfer" || isTransferCategoryName(transaction.category);
+              const isUncategorized = needsCategory(transaction);
+              const suggestedCategory = isUncategorized ? suggestedCategoryName(transaction) : null;
+              const confidenceNeedsReview = transaction.confidence < 0.75 && !transaction.reviewedAt;
+              const showConfidenceContext = confidenceNeedsReview || Boolean(transaction.reviewedAt);
 
               return (
                 <tr
-                  className={`${transaction.status === "pending" ? styles.pendingRow : ""} ${hasOpenReview ? styles.reviewRow : ""}`}
+                  className={`${transaction.status === "pending" ? styles.pendingRow : ""} ${actionableReview ? styles.reviewRow : ""}`}
                   key={transaction.id}
                 >
                   <td data-label="Date">
@@ -247,14 +294,19 @@ export function TransactionTable({
                         >
                           {transaction.merchant}
                         </Link>
+                      </div>
+                      <div className={styles.statusTags}>
                         {transaction.status === "pending" ? (
                           <StatusBadge icon={Clock3} label="Pending transaction" tone="pending">Pending</StatusBadge>
                         ) : null}
-                        {transaction.recurring ? (
-                          <StatusBadge icon={Repeat} label="Recurring transaction">Recurring</StatusBadge>
+                        {actionableReview ? (
+                          <StatusBadge icon={TriangleAlert} label={reviewLabel(actionableReview)} tone="review">Needs review</StatusBadge>
                         ) : null}
-                        {hasOpenReview ? (
-                          <StatusBadge icon={TriangleAlert} label={reviewLabel(transaction)} tone="review">Review</StatusBadge>
+                        {transaction.recurring || hasRecurringSignal ? (
+                          <StatusBadge icon={Repeat} label={hasRecurringSignal ? "Recurring pattern detected" : "Recurring transaction"}>Recurring</StatusBadge>
+                        ) : null}
+                        {transferTagged ? (
+                          <StatusBadge icon={ArrowLeftRight} label="Money movement between accounts">Transfer</StatusBadge>
                         ) : null}
                         {reimbursement.state !== "none" ? (
                           <StatusBadge icon={HandCoins} label={reimbursementLabels[reimbursement.state]} tone="reimbursement">
@@ -262,66 +314,53 @@ export function TransactionTable({
                           </StatusBadge>
                         ) : null}
                       </div>
-                      <div className={styles.primaryLine}>
-                        <Tag size={12} aria-hidden />
-                        <span>{transaction.category}</span>
-                        <span className={transaction.confidence < 0.75 ? styles.lowConfidenceText : styles.confidenceText}>
-                          {confidenceLabel(transaction.confidence)}
-                        </span>
-                      </div>
-                      <div className={styles.secondaryLine}>
-                        {rawLine || transaction.note || "Raw and enriched names match"}
-                      </div>
                       {reimbursement.state !== "none" ? (
                         <div className={styles.reimbursementLine}>
                           {formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from {formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable
                         </div>
                       ) : null}
-                      {transaction.note && rawLine ? (
+                      {transaction.note ? (
                         <div className={styles.noteLine}>{transaction.note}</div>
                       ) : null}
                     </div>
                   </td>
-                  <td data-label="Quality">
+                  <td data-label="Category">
                     <div className={styles.categoryCell}>
-                      <span>{qualityText}</span>
-                      {qualityIssues.length > 0 ? (
-                        <div className={styles.qualityBadges}>
-                          {qualityIssues.map((issue) => (
-                            <span className={styles.qualityBadge} key={issue}>{issue}</span>
-                          ))}
-                        </div>
+                      <span>{displayCategoryName(transaction.category)}</span>
+                      {showConfidenceContext ? (
+                        <span className={confidenceNeedsReview ? styles.categoryWarning : styles.categoryHint} title={confidenceCopy(transaction)}>
+                          {confidenceCopy(transaction)}
+                        </span>
                       ) : null}
-                      {transaction.plaidCategory && transaction.plaidCategory !== transaction.category ? (
-                        <span>{transaction.plaidCategory}</span>
-                      ) : qualityIssues.length === 0 ? (
-                        <span>Category and confidence look stable</span>
+                      {suggestedCategory ? (
+                        <span className={styles.categoryHint}>Suggested: {suggestedCategory}</span>
+                      ) : null}
+                      {isUncategorized ? (
+                        <span className={styles.categoryWarning}>Needs a real category</span>
+                      ) : null}
+                      {isUncategorized ? (
+                        actionableReview ? (
+                          <Link className={styles.categoryActionLink} href={`/review#review-${actionableReview.id}`}>
+                            Open review
+                          </Link>
+                        ) : (
+                          <Link className={styles.categoryActionLink} href={`/transactions/${transaction.id}`}>
+                            Choose category
+                          </Link>
+                        )
                       ) : null}
                     </div>
                   </td>
                   <td data-label="Account">
                     <div className={styles.accountCell}>
                       <span>{accountLabel(transaction)}</span>
-                      <span>{transaction.institutionName}</span>
                     </div>
                   </td>
-                  <td data-label="Intent">
-                    <span
-                      aria-label={intentLabels[transaction.intent]}
-                      className={`${styles.intentChip} ${styles[`intent-${transaction.intent}`]}`}
-                      title={intentLabels[transaction.intent]}
-                    >
-                      <IntentIcon intent={transaction.intent} />
-                      <span className={styles.intentText}>{intentLabels[transaction.intent]}</span>
-                    </span>
-                  </td>
-                  <td data-label="Review">
-                    <span className={hasOpenReview ? styles.reviewText : styles.mutedText}>
-                      <CircleHelp size={12} aria-hidden />
-                      {reviewLabel(transaction)}
-                    </span>
-                  </td>
-                  <td className={`${styles.amountCell} ${transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}`} data-label="Amount">
+                  <td
+                    aria-label={`${transaction.amount >= 0 ? "Inflow" : "Outflow"} ${formatUnsignedMoney(transaction.amount)}`}
+                    className={`${styles.amountCell} ${transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}`}
+                    data-label="Amount"
+                  >
                     {formatMoney(transaction.amount)}
                   </td>
                   <td data-label="Edit">

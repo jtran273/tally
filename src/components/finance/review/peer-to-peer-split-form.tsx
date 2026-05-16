@@ -1,9 +1,21 @@
 "use client";
 
-import type { CategoryRecord, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, TransactionRecord } from "@/lib/db";
+import {
+  categoryOptionGroups,
+  displayTransactionIntent,
+  isTransferCategoryName,
+  primaryCategoryIdForId,
+  transactionIntentFromUi,
+  transactionTagFromIntent,
+  transactionTagOptions,
+  userTransactionIntentOptions,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import type { NormalizedReviewSuggestion } from "@/lib/review/suggestions";
 import { Check, Plus, Trash2 } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
 import {
   resolvePeerToPeerReviewAction,
   type ReviewActionState
@@ -13,6 +25,7 @@ import styles from "./review.module.css";
 interface PeerToPeerSplitFormProps {
   categories: CategoryRecord[];
   defaultExplanation: string;
+  isDemo: boolean;
   reviewItemId: string;
   suggestion: NormalizedReviewSuggestion;
   transaction: TransactionRecord;
@@ -20,21 +33,16 @@ interface PeerToPeerSplitFormProps {
 
 interface SplitRowState {
   amount: string;
+  baseIntent: UserTransactionIntent;
   categoryId: string;
   id: string;
-  intent: TransactionIntent;
   label: string;
   notes: string;
+  tag: TransactionTag;
 }
 
 const initialState: ReviewActionState = {};
-const intentOptions: Array<{ label: string; value: TransactionIntent }> = [
-  { value: "personal", label: "Personal" },
-  { value: "shared", label: "Shared" },
-  { value: "reimbursable", label: "Reimbursable" },
-  { value: "business", label: "Business" },
-  { value: "transfer", label: "Transfer" }
-];
+const mobileViewportQuery = "(max-width: 760px)";
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -57,8 +65,25 @@ function formatMoneyFromCents(cents: number) {
   return moneyFormatter.format(cents / 100);
 }
 
+function subscribeToMobileViewport(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const mediaQuery = window.matchMedia(mobileViewportQuery);
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function getMobileViewportSnapshot() {
+  return typeof window !== "undefined" && window.matchMedia(mobileViewportQuery).matches;
+}
+
+function getServerMobileViewportSnapshot() {
+  return false;
+}
+
 function findCategoryId(categories: CategoryRecord[], categoryName: string | undefined) {
   if (!categoryName) return null;
+  if (isTransferCategoryName(categoryName)) return null;
 
   const normalized = categoryName.trim().toLowerCase();
   return categories.find((category) => category.name.trim().toLowerCase() === normalized)?.id ?? null;
@@ -73,12 +98,19 @@ function defaultCategoryId(
     ? suggestion.categoryId
     : findCategoryId(categories, suggestion.categoryName);
 
-  return suggestedCategoryId ?? transaction.categoryId ?? categories.find((category) => category.name === "Uncategorized")?.id ?? "none";
+  return primaryCategoryIdForId(suggestedCategoryId, categories) ??
+    (isTransferCategoryName(transaction.category) ? null : primaryCategoryIdForId(transaction.categoryId, categories)) ??
+    categories.find((category) => category.name === "Uncategorized")?.id ??
+    "none";
 }
 
-function defaultIntent(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): TransactionIntent {
-  if (suggestion.intent) return suggestion.intent;
-  return transaction.intent === "transfer" ? "personal" : transaction.intent;
+function defaultBaseIntent(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): UserTransactionIntent {
+  const intent = suggestion.intent ?? transaction.intent;
+  return displayTransactionIntent(intent);
+}
+
+function defaultTag(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): TransactionTag {
+  return transactionTagFromIntent(suggestion.intent ?? transaction.intent);
 }
 
 function buildInitialRows({
@@ -89,22 +121,24 @@ function buildInitialRows({
   if (transaction.splits.length > 0) {
     return transaction.splits.map((split) => ({
       amount: formatAmountInput(split.amount),
-      categoryId: split.categoryId ?? "none",
+      baseIntent: displayTransactionIntent(split.intent),
+      categoryId: primaryCategoryIdForId(split.categoryId, categories) ?? "none",
       id: split.id,
-      intent: split.intent,
       label: split.label,
-      notes: split.notes ?? ""
+      notes: split.notes ?? "",
+      tag: transactionTagFromIntent(split.intent)
     }));
   }
 
   return [
     {
       amount: formatAmountInput(transaction.amount),
+      baseIntent: defaultBaseIntent(suggestion, transaction),
       categoryId: defaultCategoryId(categories, suggestion, transaction),
       id: "split-initial",
-      intent: defaultIntent(suggestion, transaction),
       label: "My share",
-      notes: ""
+      notes: "",
+      tag: defaultTag(suggestion, transaction)
     }
   ];
 }
@@ -112,11 +146,13 @@ function buildInitialRows({
 export function PeerToPeerSplitForm({
   categories,
   defaultExplanation,
+  isDemo,
   reviewItemId,
   suggestion,
   transaction
 }: PeerToPeerSplitFormProps) {
   const [state, formAction, isPending] = useActionState(resolvePeerToPeerReviewAction, initialState);
+  const [isMobileFormExpanded, setIsMobileFormExpanded] = useState(false);
   const [explanation, setExplanation] = useState(defaultExplanation);
   const [rows, setRows] = useState(() => buildInitialRows({ categories, suggestion, transaction }));
   const totalCents = useMemo(() => amountToCents(String(transaction.amount)), [transaction.amount]);
@@ -124,6 +160,12 @@ export function PeerToPeerSplitForm({
   const remainingCents = totalCents - allocatedCents;
   const fullyAllocated = remainingCents === 0;
   const fallbackCategoryId = defaultCategoryId(categories, suggestion, transaction);
+  const categoryGroups = categoryOptionGroups(categories);
+  const isMobileViewport = useSyncExternalStore(
+    subscribeToMobileViewport,
+    getMobileViewportSnapshot,
+    getServerMobileViewportSnapshot
+  );
 
   function updateRow(id: string, patch: Partial<SplitRowState>) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -136,9 +178,10 @@ export function PeerToPeerSplitForm({
         amount: formatAmountInput(Math.max(0, remainingCents) / 100),
         categoryId: fallbackCategoryId,
         id: `split-${Date.now()}`,
-        intent: "personal",
+        baseIntent: "personal",
         label: "New portion",
-        notes: ""
+        notes: "",
+        tag: "none"
       }
     ]);
   }
@@ -147,9 +190,36 @@ export function PeerToPeerSplitForm({
     setRows((current) => current.filter((row) => row.id !== id));
   }
 
+  if (isMobileViewport && !isMobileFormExpanded) {
+    return (
+      <div className={styles.peerSummaryPanel} aria-label="Peer-to-peer split editor">
+        <div>
+          <strong>Split needed</strong>
+          <span>{fullyAllocated ? "Fully allocated preview" : `${formatMoneyFromCents(Math.abs(remainingCents))} ${remainingCents > 0 ? "left" : "over"}`}</span>
+        </div>
+        <button className={styles.secondaryButton} onClick={() => setIsMobileFormExpanded(true)} type="button">
+          <Plus size={14} aria-hidden />
+          Edit split
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <form action={formAction} className={styles.peerForm}>
+    <form
+      action={formAction}
+      className={styles.peerForm}
+      onSubmit={(event) => {
+        if (isDemo) event.preventDefault();
+      }}
+    >
       <input name="reviewItemId" type="hidden" value={reviewItemId} />
+
+      {isDemo ? (
+        <div className={styles.inlineSuccess} role="status">
+          Peer-to-peer split editing is preview-only in demo mode.
+        </div>
+      ) : null}
 
       <label className={styles.field}>
         <span>Explanation</span>
@@ -189,16 +259,31 @@ export function PeerToPeerSplitForm({
               <span>Intent</span>
               <select
                 className={styles.selectControl}
-                name="splitIntent"
-                onChange={(event) => updateRow(row.id, { intent: event.target.value as TransactionIntent })}
-                value={row.intent}
+                onChange={(event) => updateRow(row.id, { baseIntent: event.target.value as UserTransactionIntent })}
+                value={row.baseIntent}
               >
-                {intentOptions.map((option) => (
+                {userTransactionIntentOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className={styles.splitTagField}>
+              <span>Tag</span>
+              <select
+                className={styles.selectControl}
+                onChange={(event) => updateRow(row.id, { tag: event.target.value as TransactionTag })}
+                value={row.tag}
+              >
+                {transactionTagOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input name="splitIntent" type="hidden" value={transactionIntentFromUi(row.baseIntent, row.tag)} />
             </label>
 
             <label className={styles.splitCategoryField}>
@@ -211,9 +296,9 @@ export function PeerToPeerSplitForm({
                 value={row.categoryId}
               >
                 <option value="none">Select category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
+                {categoryGroups.map((category) => (
+                  <option key={category.primaryCategoryId} value={category.primaryCategoryId}>
+                    {category.label}
                   </option>
                 ))}
               </select>
@@ -275,11 +360,11 @@ export function PeerToPeerSplitForm({
         </button>
         <button
           className={styles.primaryButton}
-          disabled={isPending || !fullyAllocated || explanation.trim().length < 6}
+          disabled={isDemo || isPending || !fullyAllocated || explanation.trim().length < 6}
           type="submit"
         >
           <Check size={14} aria-hidden />
-          {isPending ? "Saving..." : "Save and resolve"}
+          {isDemo ? "Read-only demo" : isPending ? "Saving..." : "Save and resolve"}
         </button>
       </div>
     </form>

@@ -38,6 +38,9 @@ function baseReviewItem(
 export function buildTransactionReviewItems(transaction: EnrichedTransactionRow): ReviewItemInsert[] {
   const items: ReviewItemInsert[] = [];
   const categoryName = transaction.category_name.trim().toLowerCase();
+  const needsCategory = transaction.intent !== "transfer" &&
+    categoryName !== "transfer" &&
+    (!transaction.category_id || !categoryName || categoryName === "uncategorized");
 
   if (isPeerToPeerTransaction(transaction)) {
     items.push(baseReviewItem(
@@ -54,7 +57,7 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
     return items;
   }
 
-  if (!categoryName || categoryName === "uncategorized") {
+  if (needsCategory) {
     items.push(baseReviewItem(
       transaction,
       "missing-category",
@@ -73,7 +76,7 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
   const isVeryLowConfidence = transaction.confidence !== null && transaction.confidence < VERY_LOW_CONFIDENCE_THRESHOLD;
   const isModeratelyLowWithNoCategory = transaction.confidence !== null &&
     transaction.confidence < LOW_CONFIDENCE_THRESHOLD &&
-    (!categoryName || categoryName === "uncategorized");
+    needsCategory;
 
   if (isVeryLowConfidence || isModeratelyLowWithNoCategory) {
     items.push(baseReviewItem(

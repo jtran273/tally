@@ -85,7 +85,7 @@ export function buildFirstRunChecklist(input: FirstRunChecklistInput): FirstRunC
       actionHref: hasLedgerData ? "/transactions" : "/settings",
       actionLabel: hasLedgerData ? "View transactions" : "Sync data",
       detail: hasLedgerData
-        ? `${pluralize(input.accounts.length, "account")} and ${pluralize(input.transactions.length, "transaction")} are available in the ledger.`
+        ? `${pluralize(input.accounts.length, "account")} and ${pluralize(input.transactions.length, "transaction")} are available in Tally.`
         : hasPlaidConnection
           ? "Run a Plaid sync so accounts, balances, and transaction rows become available."
           : "Connect Plaid before syncing finance data.",

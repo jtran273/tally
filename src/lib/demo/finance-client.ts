@@ -409,6 +409,11 @@ class DemoFilterBuilder<Row extends Record<string, unknown>> implements PromiseL
     return this;
   }
 
+  neq(column: string, value: unknown) {
+    this.filters.push((row) => row[column] !== value);
+    return this;
+  }
+
   in(column: string, values: readonly unknown[]) {
     const allowed = new Set(values);
     this.filters.push((row) => allowed.has(row[column]));

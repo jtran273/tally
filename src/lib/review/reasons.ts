@@ -78,10 +78,20 @@ export const REVIEW_REASON_COPY: Record<ReviewReason, ReviewReasonCopy> = {
   }
 };
 
+const recurringReviewReasons = new Set<ReviewReason>(["new-recurring", "recurring-candidate"]);
+
 export function getReviewReasonCopy(reason: ReviewReason) {
   return REVIEW_REASON_COPY[reason];
 }
 
 export function isPeerToPeerReview(reason: ReviewReason) {
   return REVIEW_REASON_COPY[reason].requiresExplanation;
+}
+
+export function isRecurringReview(reason: ReviewReason) {
+  return recurringReviewReasons.has(reason);
+}
+
+export function isManualTransactionEditResolvableReview(reason: ReviewReason) {
+  return !isPeerToPeerReview(reason) && !isRecurringReview(reason);
 }

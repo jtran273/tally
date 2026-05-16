@@ -9,6 +9,7 @@ import {
   type FinanceSupabaseClient,
   type RecurringExpenseRecord
 } from "@/lib/db";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   applyConfirmRecurringPayload,
   applyDismissRecurringPayload,
@@ -20,6 +21,7 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const recurringStatuses = ["active", "pending", "paused", "dismissed"] as const;
+const recurringTransactionLookbackDays = 1460;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface RecurringActionState {
@@ -37,7 +39,24 @@ function errorState(error: unknown): RecurringActionState {
   };
 }
 
+function recurringTransactionFromDate(asOfDate: string) {
+  const date = new Date(`${asOfDate}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - recurringTransactionLookbackDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function submittedCandidateId(formData: FormData) {
+  return cleanString(formData.get("candidateId"), 260);
+}
+
+function submittedRecurringExpenseId(formData: FormData) {
+  const recurringExpenseId = cleanString(formData.get("recurringExpenseId"), 80);
+  return uuidPattern.test(recurringExpenseId) ? recurringExpenseId : null;
+}
+
 async function getRecurringContext() {
+  if (await isDemoMode()) throw new Error("Demo mode is read-only. Sign in to update recurring rows.");
+
   const supabase = await createSupabaseServerClient();
   if (!supabase) throw new Error("Supabase is not configured.");
 
@@ -50,41 +69,37 @@ async function getRecurringContext() {
   if (!user) throw new Error("Sign in to update recurring rows.");
 
   const client = supabase as unknown as FinanceSupabaseClient;
-  const [recurringExpenses, transactions] = await Promise.all([
-    listRecurringExpenses(client, user.id, [...recurringStatuses]),
-    listTransactions(client, user.id, { limit: 5000 })
-  ]);
-  const candidates = detectRecurringCandidates(transactions, {
-    asOfDate: new Date().toISOString().slice(0, 10),
-    existingRecurring: recurringExpenses
-  });
-
   return {
-    candidates,
     client,
-    recurringExpenses,
     userId: user.id
   };
 }
 
-function findSubmittedCandidate(formData: FormData, candidates: RecurringCandidate[]) {
-  const candidateId = cleanString(formData.get("candidateId"), 260);
-  const recurringExpenseId = cleanString(formData.get("recurringExpenseId"), 80);
+async function loadRecurringCandidateContext(client: FinanceSupabaseClient, userId: string) {
+  const asOfDate = new Date().toISOString().slice(0, 10);
+  const [recurringExpenses, transactions] = await Promise.all([
+    listRecurringExpenses(client, userId, [...recurringStatuses]),
+    listTransactions(client, userId, {
+      fromDate: recurringTransactionFromDate(asOfDate),
+      includeRawContext: false
+    })
+  ]);
+  const candidates = detectRecurringCandidates(transactions, {
+    asOfDate,
+    existingRecurring: recurringExpenses
+  });
 
-  if (candidateId) {
-    return candidates.find((candidate) => candidate.id === candidateId) ?? null;
-  }
-
-  if (uuidPattern.test(recurringExpenseId)) {
-    return candidates.find((candidate) => candidate.existingRecurringId === recurringExpenseId) ?? null;
-  }
-
-  return null;
+  return {
+    candidates
+  };
 }
 
-function findSubmittedRecurringExpense(formData: FormData, recurringExpenses: RecurringExpenseRecord[]) {
-  const recurringExpenseId = cleanString(formData.get("recurringExpenseId"), 80);
-  if (!uuidPattern.test(recurringExpenseId)) return null;
+function findSubmittedCandidate(candidateId: string, candidates: RecurringCandidate[]) {
+  return candidates.find((candidate) => candidate.id === candidateId) ?? null;
+}
+
+function findSubmittedRecurringExpense(recurringExpenseId: string | null, recurringExpenses: RecurringExpenseRecord[]) {
+  if (!recurringExpenseId) return null;
   return recurringExpenses.find((expense) => expense.id === recurringExpenseId) ?? null;
 }
 
@@ -127,21 +142,32 @@ function revalidateRecurringPaths() {
 }
 
 export async function confirmRecurringAction(formData: FormData) {
-  const { candidates, client, recurringExpenses, userId } = await getRecurringContext();
-  const candidate = findSubmittedCandidate(formData, candidates);
+  const { client, userId } = await getRecurringContext();
+  const candidateId = submittedCandidateId(formData);
+  const recurringExpenseId = submittedRecurringExpenseId(formData);
 
-  if (candidate) {
-    await applyConfirmRecurringPayload(
-      client,
-      userId,
-      buildConfirmRecurringPayload(candidate, { reviewedAt: new Date().toISOString() }),
-      { actorId: userId }
-    );
-    revalidateRecurringPaths();
-    return;
+  if (candidateId) {
+    const { candidates } = await loadRecurringCandidateContext(client, userId);
+    const candidate = findSubmittedCandidate(candidateId, candidates);
+
+    if (candidate) {
+      await applyConfirmRecurringPayload(
+        client,
+        userId,
+        buildConfirmRecurringPayload(candidate, { reviewedAt: new Date().toISOString() }),
+        { actorId: userId }
+      );
+      revalidateRecurringPaths();
+      return;
+    }
+
+    if (!recurringExpenseId) {
+      throw new Error("Recurring candidate was not found or is no longer active.");
+    }
   }
 
-  const expense = findSubmittedRecurringExpense(formData, recurringExpenses);
+  const recurringExpenses = await listRecurringExpenses(client, userId, [...recurringStatuses]);
+  const expense = findSubmittedRecurringExpense(recurringExpenseId, recurringExpenses);
   if (!expense || (expense.status !== "pending" && !expense.isNew)) {
     throw new Error("Recurring row was not found or is no longer pending.");
   }
@@ -151,21 +177,32 @@ export async function confirmRecurringAction(formData: FormData) {
 }
 
 export async function dismissRecurringAction(formData: FormData) {
-  const { candidates, client, recurringExpenses, userId } = await getRecurringContext();
-  const candidate = findSubmittedCandidate(formData, candidates);
+  const { client, userId } = await getRecurringContext();
+  const candidateId = submittedCandidateId(formData);
+  const recurringExpenseId = submittedRecurringExpenseId(formData);
 
-  if (candidate) {
-    await applyDismissRecurringPayload(
-      client,
-      userId,
-      buildDismissRecurringPayload(candidate, { reviewedAt: new Date().toISOString() }),
-      { actorId: userId }
-    );
-    revalidateRecurringPaths();
-    return;
+  if (candidateId) {
+    const { candidates } = await loadRecurringCandidateContext(client, userId);
+    const candidate = findSubmittedCandidate(candidateId, candidates);
+
+    if (candidate) {
+      await applyDismissRecurringPayload(
+        client,
+        userId,
+        buildDismissRecurringPayload(candidate, { reviewedAt: new Date().toISOString() }),
+        { actorId: userId }
+      );
+      revalidateRecurringPaths();
+      return;
+    }
+
+    if (!recurringExpenseId) {
+      throw new Error("Recurring candidate was not found or is no longer active.");
+    }
   }
 
-  const expense = findSubmittedRecurringExpense(formData, recurringExpenses);
+  const recurringExpenses = await listRecurringExpenses(client, userId, [...recurringStatuses]);
+  const expense = findSubmittedRecurringExpense(recurringExpenseId, recurringExpenses);
   if (!expense || (expense.status !== "pending" && !expense.isNew)) {
     throw new Error("Recurring row was not found or is no longer pending.");
   }

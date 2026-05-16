@@ -1,5 +1,5 @@
 import { isDemoModeEnabled, setDemoCookie } from "@/lib/demo/auth";
-import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
+import { getRequestOrigin, jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
 import { NextResponse, type NextRequest } from "next/server";
 
 function normalizeRedirectPath(value: FormDataEntryValue | null) {
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   const formData = await request.formData();
-  const redirectOrigin = request.headers.get("origin") ?? request.nextUrl.origin;
+  const redirectOrigin = request.headers.get("origin") ?? getRequestOrigin(request);
   const redirectUrl = new URL(normalizeRedirectPath(formData.get("redirectTo")), redirectOrigin);
   const response = NextResponse.redirect(redirectUrl, { status: 303 });
 

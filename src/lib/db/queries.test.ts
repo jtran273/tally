@@ -7,6 +7,7 @@ import {
   type FinanceSupabaseClient,
   getAgentProposalById,
   listAgentProposals,
+  listAccounts,
   listTransactions,
   recordClarificationAnswer,
   transactionMatchesSearch,
@@ -19,6 +20,7 @@ import type {
   CategoryRow,
   EnrichedTransactionRow,
   InstitutionRow,
+  PlaidItemRow,
   RawTransactionRow,
   ReimbursementRecordRow,
   ReviewItemRecord,
@@ -31,6 +33,7 @@ import type {
 } from "./types";
 
 const userId = "11111111-1111-1111-1111-111111111111";
+const otherUserId = "22222222-2222-2222-2222-222222222222";
 
 function review(
   id: string,
@@ -212,6 +215,50 @@ test("transaction list filters compose review, transfer exclusion, limit, and of
   );
 });
 
+test("transaction direction filters keep income and spending slices separate", () => {
+  const rows = [
+    transaction({
+      amount: 120,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      id: "tx-shopping-income",
+      merchant: "Marketplace refund"
+    }),
+    transaction({
+      amount: -48,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      id: "tx-shopping-expense",
+      merchant: "Marketplace purchase"
+    }),
+    transaction({
+      amount: 90,
+      category: "Transfer",
+      categoryId: "category-transfer",
+      id: "tx-transfer-income",
+      intent: "transfer",
+      merchant: "Bank transfer"
+    }),
+    transaction({
+      amount: 42,
+      category: "Reimbursements",
+      categoryId: "category-reimbursements",
+      id: "tx-reimbursable-income",
+      intent: "reimbursable",
+      merchant: "Reimbursement"
+    })
+  ];
+
+  assert.deepEqual(
+    filterTransactionRecordsForList(rows, { direction: "income" }).map((item) => item.id),
+    ["tx-shopping-income"]
+  );
+  assert.deepEqual(
+    filterTransactionRecordsForList(rows, { direction: "spending" }).map((item) => item.id),
+    ["tx-shopping-expense"]
+  );
+});
+
 function fixtureInstitution(): InstitutionRow {
   return {
     created_at: "2026-05-01T08:00:00.000Z",
@@ -223,6 +270,27 @@ function fixtureInstitution(): InstitutionRow {
     updated_at: "2026-05-01T08:00:00.000Z",
     user_id: userId,
     website_url: null
+  };
+}
+
+function fixturePlaidItem(input: Partial<PlaidItemRow> = {}): PlaidItemRow {
+  return {
+    access_token_ciphertext: "ciphertext",
+    available_products: ["transactions"],
+    billed_products: ["transactions"],
+    consent_expires_at: null,
+    created_at: "2026-05-01T08:00:00.000Z",
+    error_code: null,
+    error_message: null,
+    id: "plaid-item-main",
+    institution_id: "institution-main",
+    last_successful_sync_at: "2026-05-01T08:00:00.000Z",
+    plaid_item_id: "provider-item-main",
+    status: "active",
+    transaction_cursor: "cursor",
+    updated_at: "2026-05-01T08:00:00.000Z",
+    user_id: userId,
+    ...input
   };
 }
 
@@ -307,8 +375,31 @@ function fixtureEnrichedTransaction(
   };
 }
 
+function fixtureReviewRow(
+  id: string,
+  transactionId: string,
+  status: ReviewStatus,
+  reason: ReviewReason = "low-confidence"
+): ReviewItemRow {
+  return {
+    ai_suggestion: {},
+    confidence: 0.7,
+    created_at: "2026-05-13T08:00:00.000Z",
+    enriched_transaction_id: transactionId,
+    explanation: "Fixture review item",
+    id,
+    reason,
+    resolution_note: null,
+    resolved_at: status === "open" ? null : "2026-05-13T09:00:00.000Z",
+    status,
+    updated_at: "2026-05-13T08:00:00.000Z",
+    user_id: userId
+  };
+}
+
 function seedTransactionRows(client: FakeFinanceClient) {
   client.institutions.push(fixtureInstitution());
+  client.plaidItems.push(fixturePlaidItem());
   client.accounts.push(fixtureAccount());
   client.rawTransactions.push(
     fixtureRawTransaction("raw-older", "2026-05-11", "Older Cafe"),
@@ -322,6 +413,116 @@ function seedTransactionRows(client: FakeFinanceClient) {
   );
 }
 
+test("listAccounts includes errored items and excludes inactive, revoked, and other-user accounts", async () => {
+  const client = new FakeFinanceClient();
+  client.institutions.push(fixtureInstitution());
+  client.plaidItems.push(
+    fixturePlaidItem(),
+    fixturePlaidItem({
+      error_code: "ITEM_LOGIN_REQUIRED",
+      id: "plaid-item-error",
+      plaid_item_id: "provider-item-error",
+      status: "error"
+    }),
+    fixturePlaidItem({
+      id: "plaid-item-revoked",
+      plaid_item_id: "provider-item-revoked",
+      status: "revoked"
+    }),
+    fixturePlaidItem({
+      id: "plaid-item-other-user",
+      plaid_item_id: "provider-item-other-user",
+      user_id: otherUserId
+    })
+  );
+  client.accounts.push(
+    fixtureAccount(),
+    {
+      ...fixtureAccount(),
+      id: "account-error",
+      name: "Repairable Checking",
+      plaid_account_id: "plaid-account-error",
+      plaid_item_id: "plaid-item-error"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-inactive",
+      is_active: false,
+      name: "Inactive Checking",
+      plaid_account_id: "plaid-account-inactive"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-revoked",
+      name: "Old Checking",
+      plaid_account_id: "plaid-account-revoked",
+      plaid_item_id: "plaid-item-revoked"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-other-user",
+      plaid_account_id: "plaid-account-other-user",
+      plaid_item_id: "plaid-item-other-user",
+      user_id: otherUserId
+    }
+  );
+
+  const accounts = await listAccounts(client.asClient(), userId);
+
+  assert.deepEqual(accounts.map((account) => account.id), ["account-checking", "account-error"]);
+});
+
+test("listTransactions excludes inactive and revoked account rows before applying limits", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  client.plaidItems.push(fixturePlaidItem({
+    id: "plaid-item-revoked",
+    plaid_item_id: "provider-item-revoked",
+    status: "revoked"
+  }));
+  client.accounts.push(
+    {
+      ...fixtureAccount(),
+      id: "account-revoked",
+      name: "Old Checking",
+      plaid_account_id: "plaid-account-revoked",
+      plaid_item_id: "plaid-item-revoked"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-inactive",
+      is_active: false,
+      name: "Inactive Checking",
+      plaid_account_id: "plaid-account-inactive"
+    }
+  );
+  client.rawTransactions.push(
+    {
+      ...fixtureRawTransaction("raw-revoked", "2026-05-14", "Old Row"),
+      account_id: "account-revoked",
+      plaid_item_id: "plaid-item-revoked"
+    },
+    {
+      ...fixtureRawTransaction("raw-inactive", "2026-05-15", "Inactive Row"),
+      account_id: "account-inactive"
+    }
+  );
+  client.enrichedTransactions.push(
+    {
+      ...fixtureEnrichedTransaction("tx-revoked", "raw-revoked", "2026-05-14", "Old Row"),
+      account_id: "account-revoked"
+    },
+    {
+      ...fixtureEnrichedTransaction("tx-inactive", "raw-inactive", "2026-05-15", "Inactive Row"),
+      account_id: "account-inactive"
+    }
+  );
+
+  const transactions = await listTransactions(client.asClient(), userId, { limit: 2 });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
+});
+
 test("listTransactions applies database limits before hydration for simple filters", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);
@@ -330,6 +531,12 @@ test("listTransactions applies database limits before hydration for simple filte
 
   assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
   assert.deepEqual(client.limitCalls.enriched_transactions, [2]);
+  assert.equal(
+    client.selectCalls.raw_transactions?.at(-1),
+    "id,merchant_name,name,plaid_category"
+  );
+  assert.doesNotMatch(client.selectCalls.raw_transactions?.at(-1) ?? "", /raw_payload/);
+  assert.doesNotMatch(client.selectCalls.raw_transactions?.at(-1) ?? "", /plaid_transaction_id/);
 });
 
 test("listTransactions preserves hydrated filtering before applying limits", async () => {
@@ -342,6 +549,73 @@ test("listTransactions preserves hydrated filtering before applying limits", asy
   assert.equal(client.limitCalls.enriched_transactions, undefined);
 });
 
+test("listTransactions applies direction filtering before row limits", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  const middle = client.enrichedTransactions.find((row) => row.id === "tx-middle");
+  if (!middle) throw new Error("Missing fixture transaction.");
+  middle.amount = 250;
+  middle.category_name = "Shopping";
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    direction: "income",
+    limit: 1
+  });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-middle"]);
+  assert.equal(client.limitCalls.enriched_transactions, undefined);
+});
+
+test("listTransactions can skip raw Plaid context when callers do not render it", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    includeRawContext: false,
+    limit: 1
+  });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-newest"]);
+  assert.equal(client.selectCalls.raw_transactions, undefined);
+  assert.equal(transactions[0]?.plaidName, null);
+  assert.equal(transactions[0]?.plaidMerchant, null);
+});
+
+test("listTransactions pushes transfer and review filters before hydration limits", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  const newest = client.enrichedTransactions.find((row) => row.id === "tx-newest");
+  if (!newest) throw new Error("Missing fixture transaction.");
+  newest.intent = "transfer";
+  newest.category_name = "Transfer";
+  client.reviewItems.push(
+    fixtureReviewRow("review-middle", "tx-middle", "open"),
+    fixtureReviewRow("review-older", "tx-older", "resolved", "large")
+  );
+
+  const nonTransfers = await listTransactions(client.asClient(), userId, {
+    excludeTransfers: true,
+    limit: 2
+  });
+  const openReviews = await listTransactions(client.asClient(), userId, {
+    limit: 1,
+    reviewStatus: "open"
+  });
+  const largeReviews = await listTransactions(client.asClient(), userId, {
+    limit: 1,
+    reviewReason: "large"
+  });
+
+  assert.deepEqual(nonTransfers.map((item) => item.id), ["tx-middle", "tx-older"]);
+  assert.deepEqual(openReviews.map((item) => item.id), ["tx-middle"]);
+  assert.deepEqual(largeReviews.map((item) => item.id), ["tx-older"]);
+  assert.deepEqual(client.limitCalls.enriched_transactions, [2, 1, 1]);
+  assert.deepEqual(
+    client.selectCalls.review_items?.filter((columns) => columns === "enriched_transaction_id"),
+    ["enriched_transaction_id", "enriched_transaction_id"]
+  );
+});
+
 type FakeTableName =
   | "accounts"
   | "agent_proposals"
@@ -349,6 +623,7 @@ type FakeTableName =
   | "categories"
   | "enriched_transactions"
   | "institutions"
+  | "plaid_items"
   | "raw_transactions"
   | "reimbursement_records"
   | "review_items"
@@ -375,6 +650,11 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 
   eq(column: keyof Row & string, value: unknown) {
     this.filters.push((row) => row[column] === value);
+    return this;
+  }
+
+  neq(column: keyof Row & string, value: unknown) {
+    this.filters.push((row) => row[column] !== value);
     return this;
   }
 
@@ -482,9 +762,11 @@ class FakeFinanceClient {
   enrichedTransactions: EnrichedTransactionRow[] = [];
   institutions: InstitutionRow[] = [];
   limitCalls: Partial<Record<FakeTableName, number[]>> = {};
+  plaidItems: PlaidItemRow[] = [];
   rawTransactions: RawTransactionRow[] = [];
   reimbursementRecords: ReimbursementRecordRow[] = [];
   reviewItems: ReviewItemRow[] = [];
+  selectCalls: Partial<Record<FakeTableName, string[]>> = {};
   transactionSplits: TransactionSplitRow[] = [];
 
   asClient(): FinanceSupabaseClient {
@@ -505,6 +787,8 @@ class FakeFinanceClient {
         return this.enrichedTransactions as unknown as Array<Record<string, unknown>>;
       case "institutions":
         return this.institutions as unknown as Array<Record<string, unknown>>;
+      case "plaid_items":
+        return this.plaidItems as unknown as Array<Record<string, unknown>>;
       case "raw_transactions":
         return this.rawTransactions as unknown as Array<Record<string, unknown>>;
       case "reimbursement_records":
@@ -520,13 +804,20 @@ class FakeFinanceClient {
     this.limitCalls[table] = [...(this.limitCalls[table] ?? []), count];
   }
 
+  private recordSelect(table: FakeTableName, columns?: string) {
+    this.selectCalls[table] = [...(this.selectCalls[table] ?? []), columns ?? "*"];
+  }
+
   from(table: FakeTableName) {
     const rows = this.rowsFor(table);
     return {
       delete: () => new FakeQueryBuilder(rows, "delete", undefined, (count) => this.recordLimit(table, count)),
       insert: (values: Partial<AgentProposalRow> | Partial<AuditEventRow> | Array<Partial<AgentProposalRow> | Partial<AuditEventRow>>) =>
         new FakeQueryBuilder(rows, "insert", values as Array<Partial<Record<string, unknown>>>, (count) => this.recordLimit(table, count)),
-      select: () => new FakeQueryBuilder(rows, "select", undefined, (count) => this.recordLimit(table, count)),
+      select: (columns?: string) => {
+        this.recordSelect(table, columns);
+        return new FakeQueryBuilder(rows, "select", undefined, (count) => this.recordLimit(table, count));
+      },
       update: (values: Partial<AgentProposalRow> | Partial<AuditEventRow>) =>
         new FakeQueryBuilder(rows, "update", values as Partial<Record<string, unknown>>, (count) => this.recordLimit(table, count)),
       upsert: (values: Partial<AgentProposalRow> | Partial<AgentProposalRow>[]) =>

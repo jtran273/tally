@@ -91,6 +91,8 @@ test("buildTransactionsCsv exports review, reimbursement, raw Plaid, and safe me
   assert.match(transactionCsvFixture, /open,low-confidence/);
   assert.match(transactionCsvFixture, /requested,Ada,64\.50,0/);
   assert.match(transactionCsvFixture, /RAW MERCHANT,SQ \*RAW PLAID NAME/);
+  assert.doesNotMatch(transactionCsvFixture, /plaid_transaction_id/);
+  assert.doesNotMatch(transactionCsvFixture, /plaid-tx-export/);
 });
 
 test("buildTransactionsCsv neutralizes formula-like values hidden behind whitespace", () => {
@@ -131,6 +133,14 @@ function assertTransactionCsvFixture(csv: string): true {
 
   if (!csv.includes("RAW MERCHANT,SQ *RAW PLAID NAME")) {
     throw new Error("Expected transaction CSV export to include raw Plaid merchant and raw Plaid name columns.");
+  }
+
+  if (csv.includes("plaid_transaction_id")) {
+    throw new Error("Expected transaction CSV export to omit provider transaction ids.");
+  }
+
+  if (csv.includes("plaid-tx-export")) {
+    throw new Error("Expected transaction CSV export to omit provider transaction id values.");
   }
 
   return true;

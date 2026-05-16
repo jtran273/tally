@@ -3,6 +3,7 @@ import test from "node:test";
 import type { CategoryRecord, Json } from "@/lib/db";
 import {
   buildAcceptedReviewSuggestionPatch,
+  describeReviewSuggestionRefresh,
   hasReviewSuggestionValue,
   normalizeReviewSuggestion
 } from "./suggestions";
@@ -66,7 +67,29 @@ test("normalizeReviewSuggestion: extracts all fields from serialized Transaction
   assert.equal(result.recurring, true);
   assert.equal(result.confidence, 0.94);
   assert.equal(result.reason, "Known AI software subscription merchant.");
+  assert.equal(result.sourceKind, "deterministic");
+  assert.equal(result.sourceLabel, "Deterministic heuristics");
   assert.deepEqual(result.signals, ["merchant cue: OPENAI"]);
+});
+
+test("normalizeReviewSuggestion: labels OpenAI and merchant-rule sources", () => {
+  assert.equal(
+    normalizeReviewSuggestion(mockAiSuggestion({
+      provider: { id: "openai", kind: "openai", label: "OpenAI", version: "v1" }
+    })).sourceLabel,
+    "OpenAI"
+  );
+  assert.equal(
+    normalizeReviewSuggestion(mockAiSuggestion({
+      category: {
+        confidence: 0.98,
+        reason: "Saved rule.",
+        source: "merchant-rule",
+        value: { id: "cat-food", name: "Food / Restaurants" }
+      }
+    })).sourceLabel,
+    "Saved merchant rule"
+  );
 });
 
 test("normalizeReviewSuggestion: handles flat categoryName string", () => {
@@ -145,6 +168,16 @@ test("hasReviewSuggestionValue: true when any meaningful field is present", () =
 test("hasReviewSuggestionValue: false for heuristic-only payload", () => {
   assert.equal(hasReviewSuggestionValue({ reason: "Some reason", signals: ["signal"] }), false);
   assert.equal(hasReviewSuggestionValue({ signals: [] }), false);
+});
+
+test("describeReviewSuggestionRefresh names changed fields and source", () => {
+  const before = normalizeReviewSuggestion({ reason: "Needs review", signals: ["plaid-category-missing"] } as Json);
+  const after = normalizeReviewSuggestion(mockAiSuggestion());
+
+  assert.equal(
+    describeReviewSuggestionRefresh(before, after),
+    "Suggestion generated: updated merchant, category, intent, recurring, confidence. Source: Deterministic heuristics."
+  );
 });
 
 test("buildAcceptedReviewSuggestionPatch: uses known category ID when valid", () => {

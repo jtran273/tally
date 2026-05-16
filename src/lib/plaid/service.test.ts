@@ -1,16 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AccountType as PlaidAccountType, type AccountBase, type Transaction } from "plaid";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { AccountType as PlaidAccountType, Products, type AccountBase, type Transaction } from "plaid";
 import {
+  buildPlaidLinkTokenCreateRequest,
+  deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
+  isPlaidItemDueForOpportunisticSync,
+  isRecentRunningPlaidSync,
   isSkippablePlaidTransactionsError,
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
+  revokePlaidConnection,
   shouldRefreshImportedEnrichment,
   shouldRefreshPlaidEnrichment,
   summarizeSyncRun
 } from "./service";
+import { encryptPlaidAccessToken } from "./token-vault";
 
 function account(accountId: string, name: string, current: number): AccountBase {
   return {
@@ -33,6 +40,53 @@ function account(accountId: string, name: string, current: number): AccountBase 
 const syncAccount = account("acct-sync", "Transactions sync account", 100);
 const accountsGetAccount = account("acct-get", "Accounts get account", 250);
 const balanceAccount = account("acct-get", "Accounts balance account", 275);
+const userId = "11111111-1111-1111-1111-111111111111";
+const otherUserId = "22222222-2222-2222-2222-222222222222";
+
+const TOKEN_ENV_KEYS = [
+  "NEXT_PUBLIC_APP_URL",
+  "NODE_ENV",
+  "PLAID_CLIENT_ID",
+  "PLAID_ENV",
+  "PLAID_PRODUCTION_SECRET",
+  "PLAID_REDIRECT_URI",
+  "PLAID_SANDBOX_SECRET",
+  "PLAID_SECRET",
+  "PLAID_TOKEN_ENCRYPTION_KEY",
+  "VERCEL_ENV",
+  "VERCEL_URL"
+] as const;
+
+async function withPlaidTokenEnv<T>(fn: () => T | Promise<T>): Promise<T> {
+  const env = process.env as Record<string, string | undefined>;
+  const previous = new Map(TOKEN_ENV_KEYS.map((key) => [key, env[key]]));
+
+  Object.assign(env, {
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    NODE_ENV: "development",
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "sandbox",
+    PLAID_SANDBOX_SECRET: "sandbox-secret"
+  });
+  delete env.PLAID_PRODUCTION_SECRET;
+  delete env.PLAID_REDIRECT_URI;
+  delete env.PLAID_SECRET;
+  delete env.PLAID_TOKEN_ENCRYPTION_KEY;
+  delete env.VERCEL_ENV;
+  delete env.VERCEL_URL;
+
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete env[key];
+      } else {
+        env[key] = value;
+      }
+    }
+  }
+}
 
 export const plaidAccountsGetFallbackFixture = mergePlaidAccountSourcesForSync({
   accountsGetAccounts: [accountsGetAccount],
@@ -48,6 +102,42 @@ export const plaidAccountSourceMergeFixture = mergePlaidAccountSourcesForSync({
 
 export const plaidAccountSourceMergeStaticAssertions = assertPlaidAccountSourceMergeFixtures();
 export const plaidPendingReplacementStaticAssertions = assertPlaidPendingReplacementFixtures();
+
+test("Plaid Link token request uses Tally branding for new connections", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    redirectUri: null,
+    userEmail: "james@example.com",
+    userId
+  });
+
+  assert.equal(request.client_name, "Tally");
+  assert.deepEqual(request.products, [Products.Transactions]);
+  assert.equal("access_token" in request, false);
+  assert.deepEqual(request.country_codes, ["US"]);
+  assert.equal(request.language, "en");
+  assert.equal(request.redirect_uri, undefined);
+  assert.deepEqual(request.user, {
+    client_user_id: userId,
+    email_address: "james@example.com"
+  });
+});
+
+test("Plaid Link token request uses update mode without product creation fields", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    accessToken: "access-sandbox-update",
+    redirectUri: "https://app.example.com/settings",
+    userEmail: null,
+    userId
+  });
+
+  assert.equal(request.client_name, "Tally");
+  assert.equal(request.access_token, "access-sandbox-update");
+  assert.equal("products" in request, false);
+  assert.equal(request.redirect_uri, "https://app.example.com/settings");
+  assert.ok(request.user);
+  assert.equal(request.user.client_user_id, userId);
+  assert.equal(request.user.email_address, undefined);
+});
 
 test("pending raw transaction is planned for in-place posted replacement", () => {
   assert.deepEqual(
@@ -177,7 +267,9 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
         lastSuccessfulSyncAt: "2026-05-07T08:00:00.000Z",
         rawTransactionsSkipped: 1,
         rawTransactionsUpserted: 4,
-        transactionsRemoved: 0
+        transactionsRemoved: 0,
+        warningCode: "PRODUCT_NOT_ENABLED",
+        warningMessage: "Plaid transactions are not available for this connection yet."
       },
       {
         accountsUpserted: 0,
@@ -203,10 +295,473 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
   assert.equal(summary.status, "partial");
   assert.equal(summary.succeeded, 1);
   assert.equal(summary.failed, 1);
+  assert.equal(summary.items[0]?.warningCode, "PRODUCT_NOT_ENABLED");
   assert.equal(summary.rawTransactionsUpserted, 4);
   assert.equal("plaidItemId" in summary.items[0], false);
   assert.equal("transactionCursor" in summary.items[0], false);
 });
+
+test("Plaid item ledger purge removes item-scoped finance rows and leaves other items intact", async () => {
+  const client = new PurgeFinanceClient({
+    accounts: [
+      row("account-old", { plaid_item_id: "item-old" }),
+      row("account-new", { plaid_item_id: "item-new" })
+    ],
+    agent_proposals: [
+      row("proposal-tx-old", { target_id: "tx-old", target_kind: "enriched_transaction" }),
+      row("proposal-review-old", { target_id: "review-old", target_kind: "review_item" }),
+      row("proposal-reimbursement-old", { target_id: "reimbursement-old", target_kind: "reimbursement_record" }),
+      row("proposal-recurring-old", { target_id: "recurring-old", target_kind: "recurring_expense" }),
+      row("proposal-new", { target_id: "tx-new", target_kind: "enriched_transaction" })
+    ],
+    audit_events: [
+      row("audit-account-old", { entity_id: "account-old", entity_table: "accounts" }),
+      row("audit-tx-old", { entity_id: "tx-old", entity_table: "enriched_transactions" }),
+      row("audit-proposal-old", { entity_id: "proposal-tx-old", entity_table: "agent_proposals" }),
+      row("audit-item-old", { entity_id: "item-old", entity_table: "plaid_items" }),
+      row("audit-sync-item-old", { entity_id: "sync-item-old", entity_table: "plaid_sync_run_items" }),
+      row("audit-new", { entity_id: "tx-new", entity_table: "enriched_transactions" })
+    ],
+    balance_snapshots: [
+      row("snapshot-old", { account_id: "account-old" }),
+      row("snapshot-new", { account_id: "account-new" })
+    ],
+    enriched_transactions: [
+      row("tx-old", { account_id: "account-old", raw_transaction_id: "raw-old" }),
+      row("tx-new", { account_id: "account-new", raw_transaction_id: "raw-new" })
+    ],
+    plaid_items: [
+      row("item-old"),
+      row("item-new")
+    ],
+    plaid_sync_run_items: [
+      row("sync-item-old", { plaid_item_id: "item-old" }),
+      row("sync-item-new", { plaid_item_id: "item-new" })
+    ],
+    raw_transactions: [
+      row("raw-old", { account_id: "account-old", plaid_item_id: "item-old" }),
+      row("raw-new", { account_id: "account-new", plaid_item_id: "item-new" })
+    ],
+    recurring_expenses: [
+      row("recurring-old", { account_id: "account-old", last_transaction_id: null }),
+      row("recurring-old-tx", { account_id: null, last_transaction_id: "tx-old" }),
+      row("recurring-new", { account_id: "account-new", last_transaction_id: "tx-new" })
+    ],
+    reimbursement_records: [
+      row("reimbursement-old", { enriched_transaction_id: "tx-old", received_transaction_id: null, split_id: "split-old" }),
+      row("reimbursement-received-old", { enriched_transaction_id: "tx-new", received_transaction_id: "tx-old", split_id: null }),
+      row("reimbursement-new", { enriched_transaction_id: "tx-new", received_transaction_id: null, split_id: null })
+    ],
+    review_items: [
+      row("review-old", { enriched_transaction_id: "tx-old" }),
+      row("review-new", { enriched_transaction_id: "tx-new" })
+    ],
+    transaction_splits: [
+      row("split-old", { enriched_transaction_id: "tx-old" }),
+      row("split-new", { enriched_transaction_id: "tx-new" })
+    ]
+  });
+
+  const summary = await deletePlaidItemLedgerData({
+    client: client.asClient(),
+    itemId: "item-old",
+    userId
+  });
+
+  assert.deepEqual(summary, {
+    accountsDeleted: 1,
+    agentProposalsDeleted: 4,
+    auditEventsDeleted: 5,
+    balanceSnapshotsDeleted: 1,
+    enrichedTransactionsDeleted: 1,
+    plaidSyncRunItemsDeleted: 1,
+    rawTransactionsDeleted: 1,
+    recurringExpensesDeleted: 2,
+    reimbursementRecordsDeleted: 2,
+    reviewItemsDeleted: 1,
+    transactionSplitsDeleted: 1
+  });
+  assert.deepEqual(client.ids("accounts"), ["account-new"]);
+  assert.deepEqual(client.ids("raw_transactions"), ["raw-new"]);
+  assert.deepEqual(client.ids("enriched_transactions"), ["tx-new"]);
+  assert.deepEqual(client.ids("reimbursement_records"), ["reimbursement-new"]);
+  assert.deepEqual(client.ids("recurring_expenses"), ["recurring-new"]);
+  assert.deepEqual(client.ids("agent_proposals"), ["proposal-new"]);
+  assert.deepEqual(client.ids("audit_events"), ["audit-new"]);
+  assert.deepEqual(client.ids("plaid_items"), ["item-old", "item-new"]);
+  assert.deepEqual(client.ids("plaid_sync_run_items"), ["sync-item-new"]);
+});
+
+test("Plaid item ledger purge leaves rows for other users intact", async () => {
+  const client = new PurgeFinanceClient({
+    accounts: [
+      row("account-old", { plaid_item_id: "item-old" }),
+      otherUserRow("other-account", { plaid_item_id: "item-old" })
+    ],
+    balance_snapshots: [
+      row("snapshot-old", { account_id: "account-old" }),
+      otherUserRow("other-snapshot", { account_id: "account-old" })
+    ],
+    enriched_transactions: [
+      row("tx-old", { account_id: "account-old", raw_transaction_id: "raw-old" }),
+      otherUserRow("other-tx", { account_id: "account-old", raw_transaction_id: "raw-old" })
+    ],
+    plaid_items: [
+      row("item-old"),
+      otherUserRow("other-item")
+    ],
+    raw_transactions: [
+      row("raw-old", { account_id: "account-old", plaid_item_id: "item-old" }),
+      otherUserRow("other-raw", { account_id: "account-old", plaid_item_id: "item-old" })
+    ]
+  });
+
+  await deletePlaidItemLedgerData({
+    client: client.asClient(),
+    itemId: "item-old",
+    userId
+  });
+
+  assert.deepEqual(client.ids("accounts"), ["other-account"]);
+  assert.deepEqual(client.ids("balance_snapshots"), ["other-snapshot"]);
+  assert.deepEqual(client.ids("enriched_transactions"), ["other-tx"]);
+  assert.deepEqual(client.ids("raw_transactions"), ["other-raw"]);
+  assert.deepEqual(client.ids("plaid_items"), ["item-old", "other-item"]);
+});
+
+test("Plaid item ledger purge skips optional tables missing from local schema", async () => {
+  const client = new PurgeFinanceClient(
+    {
+      accounts: [
+        row("account-old", { plaid_item_id: "item-old" })
+      ],
+      balance_snapshots: [
+        row("snapshot-old", { account_id: "account-old" })
+      ],
+      enriched_transactions: [
+        row("tx-old", { account_id: "account-old", raw_transaction_id: "raw-old" })
+      ],
+      plaid_items: [
+        row("item-old")
+      ],
+      raw_transactions: [
+        row("raw-old", { account_id: "account-old", plaid_item_id: "item-old" })
+      ]
+    },
+    [
+      "agent_proposals",
+      "audit_events",
+      "plaid_sync_run_items",
+      "recurring_expenses",
+      "reimbursement_records",
+      "review_items",
+      "transaction_splits"
+    ]
+  );
+
+  const summary = await deletePlaidItemLedgerData({
+    client: client.asClient(),
+    itemId: "item-old",
+    userId
+  });
+
+  assert.deepEqual(summary, {
+    accountsDeleted: 1,
+    agentProposalsDeleted: 0,
+    auditEventsDeleted: 0,
+    balanceSnapshotsDeleted: 1,
+    enrichedTransactionsDeleted: 1,
+    plaidSyncRunItemsDeleted: 0,
+    rawTransactionsDeleted: 1,
+    recurringExpensesDeleted: 0,
+    reimbursementRecordsDeleted: 0,
+    reviewItemsDeleted: 0,
+    transactionSplitsDeleted: 0
+  });
+  assert.deepEqual(client.ids("accounts"), []);
+  assert.deepEqual(client.ids("plaid_items"), ["item-old"]);
+});
+
+test("revokePlaidConnection stops before local purge when Plaid removal is retryable", async () => {
+  await withPlaidTokenEnv(async () => {
+    const ciphertext = encryptPlaidAccessToken("access-token-old");
+    const client = new PurgeFinanceClient(revokeTables(ciphertext));
+    const plaidClient = {
+      itemRemove: async () => {
+        throw plaidApiError("API_ERROR", 500);
+      }
+    };
+
+    await assert.rejects(
+      () => revokePlaidConnection({
+        client: client.asClient(),
+        itemId: "item-old",
+        plaidClient,
+        userId
+      }),
+      (error) => {
+        const safe = error as ReturnType<typeof plaidApiError>;
+        return safe.response.data.error_code === "API_ERROR";
+      }
+    );
+
+    assert.deepEqual(client.ids("accounts"), ["account-old"]);
+    assert.deepEqual(client.ids("raw_transactions"), ["raw-old"]);
+    assert.deepEqual(client.ids("plaid_items"), ["item-old"]);
+    assert.equal(client.row("plaid_items", "item-old")?.status, "active");
+    assert.equal(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
+    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, "cursor-old");
+  });
+});
+
+test("revokePlaidConnection preserves history for terminal Plaid removal errors and keeps a revoked tombstone", async () => {
+  await withPlaidTokenEnv(async () => {
+    const ciphertext = encryptPlaidAccessToken("access-token-old");
+    const client = new PurgeFinanceClient(revokeTables(ciphertext));
+    const plaidClient = {
+      itemRemove: async () => {
+        throw plaidApiError("ITEM_NOT_FOUND", 400);
+      }
+    };
+
+    const connection = await revokePlaidConnection({
+      client: client.asClient(),
+      itemId: "item-old",
+      plaidClient,
+      userId
+    });
+
+    assert.equal(connection.status, "revoked");
+    assert.deepEqual(client.ids("accounts"), ["account-old"]);
+    assert.deepEqual(client.ids("raw_transactions"), ["raw-old"]);
+    assert.deepEqual(client.ids("plaid_items"), ["item-old"]);
+    assert.equal(client.row("plaid_items", "item-old")?.status, "revoked");
+    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, null);
+    assert.notEqual(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
+  });
+});
+
+test("opportunistic Plaid sync due helper skips recent successful syncs", () => {
+  const now = new Date("2026-05-16T12:00:00.000Z");
+
+  assert.equal(isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: null, status: "active" }, now), true);
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: "2026-05-16T00:30:00.000Z", status: "active" }, now),
+    false
+  );
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: "2026-05-15T11:59:00.000Z", status: "active" }, now),
+    true
+  );
+  assert.equal(isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: null, status: "revoked" }, now), false);
+});
+
+test("opportunistic Plaid sync running helper ignores stale runs", () => {
+  const now = new Date("2026-05-16T12:00:00.000Z");
+
+  assert.equal(isRecentRunningPlaidSync(null, now), false);
+  assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:45:00.000Z", status: "running" }, now), true);
+  assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:00:00.000Z", status: "running" }, now), false);
+  assert.equal(isRecentRunningPlaidSync({ started_at: "not-a-date", status: "running" }, now), true);
+  assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:45:00.000Z", status: "succeeded" }, now), false);
+});
+
+function row(id: string, fields: Record<string, unknown> = {}) {
+  return {
+    id,
+    user_id: userId,
+    ...fields
+  };
+}
+
+function otherUserRow(id: string, fields: Record<string, unknown> = {}) {
+  return {
+    id,
+    user_id: otherUserId,
+    ...fields
+  };
+}
+
+function plaidApiError(errorCode: string, status: number) {
+  return {
+    response: {
+      data: {
+        error_code: errorCode,
+        error_type: "ITEM_ERROR",
+        request_id: "request-id"
+      },
+      status
+    }
+  };
+}
+
+function institutionRow() {
+  return {
+    created_at: "2026-05-01T08:00:00.000Z",
+    id: "institution-old",
+    logo_url: null,
+    name: "Old Bank",
+    plaid_institution_id: "ins-old",
+    primary_color: null,
+    updated_at: "2026-05-01T08:00:00.000Z",
+    user_id: userId,
+    website_url: null
+  };
+}
+
+function plaidItemRow(ciphertext: string) {
+  return {
+    access_token_ciphertext: ciphertext,
+    available_products: ["transactions"],
+    billed_products: ["transactions"],
+    consent_expires_at: null,
+    created_at: "2026-05-01T08:00:00.000Z",
+    error_code: null,
+    error_message: null,
+    id: "item-old",
+    institution_id: "institution-old",
+    last_successful_sync_at: "2026-05-01T08:00:00.000Z",
+    plaid_item_id: "provider-item-old",
+    status: "active",
+    transaction_cursor: "cursor-old",
+    updated_at: "2026-05-01T08:00:00.000Z",
+    user_id: userId
+  };
+}
+
+function revokeTables(ciphertext: string) {
+  return {
+    accounts: [
+      row("account-old", { plaid_item_id: "item-old" })
+    ],
+    balance_snapshots: [
+      row("snapshot-old", { account_id: "account-old" })
+    ],
+    enriched_transactions: [
+      row("tx-old", { account_id: "account-old", raw_transaction_id: "raw-old" })
+    ],
+    institutions: [
+      institutionRow()
+    ],
+    plaid_items: [
+      plaidItemRow(ciphertext)
+    ],
+    raw_transactions: [
+      row("raw-old", { account_id: "account-old", plaid_item_id: "item-old" })
+    ]
+  };
+}
+
+class PurgeQueryBuilder {
+  private filters: Array<(row: Record<string, unknown>) => boolean> = [];
+  private maybeSingleResult = false;
+  private singleResult = false;
+
+  constructor(
+    private rows: Array<Record<string, unknown>>,
+    private operation: "delete" | "select" | "update",
+    private error: { code: string; message: string } | null = null,
+    private values: Record<string, unknown> = {}
+  ) {}
+
+  eq(column: string, value: unknown) {
+    this.filters.push((row) => row[column] === value);
+    return this;
+  }
+
+  in(column: string, values: readonly unknown[]) {
+    this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+
+  select() {
+    return this;
+  }
+
+  maybeSingle() {
+    this.maybeSingleResult = true;
+    return this;
+  }
+
+  single() {
+    this.singleResult = true;
+    return this;
+  }
+
+  then<TResult1 = PurgeQueryResult, TResult2 = never>(
+    onfulfilled?: ((value: PurgeQueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2> {
+    return Promise.resolve(this.execute()).then(onfulfilled, onrejected);
+  }
+
+  private execute(): PurgeQueryResult {
+    if (this.error) return { data: null, error: this.error };
+
+    const matches = this.rows.filter((row) => this.filters.every((filter) => filter(row)));
+
+    if (this.operation === "update") {
+      matches.forEach((row) => Object.assign(row, this.values));
+    }
+
+    if (this.operation === "delete") {
+      const deletedIds = new Set(matches.map((row) => row.id));
+      for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+        if (deletedIds.has(this.rows[index]?.id)) {
+          this.rows.splice(index, 1);
+        }
+      }
+    }
+
+    return {
+      data: this.singleResult || this.maybeSingleResult ? matches[0] ?? null : matches,
+      error: null
+    };
+  }
+}
+
+type PurgeQueryResult =
+  | { data: Array<Record<string, unknown>> | Record<string, unknown> | null; error: null }
+  | { data: null; error: { code: string; message: string } };
+
+class PurgeFinanceClient {
+  private tables: Record<string, Array<Record<string, unknown>>>;
+  private missingTables: Set<string>;
+
+  constructor(tables: Record<string, Array<Record<string, unknown>>>, missingTables: string[] = []) {
+    this.tables = tables;
+    this.missingTables = new Set(missingTables);
+  }
+
+  asClient() {
+    return this as unknown as SupabaseClient;
+  }
+
+  ids(table: string) {
+    return (this.tables[table] ?? []).map((row) => row.id as string);
+  }
+
+  from(table: string) {
+    const rows = this.tables[table] ?? [];
+    this.tables[table] = rows;
+    const error = this.missingTables.has(table)
+      ? {
+        code: "PGRST205",
+        message: `Could not find the table 'public.${table}' in the schema cache`
+      }
+      : null;
+
+    return {
+      delete: () => new PurgeQueryBuilder(rows, "delete", error),
+      select: () => new PurgeQueryBuilder(rows, "select", error),
+      update: (values: Record<string, unknown>) => new PurgeQueryBuilder(rows, "update", error, values)
+    };
+  }
+
+  row(table: string, id: string) {
+    return (this.tables[table] ?? []).find((row) => row.id === id);
+  }
+}
 
 function assertPlaidAccountSourceMergeFixtures(): true {
   if (!plaidAccountsGetFallbackFixture.some((item) => item.account_id === "acct-get")) {

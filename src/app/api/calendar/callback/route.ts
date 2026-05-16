@@ -9,6 +9,7 @@ import {
   verifyGoogleCalendarOAuthState,
   upsertGoogleCalendarConnection
 } from "@/lib/calendar";
+import { logSafeError } from "@/lib/security/logging";
 
 export const runtime = "nodejs";
 
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
       return redirectToSettings(request, { calendar_error: "not_configured" });
     }
 
-    console.error("google_calendar_callback_failed", error);
+    logSafeError("google_calendar_callback_failed", error);
     return redirectToSettings(request, { calendar_error: "connection_failed" });
   }
 }

@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { type NextRequest } from "next/server";
 import type { Database, FinanceSupabaseClient } from "@/lib/db";
-import { jsonNoStore } from "@/lib/security/request";
+import { isAuthorizedBearerToken, jsonNoStore } from "@/lib/security/request";
 import { getSupabaseConfig } from "@/lib/supabase/env";
 
 export class OpenClawRouteConfigurationError extends Error {
@@ -21,10 +21,7 @@ function configuredOpenClawToken() {
 }
 
 export function isAuthorizedOpenClawRequest(headers: Headers) {
-  const token = configuredOpenClawToken();
-  if (!token) return false;
-
-  return headers.get("authorization") === `Bearer ${token}`;
+  return isAuthorizedBearerToken(headers, configuredOpenClawToken());
 }
 
 export function requireOpenClawAuth(request: NextRequest) {

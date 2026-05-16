@@ -1,5 +1,6 @@
 import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
 import { GoogleCalendarConnectionPanel } from "@/components/calendar/google-calendar-connection-panel";
+import { Button, Notice, Panel, PanelHeader, SectionHeading } from "@/components/ui/primitives";
 import { LogOut, ShieldCheck } from "lucide-react";
 import styles from "./settings.module.css";
 
@@ -8,6 +9,7 @@ interface SettingsViewProps {
   calendarMessage?: string | null;
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
 }
 
@@ -16,56 +18,58 @@ export function SettingsView({
   calendarMessage,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn
 }: SettingsViewProps) {
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so bank connections cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in to manage bank connections.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
       ) : null}
 
-      <PlaidConnectionPanel />
+      <PlaidConnectionPanel isDemo={isDemo} />
 
       <GoogleCalendarConnectionPanel
+        isDemo={isDemo}
         initialError={calendarError}
         initialSuccessMessage={calendarMessage}
       />
 
-      <section className={styles.panel}>
-        <div className={styles.panelHead}>
-          <div>
-            <div className={styles.eyebrow}>Session</div>
-            <h2>Access</h2>
-          </div>
-          <ShieldCheck size={16} aria-hidden />
-        </div>
+      <Panel>
+        <PanelHeader
+          actions={(
+            <ShieldCheck size={16} aria-hidden />
+          )}
+        >
+          <SectionHeading eyebrow="Session" title="Access" />
+        </PanelHeader>
         <div className={styles.accessRow}>
           <div>
             <div className={styles.settingTitle}>Signed-in access</div>
             <div className={styles.settingSub}>Sign out clears the current app session.</div>
           </div>
           <form action="/login/logout" method="post">
-            <button className={styles.secondaryButton} type="submit">
+            <Button tone="secondary" type="submit">
               <LogOut size={14} aria-hidden />
               Sign out
-            </button>
+            </Button>
           </form>
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

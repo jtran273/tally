@@ -4,16 +4,14 @@ import {
   createOpenClawServiceContext,
   OpenClawRouteConfigurationError
 } from "@/lib/openclaw/route-helpers";
-import { jsonNoStore } from "@/lib/security/request";
+import { logSafeError } from "@/lib/security/logging";
+import { isAuthorizedBearerToken, jsonNoStore } from "@/lib/security/request";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export function isAuthorizedOpenClawBriefingScheduleRequest(headers: Headers) {
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
-
-  return headers.get("authorization") === `Bearer ${secret}`;
+  return isAuthorizedBearerToken(headers, process.env.CRON_SECRET);
 }
 
 export async function POST(request: NextRequest) {
@@ -56,7 +54,7 @@ export async function POST(request: NextRequest) {
       return jsonNoStore({ error: "OpenClaw briefing integration is not configured." }, { status: 503 });
     }
 
-    console.error("openclaw_briefing_scheduled_failed", error);
+    logSafeError("openclaw_briefing_scheduled_failed", error);
     return jsonNoStore({ error: "Unable to compile OpenClaw briefing." }, { status: 500 });
   }
 }

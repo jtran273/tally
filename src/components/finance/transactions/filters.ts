@@ -1,12 +1,14 @@
 import type {
   AccountRecord,
   CategoryRecord,
+  TransactionDirectionFilter,
   ReviewReason,
   ReviewStatus,
   TransactionIntent,
   TransactionListFilters,
   TransactionQualityFilter
 } from "@/lib/db";
+import { categoryIdsFromFilterValue, categoryOptionGroups } from "@/lib/finance/classification";
 
 export type TransactionSearchParamValue = string | string[] | undefined;
 export type TransactionSearchParams = Record<string, TransactionSearchParamValue>;
@@ -15,9 +17,14 @@ export const transactionIntentOptions: Array<{ label: string; value: Transaction
   { value: "all", label: "All intents" },
   { value: "personal", label: "Personal" },
   { value: "business", label: "Business" },
-  { value: "shared", label: "Shared" },
   { value: "reimbursable", label: "Reimbursable" },
   { value: "transfer", label: "Transfer" }
+];
+
+export const transactionDirectionOptions: Array<{ label: string; value: TransactionDirectionFilter }> = [
+  { value: "all", label: "All flows" },
+  { value: "spending", label: "Spending only" },
+  { value: "income", label: "Income only" }
 ];
 
 export const transactionReviewOptions: Array<{ label: string; value: ReviewStatus | "all" }> = [
@@ -52,6 +59,7 @@ export interface TransactionFilterState {
   search: string;
   accountId: string;
   categoryId: string;
+  direction: TransactionDirectionFilter;
   intent: TransactionIntent | "all";
   reviewStatus: ReviewStatus | "all";
   reviewReason: ReviewReason | "all";
@@ -68,10 +76,22 @@ export interface TransactionFilterState {
 }
 
 const transactionIntents = new Set(transactionIntentOptions.map((option) => option.value));
+const transactionDirections = new Set(transactionDirectionOptions.map((option) => option.value));
 const reviewStatuses = new Set(transactionReviewOptions.map((option) => option.value));
 const reviewReasons = new Set(transactionReviewReasonOptions.map((option) => option.value));
 const qualityStates = new Set(transactionQualityOptions.map((option) => option.value));
 const DEFAULT_LIMIT = 250;
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric"
+});
+const monthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric"
+});
 
 function firstParam(value: TransactionSearchParamValue) {
   return Array.isArray(value) ? value[0] : value;
@@ -111,6 +131,21 @@ function monthBounds(value: string) {
   return { start, end };
 }
 
+function formatDate(value: string) {
+  return dateFormatter.format(new Date(`${value}T12:00:00.000Z`));
+}
+
+function formatRange(fromDate: string, toDate: string) {
+  const from = new Date(`${fromDate}T12:00:00.000Z`);
+  const to = new Date(`${toDate}T12:00:00.000Z`);
+
+  if (from.getUTCFullYear() === to.getUTCFullYear() && from.getUTCMonth() === to.getUTCMonth()) {
+    return `${from.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${from.getUTCDate()}-${to.getUTCDate()}, ${to.getUTCFullYear()}`;
+  }
+
+  return `${formatDate(fromDate)}-${formatDate(toDate)}`;
+}
+
 function maxDate(left?: string, right?: string) {
   if (!left) return right;
   if (!right) return left;
@@ -140,6 +175,7 @@ function deriveState(input: Omit<TransactionFilterState, "isDateRangeInverted" |
       input.search ||
       input.accountId !== "all" ||
       input.categoryId !== "all" ||
+      input.direction !== "all" ||
       input.intent !== "all" ||
       input.reviewStatus !== "all" ||
       input.reviewReason !== "all" ||
@@ -155,7 +191,8 @@ function deriveState(input: Omit<TransactionFilterState, "isDateRangeInverted" |
 export function parseTransactionFilters(params: TransactionSearchParams): TransactionFilterState {
   const search = cleanText(params.q, 120);
   const requestedAccountId = cleanText(params.account, 80);
-  const requestedCategoryId = cleanText(params.category, 80);
+  const requestedCategoryId = cleanText(params.category, 600);
+  const requestedDirection = cleanText(params.direction, 24);
   const requestedIntent = cleanText(params.intent, 24);
   const requestedReviewStatus = cleanText(params.review, 24);
   const requestedReviewReason = cleanText(params.reason, 32);
@@ -174,6 +211,9 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
     search,
     accountId: requestedAccountId || "all",
     categoryId: requestedCategoryId || "all",
+    direction: transactionDirections.has(requestedDirection as TransactionDirectionFilter)
+      ? requestedDirection as TransactionDirectionFilter
+      : "all",
     intent: transactionIntents.has(requestedIntent as TransactionIntent | "all")
       ? requestedIntent as TransactionIntent | "all"
       : "all",
@@ -201,21 +241,31 @@ export function normalizeTransactionFilters(
   accounts: AccountRecord[],
   categories: CategoryRecord[]
 ) {
+  const categoryGroups = categoryOptionGroups(categories);
+  const requestedCategoryIds = categoryIdsFromFilterValue(filters.categoryId);
+  const categoryGroup = filters.categoryId === "all"
+    ? null
+    : categoryGroups.find((group) => (
+      group.value === filters.categoryId ||
+      requestedCategoryIds.some((id) => group.categoryIds.includes(id))
+    ));
+
   return deriveState({
     ...filters,
     accountId: filters.accountId === "all" || accounts.some((account) => account.id === filters.accountId)
       ? filters.accountId
       : "all",
-    categoryId: filters.categoryId === "all" || categories.some((category) => category.id === filters.categoryId)
-      ? filters.categoryId
-      : "all"
+    categoryId: filters.categoryId === "all"
+      ? "all"
+      : categoryGroup?.value ?? "all"
   });
 }
 
 export function toTransactionListFilters(filters: TransactionFilterState): TransactionListFilters {
   return {
     accountIds: filters.accountId === "all" ? undefined : [filters.accountId],
-    categoryIds: filters.categoryId === "all" ? undefined : [filters.categoryId],
+    categoryIds: filters.categoryId === "all" ? undefined : categoryIdsFromFilterValue(filters.categoryId),
+    direction: filters.direction,
     intent: filters.intent,
     reviewReason: filters.reviewReason,
     reviewStatus: filters.reviewStatus,
@@ -237,6 +287,7 @@ export function transactionFiltersToSearchParams(filters: TransactionFilterState
   if (filters.toDate) params.set("to", filters.toDate);
   if (filters.accountId !== "all") params.set("account", filters.accountId);
   if (filters.categoryId !== "all") params.set("category", filters.categoryId);
+  if (filters.direction !== "all") params.set("direction", filters.direction);
   if (filters.intent !== "all") params.set("intent", filters.intent);
   if (filters.reviewStatus !== "all") params.set("review", filters.reviewStatus);
   if (filters.reviewReason !== "all") params.set("reason", filters.reviewReason);
@@ -251,4 +302,29 @@ export function transactionFiltersHref(pathname: string, filters: TransactionFil
   const params = transactionFiltersToSearchParams(filters);
   const query = params.toString();
   return `${pathname}${query ? `?${query}` : ""}`;
+}
+
+export function transactionPeriodTitle(
+  filters: Pick<TransactionFilterState, "effectiveFromDate" | "effectiveToDate" | "isDateRangeInverted" | "month">
+) {
+  if (filters.isDateRangeInverted) return "No matching period";
+
+  if (filters.effectiveFromDate && filters.effectiveToDate) {
+    const bounds = filters.month ? monthBounds(filters.month) : null;
+
+    if (
+      bounds &&
+      filters.effectiveFromDate === bounds.start &&
+      filters.effectiveToDate === bounds.end
+    ) {
+      return monthFormatter.format(new Date(`${filters.month}-01T12:00:00.000Z`));
+    }
+
+    return formatRange(filters.effectiveFromDate, filters.effectiveToDate);
+  }
+
+  if (filters.effectiveFromDate) return `Since ${formatDate(filters.effectiveFromDate)}`;
+  if (filters.effectiveToDate) return `Through ${formatDate(filters.effectiveToDate)}`;
+
+  return "All transactions";
 }

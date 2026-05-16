@@ -5,7 +5,7 @@ import { getSupabaseConfig } from "./env";
 
 const PUBLIC_PATHS = ["/login"];
 const SESSION_BYPASS_PATHS = [
-  "/api/agents/proactive-scan",
+  "/api/agents/proactive-scan/scheduled",
   "/api/calendar/callback",
   "/api/openclaw",
   "/api/plaid/sync/scheduled"

@@ -1,6 +1,6 @@
 # Agent-Safe Finance Action Manifest
 
-This contract defines the narrow finance surface that automation agents, including OpenClaw handoffs, may use in Ledger. The initial version is proposal-only: agents can read minimized summaries and draft proposed changes, but they cannot apply financial mutations or bypass user approval.
+This contract defines the narrow finance surface that automation agents, including OpenClaw handoffs, may use in Tally. The initial version is proposal-only: agents can read minimized summaries and draft proposed changes, but they cannot apply financial mutations or bypass user approval.
 
 ## Goals
 
@@ -143,17 +143,17 @@ OpenClaw handoff payloads should use this envelope:
 }
 ```
 
-OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. Persisted suggestions and clarification questions belong in `agent_proposals`, a user-owned store with minimized evidence and proposed-patch JSON that must pass the same forbidden-field checks before insert. If a future integration adds an apply endpoint, it must call Ledger-owned acceptance helpers, re-read the target row, remain user scoped, and write audit events.
+OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. Persisted suggestions and clarification questions belong in `agent_proposals`, a user-owned store with minimized evidence and proposed-patch JSON that must pass the same forbidden-field checks before insert. If a future integration adds an apply endpoint, it must call Tally-owned acceptance helpers, re-read the target row, remain user scoped, and write audit events.
 
 The proactive reimbursement candidate detector produces `reimbursement_candidate` proposals from safe enriched transaction summaries, nearby positive inflows, and user-history hints. Its AI request shape contains app-owned ids, dates, merchant/category labels, amounts, current intent, heuristic reasons, and candidate inflow ids only. It does not include raw Plaid payloads, provider ids, access tokens, account masks, auth headers, service-role keys, or transaction cursors.
 
-The narrower assistant context and suggestion JSON contract is documented in `docs/openclaw-ledger-assistant-contract.md`. Its TypeScript definitions live in `src/lib/agents/assistant-contract.ts`, with reimbursement review fixture examples under `src/lib/agents/fixtures/`.
+The narrower assistant context and suggestion JSON contract is documented in `docs/openclaw-tally-assistant-contract.md`. Its TypeScript definitions live in `src/lib/agents/assistant-contract.ts`, with reimbursement review fixture examples under `src/lib/agents/fixtures/`.
 
 ## Reimbursement Clarification Requests
 
 Ambiguous reimbursements should use Plaid/bank activity, enriched transaction context, deterministic heuristics, and optional LLM reasoning as the v1 product path. CSV exports or manual imports may be useful for historical backfill or evidence reconciliation, but they are not required for the automated v1 clarification flow.
 
-When Ledger has a candidate reimbursement match that needs James's judgment, OpenClaw should receive a compact `assistant_clarification_request` object. The object is a question request, not an approval to mutate finance rows:
+When Tally has a candidate reimbursement match that needs James's judgment, OpenClaw should receive a compact `assistant_clarification_request` object. The object is a question request, not an approval to mutate finance rows:
 
 ```json
 {
@@ -188,7 +188,7 @@ Clarification routing should follow these rules:
 - Stay silent for low-confidence matches, low-value matches, or candidates with no accounting impact.
 - Queue in the app instead of interrupting when a similar open `questionFingerprint` already exists.
 - Queue in the app instead of interrupting when James already has too many open clarification requests.
-- Keep the question concise and answerable without opening Ledger whenever possible.
+- Keep the question concise and answerable without opening Tally whenever possible.
 
 Example OpenClaw question:
 
@@ -205,7 +205,7 @@ Answer normalization should accept terse replies:
 | `not reimbursement` | `not-reimbursement` | Suppress this candidate as reimbursable spending. |
 | `split between Alex and Sam` | `split-counterparties`, `["Alex", "Sam"]` | Draft a split across those counterparties for later approval. |
 
-After James answers, Ledger stores learning on the `agent_proposals` row as raw answer text, normalized answer kind, answer timestamp, and structured proposed-patch feedback such as counterparties. Feedback can improve future matching and batching, but it must not directly apply transaction splits, reimbursement records, merchant rules, or review resolutions without an approval action that re-reads the target row, shows the diff, scopes by `user_id`, and writes an `audit_events` row.
+After James answers, Tally stores learning on the `agent_proposals` row as raw answer text, normalized answer kind, answer timestamp, and structured proposed-patch feedback such as counterparties. Feedback can improve future matching and batching, but it must not directly apply transaction splits, reimbursement records, merchant rules, or review resolutions without an approval action that re-reads the target row, shows the diff, scopes by `user_id`, and writes an `audit_events` row.
 
 ## Audit Requirements
 

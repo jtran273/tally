@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/queries";
 import { createDetectedReimbursementCandidateProposals } from "@/lib/review/reimbursement-candidates";
 import type { PersistReimbursementCandidateInput } from "@/lib/review/reimbursement-candidates";
+import { logSafeError } from "@/lib/security/logging";
 import { getSupabaseConfig } from "@/lib/supabase/env";
 
 export interface ProactiveScanResult {
@@ -148,7 +149,7 @@ export async function runProactiveReimbursementScan(
   const createProposals = dependencies.createDetectedReimbursementCandidateProposals ??
     createDetectedReimbursementCandidateProposals;
   const audit = dependencies.recordAuditEvent ?? recordAuditEvent;
-  const logger = dependencies.logger ?? console;
+  const logger = dependencies.logger ?? { error: logSafeError };
   const suggestionService = dependencies.createSuggestionService?.() ?? createProactiveScanSuggestionService();
 
   const [transactions, inflows, existingProposals] = await Promise.all([

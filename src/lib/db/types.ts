@@ -9,7 +9,7 @@ export type Json =
 export type AccountType = "depository" | "credit" | "investment" | "retirement";
 export type PlaidItemStatus = "active" | "error" | "revoked";
 export type GoogleCalendarConnectionStatus = "active" | "error" | "revoked";
-export type PlaidSyncRunSource = "initial" | "manual" | "scheduled";
+export type PlaidSyncRunSource = "initial" | "manual" | "opportunistic" | "scheduled";
 export type PlaidSyncRunStatus = "running" | "succeeded" | "partial" | "failed";
 export type TransactionStatus = "pending" | "posted";
 export type TransactionIntent = "personal" | "business" | "shared" | "reimbursable" | "transfer";
@@ -440,6 +440,24 @@ export interface AccountRecord {
   color: string | null;
   isActive: boolean;
   lastSyncedAt: string | null;
+  manualValuation?: ManualInvestmentValuationRecord;
+}
+
+export interface ManualInvestmentValuationRecord {
+  accountId: string;
+  asOf: string;
+  cash: number;
+  holdings: ManualInvestmentHoldingRecord[];
+  source: "manual_holdings";
+  staleSymbols: string[];
+  totalValue: number;
+}
+
+export interface ManualInvestmentHoldingRecord {
+  symbol: string;
+  shares: number;
+  price: number;
+  value: number;
 }
 
 export interface CategoryRecord {

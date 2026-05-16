@@ -3,6 +3,8 @@ import {
   plaidRouteError,
   requirePlaidRouteUser
 } from "@/lib/plaid/route-helpers";
+import { isDemoMode } from "@/lib/demo/auth";
+import { listDemoPlaidConnections } from "@/lib/demo/finance-client";
 import { getPlaidRuntimeEnvironment } from "@/lib/plaid/config";
 import {
   listPlaidConnections,
@@ -47,6 +49,14 @@ async function readSyncRequest(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({
+      connections: listDemoPlaidConnections(),
+      environment: getPlaidRuntimeEnvironment(),
+      sync: summarizeSyncRun([], { source: "manual" })
+    });
+  }
 
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;

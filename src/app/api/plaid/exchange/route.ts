@@ -3,6 +3,7 @@ import {
   plaidRouteError,
   requirePlaidRouteUser
 } from "@/lib/plaid/route-helpers";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   exchangePlaidPublicToken,
   listPlaidConnections,
@@ -56,6 +57,10 @@ async function readExchangeRequest(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({ error: "Demo mode does not connect banks." }, { status: 403 });
+  }
 
   const context = await requirePlaidRouteUser();
   if ("response" in context) return context.response;

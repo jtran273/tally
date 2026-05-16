@@ -13,8 +13,16 @@ import { detectRecurringCandidates, normalizeRecurringMerchant, type RecurringCa
 
 export const dynamic = "force-dynamic";
 
+const recurringTransactionLookbackDays = 1460;
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to load persisted recurring data.";
+}
+
+function recurringTransactionFromDate(asOfDate: string) {
+  const date = new Date(`${asOfDate}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - recurringTransactionLookbackDays);
+  return date.toISOString().slice(0, 10);
 }
 
 function recurringKey(merchant: string, cadence: string) {
@@ -31,18 +39,24 @@ export default async function RecurringPage() {
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let transactions: TransactionRecord[] = [];
   let accounts: AccountRecord[] = [];
+  let isDemo = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
   if (context.client && context.userId) {
     try {
+      const fromDate = recurringTransactionFromDate(asOfDate);
       [accounts, allRecurringExpenses, transactions] = await Promise.all([
         listAccounts(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId, ["active", "pending", "paused", "dismissed"]),
-        listTransactions(context.client, context.userId, { limit: 5000 })
+        listTransactions(context.client, context.userId, {
+          fromDate,
+          includeRawContext: false
+        })
       ]);
       recurringExpenses = allRecurringExpenses.filter((expense) => expense.status !== "dismissed");
       const dismissedRecurringKeys = new Set(
@@ -64,6 +78,7 @@ export default async function RecurringPage() {
       candidates={candidates}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
       recurringExpenses={recurringExpenses}
       upcomingCashflow={buildUpcomingCashflowTimeline({

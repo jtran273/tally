@@ -56,7 +56,7 @@ const MERCHANT_CUES: readonly MerchantCue[] = [
     categoryName: DEFAULT_CATEGORY,
     intent: "shared",
     confidence: 0.64,
-    reason: "Peer-to-peer payment needs an explanation before Ledger should trust a spend bucket.",
+    reason: "Peer-to-peer payment needs an explanation before Tally should trust a spend bucket.",
     normalizedMerchantName: normalizePeerToPeerMerchant
   },
   {

@@ -2,13 +2,13 @@
 
 import { AlertTriangle, LoaderCircle, SearchX } from "lucide-react";
 
-export function LoadingState({ label = "Loading Ledger" }: { label?: string }) {
+export function LoadingState({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="state-shell" role="status" aria-live="polite">
+    <div className="state-shell state-loading" role="status" aria-live="polite">
       <LoaderCircle className="state-spin" size={20} aria-hidden />
       <div>
         <div className="state-title">{label}</div>
-        <div className="state-copy">Preparing the finance workspace.</div>
+        <div className="state-copy">Opening your workspace.</div>
       </div>
     </div>
   );

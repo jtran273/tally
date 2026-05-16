@@ -1,10 +1,10 @@
-# OpenClaw/Ledger Assistant Contract
+# OpenClaw/Tally Assistant Contract
 
-Ledger is the finance system of record and approval surface. OpenClaw/Grace is the reasoning and proactive layer. This contract defines the small payloads Ledger may send out for assistant reasoning, and the proposal-only JSON shape an assistant may return.
+Tally is the finance system of record and approval surface. OpenClaw/Grace is the reasoning and proactive layer. This contract defines the small payloads Tally may send out for assistant reasoning, and the proposal-only JSON shape an assistant may return.
 
 ## Boundary
 
-Ledger owns:
+Tally owns:
 
 - persisted finance records,
 - raw provider evidence,
@@ -16,15 +16,15 @@ Ledger owns:
 
 OpenClaw/Grace may:
 
-- read minimized Ledger context packets,
+- read minimized Tally context packets,
 - reason over review and planning signals,
 - return typed suggestions,
 - ask clarifying questions,
-- route a proposal back to Ledger or a notification workflow.
+- route a proposal back to Tally or a notification workflow.
 
 OpenClaw/Grace must not:
 
-- mutate Ledger records directly,
+- mutate Tally records directly,
 - run Plaid sync or token exchange,
 - store provider payloads or credentials,
 - treat a suggestion as approved,
@@ -46,7 +46,7 @@ Context packets explicitly exclude raw provider payloads, provider ids, account 
 
 ## Suggestion Response
 
-Assistant responses are proposals. Every suggestion has `approvalRequired: true` and must be re-read and validated by Ledger before any write.
+Assistant responses are proposals. Every suggestion has `approvalRequired: true` and must be re-read and validated by Tally before any write.
 
 Supported suggestion types:
 
@@ -55,9 +55,9 @@ Supported suggestion types:
 | `possible_reimbursable_expense` | Suggest that a shared charge should become reimbursable or shared. |
 | `reimbursement_match` | Suggest matching an incoming transaction to an expected reimbursement. |
 | `safe_to_spend_warning` | Warn that planned or recent activity may affect safe-to-spend calculations. |
-| `clarification_request` | Ask the user for missing context before Ledger changes anything. |
+| `clarification_request` | Ask the user for missing context before Tally changes anything. |
 
-Ledger approval code must re-read current rows for the signed-in user, show the exact proposed diff, require explicit confirmation, write audit events, and then update review/reimbursement state. This contract does not define an apply endpoint.
+Tally approval code must re-read current rows for the signed-in user, show the exact proposed diff, require explicit confirmation, write audit events, and then update review/reimbursement state. This contract does not define an apply endpoint.
 
 ## Fixtures
 
@@ -70,5 +70,5 @@ The fixture pair demonstrates a shared dinner, an incoming payment, and a propos
 
 ## Follow-Ups
 
-1. Ledger should add a persistent feedback table or audit-backed event shape for accepted, rejected, corrected, and ignored assistant suggestions. That storage should keep the original proposal id/context id, the final user action, and sanitized rationale without storing raw provider payloads.
-2. OpenClaw should add a client and scheduled/cron workflow that can request bounded Ledger context packets, call the reasoning layer, and return proposal JSON to a Ledger-owned approval inbox or notification route without performing writes.
+1. Tally should add a persistent feedback table or audit-backed event shape for accepted, rejected, corrected, and ignored assistant suggestions. That storage should keep the original proposal id/context id, the final user action, and sanitized rationale without storing raw provider payloads.
+2. OpenClaw should add a client and scheduled/cron workflow that can request bounded Tally context packets, call the reasoning layer, and return proposal JSON to a Tally-owned approval inbox or notification route without performing writes.
