@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "plaid:cleanup": "tsx scripts/plaid-cleanup.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && npm run test:unit",

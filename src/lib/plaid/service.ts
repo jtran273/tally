@@ -39,7 +39,7 @@ import { getPlaidLinkTokenConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
 import { getPlaidConnectionIssue, type PlaidConnectionIssue } from "./status";
-import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
+import { decryptPlaidAccessToken, encryptPlaidAccessToken, PlaidTokenDecryptionError } from "./token-vault";
 
 type InstitutionInsert = Database["public"]["Tables"]["institutions"]["Insert"];
 type InstitutionUpdate = Database["public"]["Tables"]["institutions"]["Update"];
@@ -2367,14 +2367,22 @@ export async function revokePlaidConnection({
   const item = await loadPlaidItemForRevoke(client, userId, itemId);
 
   if (item.status !== "revoked") {
-    const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
-    const plaid = getPlaidClient();
+    try {
+      const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
+      const plaid = getPlaidClient();
 
-    await plaid.itemRemove({
-      access_token: accessToken,
-      reason_code: ItemRemoveReasonCode.Other,
-      reason_note: "User disconnected this item from the budgeting app."
-    });
+      await plaid.itemRemove({
+        access_token: accessToken,
+        reason_code: ItemRemoveReasonCode.Other,
+        reason_note: "User disconnected this item from the budgeting app."
+      });
+    } catch (error) {
+      if (!(error instanceof PlaidTokenDecryptionError)) {
+        throw error;
+      }
+
+      console.warn("plaid_connection_marked_revoked_without_provider_remove", getSafePlaidError(error));
+    }
   }
 
   const revokedItem = await updatePlaidItemRevoked(client, userId, item.id);

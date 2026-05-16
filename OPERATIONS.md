@@ -191,6 +191,31 @@ If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the i
 
 If sync fails with `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Ledger may still show saved account balances and historical rows from the previous item, but transaction sync cannot run until the user creates a fresh bank connection. The current Disconnect action preserves historical data; any future destructive "Delete institution data" flow should be designed as a separate, explicit path with clear balance/transaction deletion confirmation.
 
+If the unreadable item cannot be removed from Plaid because its token cannot decrypt, Disconnect marks the local item revoked so future syncs skip it while preserving local history.
+
+### SchoolsFirst reconnect and cleanup
+
+For the SchoolsFirst P0, the safest path is:
+
+1. Confirm production has a stable `PLAID_TOKEN_ENCRYPTION_KEY`.
+2. In `/settings`, Disconnect any stale SchoolsFirst connection that shows `PLAID_TOKEN_DECRYPTION_ERROR`. This preserves historical Ledger rows and stops future sync attempts for that item.
+3. Reconnect SchoolsFirst from `/settings`. Initial sync should import accounts and transaction rows. If needed, run a manual sync for the new connection.
+4. Verify `/transactions` with a SchoolsFirst account or institution search shows new rows.
+
+Only use destructive cleanup after reconnect if stale duplicate local SchoolsFirst data is confirmed and historical rows are safe to delete. The cleanup CLI is dry-run by default and requires a service-role environment:
+
+```bash
+npm run plaid:cleanup -- --user-id <supabase-user-id> --institution-name "SchoolsFirst Federal Credit Union"
+```
+
+Review the reported counts. To delete only that selected Plaid item or institution scope, rerun with the explicit confirmation token:
+
+```bash
+npm run plaid:cleanup -- --user-id <supabase-user-id> --institution-name "SchoolsFirst Federal Credit Union" --execute --confirm DELETE_PLAID_ITEM_DATA
+```
+
+Prefer `--item-id <app-plaid-item-row-id>` when deleting one known stale item. The destructive path deletes selected `plaid_items` and cascaded account/raw/enriched/review/split/snapshot/sync-item rows; before deleting, it clears blocking recurring and reimbursement references that point at the selected rows. Ordinary Disconnect remains the non-destructive default.
+
 ### Scheduled sync wiring
 
 Scheduled sync should call the same server-only path as manual sync:
