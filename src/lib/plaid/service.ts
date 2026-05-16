@@ -318,6 +318,7 @@ export interface PlaidLinkTokenResult {
 function toConnectionSummary(item: PlaidItemPublicRow, institution?: InstitutionRow): PlaidConnectionSummary {
   const issue = getPlaidConnectionIssue({
     errorCode: item.error_code,
+    institutionName: institution?.name ?? null,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
     status: item.status
   });

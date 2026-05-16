@@ -187,6 +187,8 @@ Use `/settings`:
 
 If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the institution. Historical transactions should remain preserved in Ledger, but future imports require a new active Plaid item.
 
+If sync fails with `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Ledger may still show saved account balances and historical rows from the previous item, but transaction sync cannot run until the user creates a fresh bank connection. The current Disconnect action preserves historical data; any future destructive "Delete institution data" flow should be designed as a separate, explicit path with clear balance/transaction deletion confirmation.
+
 ### Scheduled sync wiring
 
 Scheduled sync should call the same server-only path as manual sync:

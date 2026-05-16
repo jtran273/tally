@@ -1,6 +1,7 @@
 import type { AccountRecord, BalanceSnapshotRecord } from "@/lib/db";
 import type { AccountBalanceTotals, AccountGroup, SyncSummary } from "@/lib/finance/balances";
 import { accountSyncState, balanceContribution } from "@/lib/finance/balances";
+import type { PlaidConnectionSummary } from "@/lib/plaid/service";
 import { Clock3, CreditCard, Database, Landmark, TriangleAlert, type LucideIcon } from "lucide-react";
 import styles from "./accounts.module.css";
 
@@ -10,6 +11,7 @@ interface AccountsViewProps {
   groups: AccountGroup[];
   isConfigured: boolean;
   isSignedIn: boolean;
+  plaidConnections: PlaidConnectionSummary[];
   snapshots: BalanceSnapshotRecord[];
   syncSummary: SyncSummary;
   totals: AccountBalanceTotals;
@@ -100,9 +102,11 @@ function SummaryCard({
 
 function AccountCard({
   account,
+  connection,
   latestSnapshot
 }: {
   account: AccountRecord;
+  connection?: PlaidConnectionSummary;
   latestSnapshot?: BalanceSnapshotRecord;
 }) {
   const displayBalance = balanceContribution(account);
@@ -165,6 +169,16 @@ function AccountCard({
           {latestSnapshot ? `Snapshot ${formatDate(latestSnapshot.snapshotDate)}` : "No snapshot"}
         </span>
       </div>
+
+      {connection?.issue ? (
+        <div className={styles.accountFoot}>
+          <span>
+            <TriangleAlert size={12} aria-hidden />
+            {connection.issue.title}
+          </span>
+          <span>{connection.issue.detail}</span>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -175,11 +189,13 @@ export function AccountsView({
   groups,
   isConfigured,
   isSignedIn,
+  plaidConnections,
   snapshots,
   syncSummary,
   totals
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
+  const connectionByInstitutionId = new Map(plaidConnections.map((connection) => [connection.institutionId, connection]));
 
   return (
     <div className={styles.shell}>
@@ -245,6 +261,7 @@ export function AccountsView({
                     {group.accounts.map((account) => (
                       <AccountCard
                         account={account}
+                        connection={connectionByInstitutionId.get(account.institutionId)}
                         key={account.id}
                         latestSnapshot={latestSnapshotByAccount.get(account.id)}
                       />

@@ -491,6 +491,7 @@ export function listDemoPlaidConnections() {
     const institution = institutions.find((row) => row.id === item.institution_id);
     const issue = getPlaidConnectionIssue({
       errorCode: item.error_code,
+      institutionName: institution?.name ?? null,
       lastSuccessfulSyncAt: item.last_successful_sync_at,
       status: item.status
     });

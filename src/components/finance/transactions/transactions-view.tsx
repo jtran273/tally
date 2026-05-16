@@ -1,6 +1,7 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
+import type { PlaidConnectionSummary } from "@/lib/plaid/service";
 import { Database, Filter, HandCoins, Hourglass, Inbox } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
@@ -15,6 +16,7 @@ interface TransactionsViewProps {
   filters: TransactionFilterState;
   isConfigured: boolean;
   isSignedIn: boolean;
+  plaidConnections: PlaidConnectionSummary[];
   transactions: TransactionRecord[];
 }
 
@@ -55,6 +57,7 @@ export function TransactionsView({
   filters,
   isConfigured,
   isSignedIn,
+  plaidConnections,
   transactions
 }: TransactionsViewProps) {
   const summary = summarize(transactions);
@@ -72,6 +75,10 @@ export function TransactionsView({
     !filters.toDate &&
     !filters.excludeTransfers
   );
+  const connectionByInstitutionId = new Map(plaidConnections.map((connection) => [connection.institutionId, connection]));
+  const selectedAccountIssue = selectedAccount
+    ? connectionByInstitutionId.get(selectedAccount.institutionId)?.issue ?? null
+    : null;
 
   return (
     <div className={styles.shell}>
@@ -151,6 +158,7 @@ export function TransactionsView({
         accountOnlyFilter={accountOnlyFilter}
         filtersActive={filters.hasActiveFilters}
         limit={filters.limit}
+        selectedAccountIssue={selectedAccountIssue}
         selectedAccount={selectedAccount}
         transactions={transactions}
       />

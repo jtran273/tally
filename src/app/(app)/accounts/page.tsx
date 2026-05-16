@@ -7,6 +7,7 @@ import {
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { calculateAccountTotals, groupAccounts, summarizeSync } from "@/lib/finance/balances";
+import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ function errorMessage(error: unknown) {
 
 export default async function AccountsPage() {
   let accounts: AccountRecord[] = [];
+  let plaidConnections: PlaidConnectionSummary[] = [];
   let snapshots: BalanceSnapshotRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
@@ -28,7 +30,10 @@ export default async function AccountsPage() {
 
   if (context.client && context.userId) {
     try {
-      accounts = await listAccounts(context.client, context.userId);
+      [accounts, plaidConnections] = await Promise.all([
+        listAccounts(context.client, context.userId),
+        listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId)
+      ]);
       const accountIds = accounts.map((account) => account.id);
       snapshots = accountIds.length > 0
         ? await listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 500 })
@@ -45,6 +50,7 @@ export default async function AccountsPage() {
       groups={groupAccounts(accounts)}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
+      plaidConnections={plaidConnections}
       snapshots={snapshots}
       syncSummary={summarizeSync(accounts)}
       totals={calculateAccountTotals(accounts)}

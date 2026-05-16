@@ -562,6 +562,17 @@ export function PlaidConnectionPanel() {
                 {repairConnectionId === connection.id ? "Opening" : "Repair"}
               </button>
             ) : null}
+            {connection.issue?.action === "reconnect" ? (
+              <button
+                className="btn plaid-repair"
+                disabled={isBusy || isSyncing}
+                onClick={() => void startPlaidLink()}
+                type="button"
+              >
+                <Plus size={14} />
+                Reconnect
+              </button>
+            ) : null}
             {connection.status !== "revoked" ? (
               <button
                 className="btn btn-danger plaid-disconnect"

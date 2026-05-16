@@ -48,8 +48,16 @@ test("Plaid server configuration errors use actionable safe copy", () => {
   );
 
   assert.equal(
-    getPlaidConnectionIssue(connection({ errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", status: "error" }))?.title,
-    "Server configuration issue"
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", institutionName: "Schools First FCU", status: "error" }))?.title,
+    "Reconnect Schools First FCU"
+  );
+  assert.equal(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", institutionName: "Schools First FCU", status: "error" }))?.detail,
+    "Ledger can still show saved balances for Schools First FCU, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports."
+  );
+  assert.equal(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", status: "error" }))?.action,
+    "reconnect"
   );
 });
 
@@ -101,5 +109,28 @@ test("Plaid sync result messages include safe API error details", () => {
   assert.equal(
     formatPlaidSyncResultMessage(sync),
     "Sync incomplete: 0 accounts, 0 raw transactions, 0 enriched transactions, 2 failures. PLAID_CONFIGURATION_ERROR: Plaid configuration is incomplete."
+  );
+});
+
+test("Plaid sync result messages make unreadable tokens actionable", () => {
+  const sync = {
+    accountsUpserted: 5,
+    enrichedTransactionsInserted: 0,
+    enrichedTransactionsUpdated: 0,
+    failed: 1,
+    items: [
+      { errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", errorMessage: "Plaid sync failed." }
+    ],
+    rawTransactionsUpserted: 0,
+    status: "failed" as const
+  };
+
+  assert.equal(
+    getPlaidSyncResultErrorDetails(sync),
+    "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Ledger can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable."
+  );
+  assert.equal(
+    formatPlaidSyncResultMessage(sync),
+    "Sync incomplete: 5 accounts, 0 raw transactions, 0 enriched transactions, 1 failures. PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Ledger can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable."
   );
 });

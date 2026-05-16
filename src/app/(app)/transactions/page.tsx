@@ -14,6 +14,7 @@ import {
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   let filters = parseTransactionFilters(params);
   let accounts: AccountRecord[] = [];
   let categories: CategoryRecord[] = [];
+  let plaidConnections: PlaidConnectionSummary[] = [];
   let transactions: TransactionRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
@@ -42,9 +44,10 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
 
   if (context.client && context.userId) {
     try {
-      [accounts, categories] = await Promise.all([
+      [accounts, categories, plaidConnections] = await Promise.all([
         listAccounts(context.client, context.userId),
-        listCategories(context.client, context.userId)
+        listCategories(context.client, context.userId),
+        listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId)
       ]);
       filters = normalizeTransactionFilters(filters, accounts, categories);
       transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
@@ -61,6 +64,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       filters={filters}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
+      plaidConnections={plaidConnections}
       transactions={transactions}
     />
   );

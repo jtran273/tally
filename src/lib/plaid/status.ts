@@ -10,6 +10,7 @@ export interface PlaidConnectionIssue {
 
 export interface PlaidConnectionStatusInput {
   errorCode: string | null;
+  institutionName?: string | null;
   lastSuccessfulSyncAt: string | null;
   status: PlaidItemStatus;
 }
@@ -60,9 +61,10 @@ const WAIT_ERROR_CODES = new Set([
 
 const SERVER_CONFIGURATION_ERROR_CODES = new Set([
   "PLAID_CONFIGURATION_ERROR",
-  "PLAID_ROUTE_CONFIGURATION_ERROR",
-  "PLAID_TOKEN_DECRYPTION_ERROR"
+  "PLAID_ROUTE_CONFIGURATION_ERROR"
 ]);
+
+const TOKEN_DECRYPTION_ERROR_CODE = "PLAID_TOKEN_DECRYPTION_ERROR";
 
 function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
@@ -92,6 +94,15 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
       action: "reconnect",
       detail: "This connection can no longer be used for sync. Reconnect the institution to continue importing data.",
       title: "Reconnect required"
+    };
+  }
+
+  if (code === TOKEN_DECRYPTION_ERROR_CODE) {
+    const institutionName = input.institutionName?.trim();
+    return {
+      action: "reconnect",
+      detail: `Ledger can still show saved balances${institutionName ? ` for ${institutionName}` : ""}, but transaction sync cannot run because the bank connection token is unreadable. Reconnect the institution to resume imports.`,
+      title: institutionName ? `Reconnect ${institutionName}` : "Reconnect required"
     };
   }
 
@@ -167,7 +178,13 @@ export function buildPlaidConnectionsStatusSummary(
 export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): string | null {
   const details = sync.items
     .filter((item) => item.errorCode || item.errorMessage)
-    .map((item) => [item.errorCode, item.errorMessage].filter(Boolean).join(": "));
+    .map((item) => {
+      if (normalizedCode(item.errorCode ?? null) === TOKEN_DECRYPTION_ERROR_CODE) {
+        return "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Ledger can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable.";
+      }
+
+      return [item.errorCode, item.errorMessage].filter(Boolean).join(": ");
+    });
 
   return details.length > 0 ? [...new Set(details)].join("; ") : null;
 }

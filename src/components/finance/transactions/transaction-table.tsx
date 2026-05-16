@@ -1,5 +1,6 @@
 import type { AccountRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
+import type { PlaidConnectionIssue } from "@/lib/plaid/status";
 import { Clock3, HandCoins, Pencil, Repeat, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import styles from "./transactions.module.css";
@@ -8,6 +9,7 @@ interface TransactionTableProps {
   accountOnlyFilter: boolean;
   filtersActive: boolean;
   limit: number;
+  selectedAccountIssue: PlaidConnectionIssue | null;
   selectedAccount: AccountRecord | null;
   transactions: TransactionRecord[];
 }
@@ -116,8 +118,17 @@ function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolea
   return filtersActive ? "No transactions match these filters" : "No persisted transactions yet";
 }
 
-function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
+function emptyTransactionCopy(
+  filtersActive: boolean,
+  accountOnlyFilter: boolean,
+  selectedAccount: AccountRecord | null,
+  selectedAccountIssue: PlaidConnectionIssue | null
+) {
   if (accountOnlyFilter && selectedAccount) {
+    if (selectedAccountIssue?.action === "reconnect") {
+      return `${selectedAccountIssue.detail} The saved balance can remain visible even though no transaction rows are importing.`;
+    }
+
     if (selectedAccount.type === "investment" || selectedAccount.type === "retirement") {
       return "This account can be connected and show balances even when Plaid Transactions does not return posted rows for it.";
     }
@@ -134,6 +145,7 @@ export function TransactionTable({
   accountOnlyFilter,
   filtersActive,
   limit,
+  selectedAccountIssue,
   selectedAccount,
   transactions
 }: TransactionTableProps) {
@@ -144,7 +156,7 @@ export function TransactionTable({
           {emptyTransactionTitle(filtersActive, accountOnlyFilter, selectedAccount)}
         </div>
         <div className={styles.emptyCopy}>
-          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount)}
+          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount, selectedAccountIssue)}
         </div>
       </div>
     );

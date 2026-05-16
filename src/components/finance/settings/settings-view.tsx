@@ -203,6 +203,11 @@ function SyncObservabilityPanel({
                     {item.rawTransactionsUpserted.toLocaleString("en-US")} raw, {(item.enrichedTransactionsInserted + item.enrichedTransactionsUpdated).toLocaleString("en-US")} enriched, {item.transactionsRemoved.toLocaleString("en-US")} removed
                     {item.errorCode ? ` | ${item.errorCode}` : ""}
                   </div>
+                  {connection?.issue ? (
+                    <div className={styles.settingSub}>
+                      {connection.issue.detail}
+                    </div>
+                  ) : null}
                 </div>
                 <span className={`${styles.statusPill} ${item.status === "succeeded" ? styles.statusReady : styles.statusFallback}`}>
                   {item.status}
