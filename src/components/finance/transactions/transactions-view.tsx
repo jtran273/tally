@@ -2,8 +2,8 @@ import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db"
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import type { PlaidConnectionSummary } from "@/lib/plaid/service";
-import { Database, Filter, HandCoins, Hourglass, Inbox } from "lucide-react";
-import type { TransactionFilterState } from "./filters";
+import { Database, Inbox, WalletCards } from "lucide-react";
+import { transactionPeriodTitle, type TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
@@ -79,51 +79,52 @@ export function TransactionsView({
   const selectedAccountIssue = selectedAccount
     ? connectionByInstitutionId.get(selectedAccount.institutionId)?.issue ?? null
     : null;
+  const periodTitle = transactionPeriodTitle(filters);
+  const pendingDetail = summary.pending > 0
+    ? `${summary.pending.toLocaleString("en-US")} pending`
+    : "Transactions shown";
+  const reimbursementDetail = summary.reimbursements.outstandingAmount > 0
+    ? `${formatMoney(summary.reimbursements.outstandingAmount)} reimbursement outstanding`
+    : "Owned outflow";
 
   return (
     <div className={styles.shell}>
-      <section className={styles.summaryGrid} aria-label="Transaction summary">
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Database size={13} aria-hidden />
-            Rows shown
-          </span>
-          <strong>{transactions.length.toLocaleString("en-US")}</strong>
-          <span>Persisted enriched transactions</span>
+      <section className={styles.headerPanel} aria-label="Transaction summary">
+        <div className={styles.headerCopy}>
+          <span>Transaction period</span>
+          <h2>{periodTitle}</h2>
+          <p>
+            {filters.hasActiveFilters
+              ? `Filtered view, latest ${filters.limit.toLocaleString("en-US")} rows.`
+              : `Latest ${filters.limit.toLocaleString("en-US")} enriched transactions.`}
+          </p>
         </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Filter size={13} aria-hidden />
-            Spending
-          </span>
-          <strong>{formatMoney(summary.spending)}</strong>
-          <span>Owned outflow excluding transfers and reimbursable portions</span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <HandCoins size={13} aria-hidden />
-            Reimbursements
-          </span>
-          <strong>{formatMoney(summary.reimbursements.outstandingAmount)}</strong>
-          <span>
-            Outstanding from {formatMoney(summary.reimbursements.reimbursableAmount)} reimbursable activity
-          </span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Hourglass size={13} aria-hidden />
-            Pending
-          </span>
-          <strong>{summary.pending.toLocaleString("en-US")}</strong>
-          <span>Visually marked in the table</span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>
-            <Inbox size={13} aria-hidden />
-            Review
-          </span>
-          <strong>{summary.needsReview.toLocaleString("en-US")}</strong>
-          <span>Open review items in view</span>
+
+        <div className={styles.summaryMetrics}>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>
+              <WalletCards size={13} aria-hidden />
+              Spending
+            </span>
+            <strong>{formatMoney(summary.spending)}</strong>
+            <span>{reimbursementDetail}</span>
+          </div>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>
+              <Database size={13} aria-hidden />
+              Rows
+            </span>
+            <strong>{transactions.length.toLocaleString("en-US")}</strong>
+            <span>{pendingDetail}</span>
+          </div>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>
+              <Inbox size={13} aria-hidden />
+              Review
+            </span>
+            <strong>{summary.needsReview.toLocaleString("en-US")}</strong>
+            <span>{summary.needsReview > 0 ? "Open review items" : "Ready for export"}</span>
+          </div>
         </div>
       </section>
 

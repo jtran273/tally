@@ -154,7 +154,8 @@ test("transaction search filters, topbar search, and CSV export stay aligned", a
   await filterForm.getByRole("button", { name: /apply/i }).click();
 
   await expect(page).toHaveURL(/\/transactions\?.*q=Lyft/);
-  await expect(page.getByText("Rows shown")).toBeVisible();
+  await expect(page.getByText("Rows", { exact: true })).toBeVisible();
+  await expect(page.getByText("All transactions")).toBeVisible();
   await expect(page.getByText("Lyft").first()).toBeVisible();
 
   const exportResponse = await page.request.get("/api/export/transactions?q=Lyft");
