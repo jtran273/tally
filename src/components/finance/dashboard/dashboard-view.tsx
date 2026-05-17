@@ -1143,26 +1143,42 @@ function buildCategoryTrend(
 
 function IncomeByCategoryPanel({
   asOfDate,
+  rangeKey,
+  setRangeKey,
   transactions
 }: {
   asOfDate: string;
+  rangeKey: TrendRangeKey;
+  setRangeKey: (key: TrendRangeKey) => void;
   transactions: DashboardBalanceTransaction[];
 }) {
-  const [monthIndex, setMonthIndex] = useState(0);
-  const breakdowns = useMemo(
-    () => buildIncomeBreakdownsByMonth(transactions, asOfDate, 6),
-    [asOfDate, transactions]
+  const { fromDate, toDate } = useMemo(() => {
+    const range = rangeOptionForKey(rangeKey);
+    if (range.days) {
+      return { fromDate: addDaysIso(asOfDate, -(range.days - 1)), toDate: asOfDate };
+    }
+    const firstIncomeDate = transactions.reduce<string | null>((earliest, transaction) => {
+      if (dashboardTransactionIncomeAmount(transaction) <= 0) return earliest;
+      return earliest === null || transaction.date < earliest ? transaction.date : earliest;
+    }, null);
+    return { fromDate: firstIncomeDate ?? asOfDate, toDate: asOfDate };
+  }, [asOfDate, rangeKey, transactions]);
+  const { previousFrom, previousTo } = useMemo(() => {
+    const fromMs = new Date(fromDate).getTime();
+    const toMs = new Date(toDate).getTime();
+    const spanDays = Math.max(1, Math.round((toMs - fromMs) / (24 * 60 * 60 * 1000)) + 1);
+    return {
+      previousFrom: addDaysIso(fromDate, -spanDays),
+      previousTo: addDaysIso(fromDate, -1)
+    };
+  }, [fromDate, toDate]);
+  const breakdown = useMemo(
+    () => buildIncomeBreakdownForRange(transactions, fromDate, toDate, previousFrom, previousTo),
+    [fromDate, previousFrom, previousTo, toDate, transactions]
   );
-  const safeMonthIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
-  const breakdown = breakdowns[safeMonthIndex] ?? { fromDate: "", rows: [], toDate: "", totalAmount: 0 };
   const maxAmount = breakdown.rows[0]?.amount ?? 0;
-  const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "Month";
-  const monthPeriodLabel = breakdown.fromDate
-    ? safeMonthIndex === 0
-      ? `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)} so far`
-      : `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)}`
-    : "No monthly period";
-  const subtitle = `${monthLabel} - ${monthPeriodLabel} - ${breakdown.rows.length} ${breakdown.rows.length === 1 ? "category" : "categories"} - transfers excluded`;
+  const rangeLabel = rangeKey === "ALL" ? "All time" : rangeKey;
+  const subtitle = `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${breakdown.rows.length} ${breakdown.rows.length === 1 ? "category" : "categories"} - transfers excluded`;
 
   return (
     <section aria-label="Income by category" className={styles.categoryPanel}>
@@ -1174,28 +1190,28 @@ function IncomeByCategoryPanel({
         </div>
         <Link
           className={styles.textLink}
-          href={transactionsHref({ direction: "income", from: breakdown.fromDate, to: breakdown.toDate })}
+          href={transactionsHref({ direction: "income", from: fromDate, to: toDate })}
         >
           Open transactions
         </Link>
       </div>
 
-      <div className={styles.categoryMonthPicker} aria-label="Income month">
-        {breakdowns.map((option, index) => (
+      <div className={styles.categoryRangeControls} aria-label="Income range">
+        {trendRangeOptions.map((option) => (
           <button
-            aria-pressed={index === safeMonthIndex}
-            className={`${styles.categoryMonthButton} ${index === safeMonthIndex ? styles.categoryMonthActive : ""}`}
-            key={option.fromDate || index}
-            onClick={() => setMonthIndex(index)}
+            aria-pressed={rangeKey === option.key}
+            className={rangeKey === option.key ? styles.categoryRangeActive : undefined}
+            key={option.key}
+            onClick={() => setRangeKey(option.key)}
             type="button"
           >
-            {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+            {option.label}
           </button>
         ))}
       </div>
 
       {breakdown.rows.length === 0 ? (
-        <div className={styles.categoryEmpty}>No positive non-transfer income recorded for {monthLabel}.</div>
+        <div className={styles.categoryEmpty}>No positive non-transfer income recorded in this period.</div>
       ) : (
         <div className={styles.categoryRows}>
           {breakdown.rows.map((row) => {
@@ -1203,7 +1219,7 @@ function IncomeByCategoryPanel({
             const deltaTone = row.deltaAmount > 0 ? styles.positive : row.deltaAmount < 0 ? styles.negative : undefined;
             const deltaLabel = row.previousAmount > 0
               ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
-              : "New this month";
+              : "New this period";
 
             return (
               <Link
@@ -1211,12 +1227,12 @@ function IncomeByCategoryPanel({
                 href={transactionsHref({
                   category: row.id ?? undefined,
                   direction: "income",
-                  from: breakdown.fromDate,
+                  from: fromDate,
                   q: row.id ? undefined : row.label,
-                  to: breakdown.toDate
+                  to: toDate
                 })}
                 key={row.id ?? row.label}
-                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
               >
                 <div className={styles.categoryRowHead}>
                   <strong>{row.label}</strong>
@@ -1253,7 +1269,7 @@ function CategorySpendingPanel({
   setRangeKey: (key: TrendRangeKey) => void;
   transactions: DashboardBalanceTransaction[];
 }) {
-  const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
+  const [viewMode, setViewMode] = useState<CategoryViewMode>("trend");
   const [monthIndex, setMonthIndex] = useState(0);
   const { fromDate, toDate } = useMemo(
     () => categoryRangeBounds(transactions, rangeKey, asOfDate),
@@ -2016,7 +2032,6 @@ export function DashboardView({
   const router = useRouter();
   const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("cashMinusLiabilities");
   const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
-  const [categoryRangeKey, setCategoryRangeKey] = useState<TrendRangeKey>("1M");
   const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const cashScopeValue = totals.cash;
@@ -2210,7 +2225,12 @@ export function DashboardView({
           return (
             <>
               <CashAccountsPanel accounts={accounts} />
-              <IncomeByCategoryPanel asOfDate={asOfDate} transactions={scopedTransactions} />
+              <IncomeByCategoryPanel
+                asOfDate={asOfDate}
+                rangeKey={trendRangeKey}
+                setRangeKey={setTrendRangeKey}
+                transactions={scopedTransactions}
+              />
             </>
           );
         }
@@ -2222,8 +2242,8 @@ export function DashboardView({
               <CategorySpendingPanel
                 asOfDate={asOfDate}
                 breakdowns={categoryBreakdowns}
-                rangeKey={categoryRangeKey}
-                setRangeKey={setCategoryRangeKey}
+                rangeKey={trendRangeKey}
+                setRangeKey={setTrendRangeKey}
                 transactions={scopedTransactions}
               />
               <RecurringBillsPanel recurringExpenses={recurringExpenses} />
