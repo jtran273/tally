@@ -365,7 +365,31 @@ Expected:
 
 ### Live clarification loop
 
-OpenClaw can run the live reimbursement clarification poller from this repo:
+OpenClaw can run the reimbursement clarification workflow from this repo. The recommended assistant-native flow is two-step: a scheduled non-interactive poll asks James one safe question in iMessage, then Grace posts James's later answer back to Tally with the reply helper.
+
+Scheduled ask-only poll:
+
+```bash
+OPENCLAW_TALLY_BASE_URL=https://<tally-host> \
+OPENCLAW_TOKEN=<shared-token> \
+OPENCLAW_CLARIFICATION_NONINTERACTIVE=true \
+npm run openclaw:clarifications
+```
+
+When `status` is `asked_without_answer`, OpenClaw should send `askedQuestion` to James and keep the local state file. The command never waits on stdin when `OPENCLAW_CLARIFICATION_NONINTERACTIVE=true`.
+
+Later, after James replies, post the answer back to Tally:
+
+```bash
+OPENCLAW_TALLY_BASE_URL=https://<tally-host> \
+OPENCLAW_TOKEN=<shared-token> \
+OPENCLAW_CLARIFICATION_ANSWER="Ryan" \
+npm run openclaw:clarifications:reply
+```
+
+The reply helper reads the same state file, picks the most recent unanswered proposal, posts to `POST /api/openclaw/replies`, marks `answeredAt`, and saves state. To answer a specific proposal instead, set `OPENCLAW_CLARIFICATION_PROPOSAL_ID=<proposal-id>`. You can also pass the answer as CLI args instead of `OPENCLAW_CLARIFICATION_ANSWER`.
+
+For manual local testing, omit the non-interactive flag to answer at the terminal:
 
 ```bash
 OPENCLAW_TALLY_BASE_URL=https://<tally-host> \
@@ -379,8 +403,18 @@ Behavior:
 - asks at most one `openClarificationQuestions[]` item per run,
 - stores only app-owned proposal ids, question fingerprints, timestamps, and cursors in local state,
 - suppresses duplicate questions by proposal id and `questionFingerprint` across repeated polls,
+- in non-interactive mode, marks the selected question asked and returns JSON with `status`, `proposalId`, `nextCursor`, and `askedQuestion` without posting a reply unless `OPENCLAW_CLARIFICATION_ANSWER` is explicitly set,
 - posts non-empty answers to `POST /api/openclaw/replies` as `{ "proposal_id": "...", "raw_text": "..." }`,
 - runs every message and reply payload through the assistant safety guard before sending.
+
+Environment variables:
+
+- `OPENCLAW_TALLY_BASE_URL` or `TALLY_BASE_URL`: Tally host.
+- `OPENCLAW_TOKEN`: shared bearer token.
+- `OPENCLAW_CLARIFICATION_STATE_PATH`: optional state path; default `.openclaw/clarification-loop-state.json`.
+- `OPENCLAW_CLARIFICATION_NONINTERACTIVE=true`: ask-only cron/agent mode; never blocks on stdin.
+- `OPENCLAW_CLARIFICATION_ANSWER`: explicit answer to post. In ask-only mode, omit this unless intentionally doing a dry run that posts.
+- `OPENCLAW_CLARIFICATION_PROPOSAL_ID`: optional explicit proposal id for `npm run openclaw:clarifications:reply`.
 
 For a non-interactive production dry run, create or identify one safe test proposal with a concise reimbursement clarification question, then run with an explicit safe answer:
 
@@ -398,6 +432,7 @@ Failure handling:
 
 - `401` means the OpenClaw token is missing, stale, or mismatched; rotate both Tally server env and OpenClaw caller env together,
 - `409` on reply means the proposal was answered, expired, dismissed, or no longer has a question; do not retry the same answer blindly,
+- if the reply helper cannot find an unanswered proposal, inspect `OPENCLAW_CLARIFICATION_STATE_PATH`; the poll and reply commands must share the same state file,
 - network or `5xx` failures can be retried on the next schedule because duplicate local state prevents re-asking the same user question,
 - delete only the loop state entry for a specific proposal if the user explicitly wants OpenClaw to ask it again.
 

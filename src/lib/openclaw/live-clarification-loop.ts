@@ -80,13 +80,24 @@ function markAsked(
   });
 }
 
-function markAnswered(
+export function markOpenClawClarificationAnswered(
   state: OpenClawClarificationLoopState,
   proposalId: string,
   answeredAt: string
 ) {
   const entry = state.asked.find((item) => item.proposalId === proposalId);
   if (entry) entry.answeredAt = answeredAt;
+}
+
+export function selectOpenClawClarificationReplyTarget(
+  state: OpenClawClarificationLoopState,
+  proposalId?: string | null
+): OpenClawClarificationStateEntry | null {
+  if (proposalId) {
+    return state.asked.find((entry) => entry.proposalId === proposalId) ?? null;
+  }
+
+  return state.asked.findLast((entry) => !entry.answeredAt) ?? null;
 }
 
 export function selectOpenClawClarificationToAsk(
@@ -200,7 +211,7 @@ export async function runOpenClawClarificationLoop({
   }
 
   const reply = await client.postReply(question.proposalId, rawAnswer);
-  markAnswered(state, question.proposalId, now.toISOString());
+  markOpenClawClarificationAnswered(state, question.proposalId, now.toISOString());
 
   return {
     askedQuestion: message,

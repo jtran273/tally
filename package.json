@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "openclaw:clarifications": "tsx scripts/openclaw-clarification-loop.ts",
+    "openclaw:clarifications:reply": "tsx scripts/openclaw-clarification-reply.ts",
     "plaid:cleanup": "tsx scripts/plaid-cleanup.ts",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && npm run test:unit",

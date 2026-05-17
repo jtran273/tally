@@ -15,6 +15,11 @@ function env(name: string) {
   return process.env[name]?.trim() || null;
 }
 
+function envFlag(name: string) {
+  const value = env(name)?.toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 async function loadState(path: string): Promise<OpenClawClarificationLoopState> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as OpenClawClarificationLoopState;
@@ -56,11 +61,13 @@ async function main() {
   const statePath = env("OPENCLAW_CLARIFICATION_STATE_PATH") ?? DEFAULT_STATE_PATH;
   const state = await loadState(statePath);
   const answerOverride = env("OPENCLAW_CLARIFICATION_ANSWER");
+  const noninteractive = envFlag("OPENCLAW_CLARIFICATION_NONINTERACTIVE");
 
   const result = await runOpenClawClarificationLoop({
     client: createOpenClawHttpClient({ baseUrl, token }),
     messenger: {
       async ask(_question, message) {
+        if (noninteractive && !answerOverride) return null;
         return answerOverride ?? promptForAnswer(message);
       }
     },
@@ -70,6 +77,7 @@ async function main() {
   });
 
   console.log(JSON.stringify({
+    askedQuestion: result.askedQuestion,
     nextCursor: result.nextCursor,
     proposalId: result.proposalId,
     status: result.status

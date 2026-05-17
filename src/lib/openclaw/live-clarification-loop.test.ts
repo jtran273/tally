@@ -8,6 +8,7 @@ import {
   createOpenClawHttpClient,
   emptyOpenClawClarificationState,
   runOpenClawClarificationLoop,
+  selectOpenClawClarificationReplyTarget,
   selectOpenClawClarificationToAsk,
   type OpenClawClarificationClient
 } from "./live-clarification-loop";
@@ -108,6 +109,60 @@ test("runOpenClawClarificationLoop asks at most one concise question and posts t
   }]);
   assert.equal(state.asked[0]?.answeredAt, now.toISOString());
   assertAssistantContextSafe({ askedMessages, state });
+});
+
+test("runOpenClawClarificationLoop supports noninteractive ask-only polls without posting replies", async () => {
+  const state = emptyOpenClawClarificationState();
+  const client = fakeClient(signals([signal()]));
+  let asks = 0;
+
+  const result = await runOpenClawClarificationLoop({
+    client,
+    messenger: { async ask() { asks += 1; return null; } },
+    now,
+    state
+  });
+
+  assert.equal(result.status, "asked_without_answer");
+  assert.equal(result.proposalId, signal().proposalId);
+  assert.match(result.askedQuestion ?? "", /^Tally reimbursement check:/);
+  assert.equal(asks, 1);
+  assert.deepEqual(client.postedReplies, []);
+  assert.equal(state.nextCursor, now.toISOString());
+  assert.deepEqual(state.asked[0], {
+    answeredAt: null,
+    askedAt: now.toISOString(),
+    proposalId: signal().proposalId,
+    questionFingerprint: signal().questionFingerprint
+  });
+});
+
+test("selectOpenClawClarificationReplyTarget picks the most recent unanswered proposal or explicit id", () => {
+  const state = emptyOpenClawClarificationState();
+  state.asked.push(
+    {
+      answeredAt: null,
+      askedAt: "2026-05-17T15:00:00.000Z",
+      proposalId: "older-unanswered",
+      questionFingerprint: "older"
+    },
+    {
+      answeredAt: "2026-05-17T16:00:00.000Z",
+      askedAt: "2026-05-17T15:30:00.000Z",
+      proposalId: "answered",
+      questionFingerprint: "answered"
+    },
+    {
+      answeredAt: null,
+      askedAt: "2026-05-17T16:30:00.000Z",
+      proposalId: "newer-unanswered",
+      questionFingerprint: "newer"
+    }
+  );
+
+  assert.equal(selectOpenClawClarificationReplyTarget(state)?.proposalId, "newer-unanswered");
+  assert.equal(selectOpenClawClarificationReplyTarget(state, "older-unanswered")?.proposalId, "older-unanswered");
+  assert.equal(selectOpenClawClarificationReplyTarget(state, "missing"), null);
 });
 
 test("runOpenClawClarificationLoop suppresses duplicate questions across repeated polls", async () => {
