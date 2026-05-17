@@ -7,7 +7,7 @@ import {
   transactionTagLabel
 } from "@/lib/finance/classification";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
-import { isPeerToPeerReview } from "@/lib/review/reasons";
+import { getReviewReasonCopy, isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
 import { LinkButton, MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
 import {
@@ -128,6 +128,10 @@ function ReviewCard({
   const canDismiss = !peerToPeer;
   const canSuggest = !peerToPeer;
   const sourceLabel = suggestion.sourceLabel ?? (aiProviderKind === "openai" ? "OpenAI" : "Deterministic heuristics");
+  const reasonCopy = getReviewReasonCopy(item.reason);
+  const suggestedCategory = displayCategoryName(suggestion.categoryName ?? item.transaction.category);
+  const suggestedIntent = intentDisplay(suggestion.intent ?? item.transaction.intent);
+  const suggestedTag = tagDisplay(suggestion.intent);
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
@@ -137,7 +141,7 @@ function ReviewCard({
           <div className={styles.metaLine}>
             <span>{formatDate(item.transaction.date)}</span>
             <span>{item.transaction.accountName}</span>
-            <span>{peerToPeer ? "Peer-to-peer" : "Needs review"}</span>
+            <span>{reasonCopy.shortLabel}</span>
           </div>
         </div>
         <div className={styles.amountBlock}>
@@ -149,57 +153,16 @@ function ReviewCard({
       </div>
 
       {peerToPeer ? (
-        <div className={styles.reasonCallout}>
-          <TriangleAlert size={14} aria-hidden />
-          <div>
-            <strong>Explain this peer-to-peer payment.</strong>
-            <span>Venmo, Zelle, Cash App, and PayPal hide the real merchant. Split it into real categories below.</span>
-          </div>
-        </div>
+        <p className={styles.cardNote}>Explain what this payment was for, then split it into the right categories.</p>
       ) : hasSuggestion ? (
-        <div className={styles.suggestionGrid}>
-          <div className={styles.suggestionColumn}>
-            <div className={styles.suggestionSourceLine}>
-              <span className={styles.columnLabel}>Suggested cleanup</span>
-              <span className={styles.sourceBadge}>{sourceLabel}</span>
-            </div>
-            {suggestion.sourceDetail ? (
-              <p className={styles.sourceDetail}>{suggestion.sourceDetail}</p>
-            ) : null}
-            <dl className={styles.detailList}>
-              <div>
-                <dt>Category</dt>
-                <dd>{displayCategoryName(suggestion.categoryName ?? item.transaction.category)}</dd>
-              </div>
-              <div>
-                <dt>Intent</dt>
-                <dd>{intentDisplay(suggestion.intent ?? item.transaction.intent)}</dd>
-              </div>
-              {tagDisplay(suggestion.intent ?? item.transaction.intent) ? (
-                <div>
-                  <dt>Tag</dt>
-                  <dd>{tagDisplay(suggestion.intent ?? item.transaction.intent)}</dd>
-                </div>
-              ) : null}
-              {suggestion.reason ? (
-                <div>
-                  <dt>Why</dt>
-                  <dd>{suggestion.reason}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
+        <div className={styles.suggestionCompact}>
+          <span>{sourceLabel}</span>
+          <strong>{suggestedCategory}</strong>
+          <span>{suggestedIntent}</span>
+          {suggestedTag ? <span>{suggestedTag}</span> : null}
         </div>
       ) : (
-        <div className={styles.reasonCallout}>
-          <TriangleAlert size={14} aria-hidden />
-          <div>
-            <strong>No accept-ready suggestion yet.</strong>
-            <span>
-              This was flagged by {sourceLabel.toLowerCase()}. Generate a fresh suggestion or edit the transaction below.
-            </span>
-          </div>
-        </div>
+        <p className={styles.cardNote}>{reasonCopy.action}</p>
       )}
 
       <div className={styles.cardActions}>
@@ -240,8 +203,8 @@ function EmptyQueue() {
   return (
     <div className={styles.emptyState}>
       <CheckCircle2 size={28} aria-hidden />
-      <h2>Queue clear — nice.</h2>
-      <p>Every transaction is categorized. New imports only land here when AI is uncertain or a peer-to-peer charge needs explaining.</p>
+      <h2>Queue clear.</h2>
+      <p>New imports land here only when a transaction needs your call.</p>
       <LinkButton href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />
@@ -330,9 +293,9 @@ export function ReviewQueueView({
           <Sparkles size={13} aria-hidden />
           {aiProviderKind === "openai"
             ? aiAutoReviewEnabled
-              ? "OpenAI is configured. Automatic cleanup can run on eligible imports, and suggestions still need review unless high-confidence cleanup is audit-backed."
-              : "OpenAI is configured for manual clicks. Automatic cleanup is off, so this page does not call OpenAI until you ask for a suggestion."
-            : "OpenAI is not configured. Suggestions come from deterministic merchant and Plaid rules only."}
+              ? "OpenAI can suggest cleanup. You still approve review items here."
+              : "OpenAI is available only when you ask for a suggestion."
+            : "Suggestions use local rules."}
         </Notice>
       ) : null}
 
@@ -360,9 +323,9 @@ export function ReviewQueueView({
             <section className={styles.reviewGroup} aria-labelledby="review-group-ai">
               <div className={styles.reviewGroupHead}>
                 <h2 id="review-group-ai">
-                  <Sparkles size={16} aria-hidden /> Needs categorization ({aiItems.length})
+                  <Sparkles size={16} aria-hidden /> Categorize ({aiItems.length})
                 </h2>
-                <span>These rows were flagged by Plaid/app rules. Ask for a suggestion, accept a ready one, or relabel manually.</span>
+                <span>Accept a clean suggestion, ask AI, or edit manually.</span>
               </div>
               <div className={styles.cardStack}>
                 {aiItems.map((item) => (

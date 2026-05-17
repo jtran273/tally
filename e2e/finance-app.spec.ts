@@ -506,12 +506,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
 
   const categoryViewControls = page.getByLabel("Category spending view");
   const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
-  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
-
   const categoryTrendView = categoryViewControls.getByRole("button", { exact: true, name: "Trend" });
-  await categoryTrendView.click();
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
@@ -552,7 +549,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const incomePanel = page.getByLabel("Income by category");
   await expect(incomePanel).toBeVisible();
   await expect(incomePanel).toContainText("transfers excluded");
-  await expect(page.getByLabel("Income month").getByRole("button").first()).toBeVisible();
+  await expect(page.getByLabel("Income range").getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
   const incomeLinks = await incomePanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
@@ -779,10 +776,10 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
 
   await expect(page.getByLabel("Review queue summary")).toContainText("Needs your input");
   await expect(page.getByRole("heading", { name: /peer-to-peer/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Needs categorization/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Categorize/i })).toBeVisible();
 
   const peerCard = page.locator("article", { has: page.getByRole("heading", { name: "Venmo - Maya R." }) });
-  await expect(peerCard).toContainText("Explain this peer-to-peer payment.");
+  await expect(peerCard).toContainText("Explain what this payment was for");
   await expect(peerCard).toContainText("preview-only in demo mode");
   await expect(peerCard.getByText("Fully allocated")).toBeVisible();
   await expect(peerCard.getByRole("button", { name: /read-only demo/i })).toBeDisabled();

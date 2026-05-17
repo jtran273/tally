@@ -436,15 +436,27 @@
 }
 
 .pendingRow td {
-  background: var(--info-soft);
+  background: transparent;
+}
+
+.pendingRow td:first-child {
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--info) 55%, transparent);
 }
 
 .reviewRow td {
-  background: var(--warn-soft);
+  background: color-mix(in oklab, var(--warn-soft) 40%, var(--surface));
+}
+
+.reviewRow td:first-child {
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--warn) 60%, transparent);
 }
 
 .pendingRow.reviewRow td {
-  background: color-mix(in oklab, var(--warn) 5%, color-mix(in oklab, var(--info) 5%, var(--surface)));
+  background: color-mix(in oklab, var(--warn-soft) 35%, var(--surface));
+}
+
+.pendingRow.reviewRow td:first-child {
+  box-shadow: inset 2px 0 0 color-mix(in oklab, var(--warn) 60%, transparent);
 }
 
 .dateCell,
@@ -621,9 +633,9 @@
 }
 
 .pendingBadge {
-  border-color: color-mix(in oklab, var(--info) 28%, var(--line));
-  background: var(--info-soft);
-  color: var(--info);
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
 }
 
 .reviewBadge {

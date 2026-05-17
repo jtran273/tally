@@ -29,10 +29,10 @@ Spacing rhythm: prefer 4/8/12/16/24/32px via --space-1..6. Cards use
   --neg: #a85543;
   --warn: #b0833a;
   --warn-ink: #8a6620;
-  --info: #5a7298;
+  --info: #8093b1;
   --warn-soft: #f4ead3;
   --neg-soft: #f2dad2;
-  --info-soft: #dde3ee;
+  --info-soft: #eef1f6;
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--sage-ink);
   --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-sans: "Inter Tight", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
