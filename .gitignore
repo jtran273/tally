@@ -26,6 +26,7 @@ pnpm-debug.log*
 # Local editor and tooling state
 .vscode/
 .idea/
+.openclaw/
 
 # Test and coverage output
 coverage/

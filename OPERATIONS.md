@@ -363,6 +363,44 @@ Expected:
 - OpenClaw never writes finance rows directly and Tally never sends iMessages,
 - signal payloads must pass the assistant forbidden-field guard before serialization.
 
+### Live clarification loop
+
+OpenClaw can run the live reimbursement clarification poller from this repo:
+
+```bash
+OPENCLAW_TALLY_BASE_URL=https://<tally-host> \
+OPENCLAW_TOKEN=<shared-token> \
+npm run openclaw:clarifications
+```
+
+Behavior:
+
+- polls `GET /api/openclaw/signals?since=<last-nextCursor>` and stores the cursor in `.openclaw/clarification-loop-state.json` by default,
+- asks at most one `openClarificationQuestions[]` item per run,
+- stores only app-owned proposal ids, question fingerprints, timestamps, and cursors in local state,
+- suppresses duplicate questions by proposal id and `questionFingerprint` across repeated polls,
+- posts non-empty answers to `POST /api/openclaw/replies` as `{ "proposal_id": "...", "raw_text": "..." }`,
+- runs every message and reply payload through the assistant safety guard before sending.
+
+For a non-interactive production dry run, create or identify one safe test proposal with a concise reimbursement clarification question, then run with an explicit safe answer:
+
+```bash
+OPENCLAW_TALLY_BASE_URL=https://<tally-host> \
+OPENCLAW_TOKEN=<shared-token> \
+OPENCLAW_CLARIFICATION_STATE_PATH=.openclaw/prod-dry-run-clarification-state.json \
+OPENCLAW_CLARIFICATION_ANSWER="yes" \
+npm run openclaw:clarifications
+```
+
+Verify the command returns `{"status":"answered",...}`, the matching `agent_proposals` row has `status='answered'`, `clarification_answer` set, and an audit event with `source='openclaw_replies_api'`. Inspect the captured prompt/log payload and confirm it contains no raw Plaid payloads, provider ids, tokens, attendee emails, service-role keys, database URLs, or other secrets.
+
+Failure handling:
+
+- `401` means the OpenClaw token is missing, stale, or mismatched; rotate both Tally server env and OpenClaw caller env together,
+- `409` on reply means the proposal was answered, expired, dismissed, or no longer has a question; do not retry the same answer blindly,
+- network or `5xx` failures can be retried on the next schedule because duplicate local state prevents re-asking the same user question,
+- delete only the loop state entry for a specific proposal if the user explicitly wants OpenClaw to ask it again.
+
 To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Tally, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
 
 ## Database Maintenance
