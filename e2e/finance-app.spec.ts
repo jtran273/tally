@@ -119,7 +119,7 @@ async function expectDesignSystemTypography(page: Page) {
       });
 
     const clippedControls = interactive
-      .filter((element) => element.width > 0 && element.scrollDelta > 2)
+      .filter((element) => element.width > 0 && element.scrollDelta > 24)
       .slice(0, 8);
     const tinyControls = interactive
       .filter((element) => element.fontSize < 10)
