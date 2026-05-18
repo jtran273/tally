@@ -777,6 +777,18 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expectNoPageOverflow(page);
 });
 
+test("review page surfaces the AI quality panel for the demo workspace", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/review");
+
+  const panel = page.getByRole("region", { name: "AI suggestion quality" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("How AI suggestions land")).toBeVisible();
+  await expect(panel.getByText(/Open with suggestion/i)).toBeVisible();
+  await expect(panel.getByText(/Reviews avoided/i)).toBeVisible();
+});
+
 test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflows", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
