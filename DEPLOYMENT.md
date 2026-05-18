@@ -67,6 +67,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENCLAW_TOKEN` | Server only | OpenClaw yes | Shared bearer secret for `/api/openclaw/signals` and `/api/openclaw/replies`. Rotate alongside the OpenClaw caller. |
 | `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Tally rows are exposed to the server-to-server OpenClaw integration. |
 | `OPENCLAW_BRIEFING_CADENCE` | Server only | Optional | `weekly` by default. Set to `daily` only if the scheduled OpenClaw briefing job should refresh a daily proposal key. |
+| `PROACTIVE_SCAN_ENABLED` | Server only | Optional | Defaults to disabled. Set `true` only when the scheduled reimbursement-candidate detector should read the configured user's transactions and persist advisory proposals. |
 | `PROACTIVE_SCAN_USER_ID` | Server only | Optional | Supabase user id for the nightly proactive reimbursement scan. Falls back to `OPENCLAW_USER_ID`. |
 | `PROACTIVE_SCAN_MAX_TX` | Server only | Optional | Hard cap on candidate transactions scanned per proactive run. Defaults to `100`. |
 | `FIDELITY_HOLDINGS` | Server only | Optional | Manual Fidelity holdings priced from recent market quotes, for example `AAPL:10,NVDA:2,cash:0`. This only affects investment valuation display; it does not run Plaid or write provider data. |
@@ -162,11 +163,11 @@ To enable OpenAI suggestions:
 1. Set `OPENAI_API_KEY` in Vercel server environment.
 2. Optionally set `OPENAI_MODEL`.
 3. Leave `ENABLE_OPENAI_AUTO_REVIEW=false` or unset for manual-only token usage.
-4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import, review page cleanup, and proactive scans should call OpenAI.
+4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import, review page cleanup, and enabled proactive scans should call OpenAI.
 5. Deploy.
 6. Verify Review can request an OpenAI suggestion.
 
-Manual OpenAI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup and proactive scans only run OpenAI when `ENABLE_OPENAI_AUTO_REVIEW=true`, and cleanup only applies eligible high-confidence ordinary categorization under server-side rules.
+Manual OpenAI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup and proactive scans only run OpenAI when `ENABLE_OPENAI_AUTO_REVIEW=true`, and cleanup only applies eligible high-confidence ordinary categorization under server-side rules. The scheduled proactive scan route also requires `PROACTIVE_SCAN_ENABLED=true`; otherwise it returns a safe disabled status without reading transactions or creating proposals.
 
 ## First Production Smoke Test
 
@@ -235,7 +236,7 @@ For a secret issue:
 
 - Scheduled Plaid sync is enabled through Vercel Cron at `12:00 UTC` daily. Vercel cron schedules are UTC, so this maps to 5:00 AM America/Los_Angeles during daylight saving time and 4:00 AM during standard time; on Hobby, invocation may occur within the scheduled hour. Proactive scan and OpenClaw briefing routes still need a separate trusted runner if enabled.
 - The app is single-user from a product perspective, though rows are modeled by `user_id`.
-- Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible; proactive scans also use this flag before spending OpenAI tokens.
+- Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible; scheduled proactive scans also require `PROACTIVE_SCAN_ENABLED=true` before reading transactions, and use `ENABLE_OPENAI_AUTO_REVIEW=true` before spending OpenAI tokens.
 - Bulk review acceptance is not implemented; review suggestions are accepted one item at a time.
 - The agent inbox is still a review-first proposal surface. Persistent `agent_proposals` exist for longer-lived assistant proposals and clarification requests, but broader persisted proposal browsing remains future UI work.
 - Reimbursement matching can rank likely reimbursement inflows and link them through audited helper paths after explicit approval; fully autonomous reimbursement lifecycle management is not implemented.

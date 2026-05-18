@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
 import {
+  createDisabledProactiveScanResult,
   createProactiveScanServiceContext,
   ProactiveScanConfigurationError,
+  resolveProactiveScanEnabled,
   resolveProactiveScanMaxTransactions,
   runProactiveReimbursementScan
 } from "@/lib/agents/proactive-scan";
@@ -20,10 +22,15 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ error: "Scheduled proactive scan is not authorized." }, { status: 401 });
   }
 
+  const maxTransactions = resolveProactiveScanMaxTransactions();
+  if (!resolveProactiveScanEnabled()) {
+    return jsonNoStore({ scan: createDisabledProactiveScanResult({ maxTransactions }) });
+  }
+
   try {
     const { client, userId } = createProactiveScanServiceContext();
     const scan = await runProactiveReimbursementScan(client, userId, {
-      maxTransactions: resolveProactiveScanMaxTransactions()
+      maxTransactions
     });
 
     return jsonNoStore({ scan }, { status: scan.status === "failed" ? 502 : 200 });

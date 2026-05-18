@@ -1,14 +1,10 @@
 import type { RecurringExpenseRecord } from "@/lib/db";
-import { monthlyRecurringEquivalent, type UpcomingCashflowTimelineSummary } from "@/lib/finance/cashflow";
-import { LinkButton, MetricCard, Notice } from "@/components/ui/primitives";
+import { monthlyRecurringEquivalent } from "@/lib/finance/cashflow";
+import { LinkButton, Notice } from "@/components/ui/primitives";
 import type { RecurringCandidate } from "@/lib/recurring";
 import {
   BadgeAlert,
-  CalendarClock,
-  Repeat,
-  ShieldCheck,
-  Sparkles,
-  TriangleAlert
+  ShieldCheck
 } from "lucide-react";
 import { RecurringCandidateActions } from "./recurring-candidate-actions";
 import styles from "./recurring.module.css";
@@ -20,7 +16,6 @@ interface RecurringViewProps {
   isDemo: boolean;
   isSignedIn: boolean;
   recurringExpenses: RecurringExpenseRecord[];
-  upcomingCashflow: UpcomingCashflowTimelineSummary;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -93,11 +88,6 @@ function candidateReason(candidate: RecurringCandidate) {
 function statusLabel(status: RecurringExpenseRecord["status"]) {
   if (status === "pending") return "Confirm";
   return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function formatSignedMoney(value: number) {
-  if (value === 0) return formatMoney(0);
-  return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
 }
 
 function TrackedTable({
@@ -239,63 +229,13 @@ function CandidateTable({ candidates, isDemo }: { candidates: RecurringCandidate
   );
 }
 
-function UpcomingCashflowPanel({ summary }: { summary: UpcomingCashflowTimelineSummary }) {
-  return (
-    <section className={styles.panel}>
-      <div className={styles.panelHead}>
-        <div>
-          <div className={styles.eyebrow}>Readiness</div>
-          <h2>Next 30 days</h2>
-        </div>
-        <span>{formatSignedMoney(summary.netTotal)}</span>
-      </div>
-      <div className={styles.timelineSummary}>
-        <div>
-          <span>Scheduled income</span>
-          <strong className={styles.positiveText}>{formatMoney(summary.incomeTotal)}</strong>
-        </div>
-        <div>
-          <span>Scheduled bills</span>
-          <strong className={styles.negativeText}>{formatMoney(summary.billTotal)}</strong>
-        </div>
-        <div>
-          <span>Cash after schedule</span>
-          <strong>{summary.projectedCashBalance === null ? "No cash accounts" : formatMoney(summary.projectedCashBalance)}</strong>
-        </div>
-      </div>
-      {summary.events.length === 0 ? (
-        <div className={styles.emptyMini}>No recurring income or bills are scheduled in this window.</div>
-      ) : (
-        <div className={styles.timelineList}>
-          {summary.events.slice(0, 8).map((event) => (
-            <div className={styles.timelineRow} key={event.id}>
-              <div>
-                <strong>{event.merchant}</strong>
-                <span>
-                  {formatDate(event.date)} - {event.cadence}
-                  {event.source === "transaction-history" ? " - projected from history" : ""}
-                  {event.status === "pending" ? " - pending" : ""}
-                </span>
-              </div>
-              <span className={event.direction === "income" ? styles.positiveText : styles.negativeText}>
-                {formatSignedMoney(event.direction === "income" ? event.amount : -event.amount)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function RecurringView({
   candidates,
   dataError,
   isConfigured,
   isDemo,
   isSignedIn,
-  recurringExpenses,
-  upcomingCashflow
+  recurringExpenses
 }: RecurringViewProps) {
   const canShowData = isConfigured && isSignedIn && !dataError;
   const candidateByRecurringId = new Map(
@@ -318,42 +258,8 @@ export function RecurringView({
     if (aAttention !== bAttention) return aAttention - bAttention;
     return a.nextDueDate.localeCompare(b.nextDueDate);
   });
-  const commitmentExpenses = recurringExpenses.filter((expense) => expense.status === "active" || expense.status === "pending");
-  const monthlyTotal = commitmentExpenses.reduce(
-    (sum, expense) => sum + monthlyRecurringEquivalent(expense.amount, expense.cadence),
-    0
-  );
-  const candidateMonthlyTotal = additionalCandidates.reduce(
-    (sum, candidate) => sum + monthlyRecurringEquivalent(candidate.amount, candidate.cadence),
-    0
-  );
-  const needsAttention = recurringExpenses.filter(needsTrackedAttention).length +
-    additionalCandidates.filter((candidate) => candidate.flags.some((flag) => flag.severity === "warning")).length;
-
   return (
     <div className={styles.shell}>
-      <section className={styles.summaryGrid} aria-label="Recurring summary">
-        <MetricCard
-          label={<><Repeat size={13} aria-hidden />Tracked recurring</>}
-          value={recurringExpenses.length.toLocaleString("en-US")}
-          tone={recurringExpenses.some((expense) => expense.status === "pending") ? "warning" : "neutral"}
-        />
-        <MetricCard
-          label={<><CalendarClock size={13} aria-hidden />Monthly estimate</>}
-          value={formatMoney(monthlyTotal)}
-          tone="trusted"
-        />
-        <MetricCard
-          label={<><BadgeAlert size={13} aria-hidden />To confirm</>}
-          value={needsAttention.toLocaleString("en-US")}
-          tone={needsAttention > 0 ? "warning" : "neutral"}
-        />
-        <MetricCard
-          label={<><Sparkles size={13} aria-hidden />New candidates</>}
-          value={additionalCandidates.length.toLocaleString("en-US")}
-        />
-      </section>
-
       {!isConfigured ? (
         <Notice role="status">
           Supabase is not configured for this environment, so recurring data cannot be loaded.
@@ -391,13 +297,6 @@ export function RecurringView({
         </div>
       ) : (
         <>
-          {candidateMonthlyTotal > monthlyTotal ? (
-            <Notice role="status" tone="warning">
-              <TriangleAlert size={14} aria-hidden />
-              Detected candidates estimate {formatMoney(candidateMonthlyTotal)} per month from real Plaid rows before review.
-            </Notice>
-          ) : null}
-          <UpcomingCashflowPanel summary={upcomingCashflow} />
           <TrackedTable candidateByRecurringId={candidateByRecurringId} isDemo={isDemo} recurringExpenses={visibleRecurringExpenses} />
           <CandidateTable candidates={additionalCandidates} isDemo={isDemo} />
         </>

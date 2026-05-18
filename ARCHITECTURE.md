@@ -194,7 +194,7 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 ## AI Suggestion Flow
 
-`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import, review page load, and proactive scans is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; manual review actions can still request one suggestion at a time.
+`src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import and review page load is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; scheduled proactive scans are disabled unless `PROACTIVE_SCAN_ENABLED=true`, and they use OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`. Manual review actions can still request one suggestion at a time.
 
 Manual AI suggestions are advisory and require explicit user acceptance. When `ENABLE_OPENAI_AUTO_REVIEW=true`, eligible high-confidence ordinary cleanup can be applied by server-side heuristics during import or review processing; peer-to-peer and ambiguous items remain manual.
 

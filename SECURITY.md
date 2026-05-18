@@ -65,6 +65,7 @@ Server-only secrets:
 - `CRON_SECRET`
 - `OPENCLAW_TOKEN`
 - `OPENCLAW_USER_ID`
+- `PROACTIVE_SCAN_ENABLED`
 - `PROACTIVE_SCAN_USER_ID`
 
 Browser-exposed values:
@@ -242,6 +243,7 @@ Privileged route handlers should use `logSafeError()` instead of logging raw err
 - Vercel project environment variables are set for Production and Preview separately.
 - `ENABLE_DEMO_MODE` is set to `true` in production only when a seeded product walkthrough is intentional.
 - `CRON_SECRET` is set before enabling scheduled sync, proactive scans, or scheduled OpenClaw briefings and omitted when no scheduler is configured.
+- `PROACTIVE_SCAN_ENABLED` is set to `true` only when scheduled reimbursement-candidate proposals are intentionally enabled for the configured user.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set before enabling Google Calendar.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.

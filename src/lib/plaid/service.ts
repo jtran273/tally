@@ -40,7 +40,7 @@ import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchan
 import { getPlaidLinkTokenConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
-import { getPlaidConnectionIssue, type PlaidConnectionIssue } from "./status";
+import { getPlaidConnectionIssue, isPlaidServerConfigurationErrorCode, type PlaidConnectionIssue } from "./status";
 import { decryptPlaidAccessToken, encryptPlaidAccessToken, PlaidTokenDecryptionError } from "./token-vault";
 import { recordManualInvestmentSnapshots } from "@/lib/investments/manual-valuations";
 
@@ -346,11 +346,14 @@ export interface PlaidLinkTokenResult {
 }
 
 function toConnectionSummary(item: PlaidItemPublicRow, institution?: InstitutionRow): PlaidConnectionSummary {
+  const hasServerConfigurationError = isPlaidServerConfigurationErrorCode(item.error_code);
+  const status = hasServerConfigurationError && item.status !== "revoked" ? "active" : item.status;
+  const errorCode = hasServerConfigurationError ? null : item.error_code;
   const issue = getPlaidConnectionIssue({
-    errorCode: item.error_code,
+    errorCode,
     institutionName: institution?.name ?? null,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
-    status: item.status
+    status
   });
 
   return {
@@ -358,14 +361,14 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
     billedProducts: item.billed_products,
     consentExpiresAt: item.consent_expires_at,
     createdAt: item.created_at,
-    errorCode: item.error_code,
+    errorCode,
     errorMessage: issue?.detail ?? null,
     id: item.id,
     institutionId: item.institution_id,
     institutionName: institution?.name ?? "Unknown institution",
     issue,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
-    status: item.status,
+    status,
     updatedAt: item.updated_at
   };
 }
@@ -1879,8 +1882,11 @@ async function updatePlaidItemSyncError(
   itemId: string,
   error: unknown
 ) {
+  const syncError = persistedSyncError(error);
+  if (isPlaidServerConfigurationErrorCode(syncError.error_code)) return;
+
   const update: PlaidItemUpdate = {
-    ...persistedSyncError(error),
+    ...syncError,
     status: "error"
   };
   const result = await client

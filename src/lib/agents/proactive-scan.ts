@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { createAutoReviewTransactionSuggestionService } from "@/lib/ai/server";
+import { createAutoReviewTransactionSuggestionService, isOpenAiAutoReviewEnabled } from "@/lib/ai/server";
 import type { TransactionSuggestionService } from "@/lib/ai/suggestion-service";
+import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import type { AgentProposalRecord, AuditEventInput, Database, TransactionRecord } from "@/lib/db";
 import {
   listAgentProposals,
@@ -20,14 +21,26 @@ export interface ProactiveScanResult {
   errorCode: "detector_failed" | null;
   fromDate: string;
   maxTransactions: number;
+  openAiAutoReviewEnabled: boolean;
   scannedTransactionCount: number;
-  status: "failed" | "succeeded";
+  status: "disabled" | "failed" | "succeeded";
+  suggestionProviderKind: AiSuggestionProviderKind | null;
+  suggestionProviderVersion: string | null;
   toDate: string;
 }
 
+type ProactiveScanSuggestionService = Pick<TransactionSuggestionService, "suggestReimbursementCandidate"> & {
+  readonly adapter?: {
+    readonly descriptor?: {
+      readonly kind: AiSuggestionProviderKind;
+      readonly version: string;
+    };
+  };
+};
+
 export interface ProactiveScanDependencies {
   createDetectedReimbursementCandidateProposals?: typeof createDetectedReimbursementCandidateProposals;
-  createSuggestionService?: () => Pick<TransactionSuggestionService, "suggestReimbursementCandidate">;
+  createSuggestionService?: () => ProactiveScanSuggestionService;
   listAgentProposals?: (
     client: FinanceSupabaseClient,
     userId: string,
@@ -76,6 +89,10 @@ function parsePositiveInteger(value: string | undefined, fallback: number) {
   return Math.max(1, Math.floor(parsed));
 }
 
+function enabledEnvFlag(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
 function proposalAuditData(proposal: AgentProposalRecord) {
   return {
     confidence: proposal.confidence,
@@ -90,6 +107,10 @@ function proposalAuditData(proposal: AgentProposalRecord) {
 
 export function resolveProactiveScanMaxTransactions(value = process.env.PROACTIVE_SCAN_MAX_TX) {
   return parsePositiveInteger(value, DEFAULT_MAX_TRANSACTIONS);
+}
+
+export function resolveProactiveScanEnabled(value = process.env.PROACTIVE_SCAN_ENABLED) {
+  return enabledEnvFlag(value);
 }
 
 export function resolveProactiveScanUserId() {
@@ -132,6 +153,35 @@ export function createProactiveScanSuggestionService() {
   return createAutoReviewTransactionSuggestionService();
 }
 
+function suggestionProviderMetadata(suggestionService: ProactiveScanSuggestionService) {
+  return {
+    openAiAutoReviewEnabled: isOpenAiAutoReviewEnabled(),
+    suggestionProviderKind: suggestionService.adapter?.descriptor?.kind ?? null,
+    suggestionProviderVersion: suggestionService.adapter?.descriptor?.version ?? null
+  };
+}
+
+export function createDisabledProactiveScanResult(options: {
+  maxTransactions?: number;
+  now?: Date;
+} = {}): ProactiveScanResult {
+  const maxTransactions = options.maxTransactions ?? resolveProactiveScanMaxTransactions();
+  const { fromDate, toDate } = proactiveScanWindow(options.now ?? new Date());
+
+  return {
+    createdProposalCount: 0,
+    errorCode: null,
+    fromDate,
+    maxTransactions,
+    openAiAutoReviewEnabled: isOpenAiAutoReviewEnabled(),
+    scannedTransactionCount: 0,
+    status: "disabled",
+    suggestionProviderKind: null,
+    suggestionProviderVersion: null,
+    toDate
+  };
+}
+
 export async function runProactiveReimbursementScan(
   client: FinanceSupabaseClient,
   userId: string,
@@ -151,6 +201,7 @@ export async function runProactiveReimbursementScan(
   const audit = dependencies.recordAuditEvent ?? recordAuditEvent;
   const logger = dependencies.logger ?? { error: logSafeError };
   const suggestionService = dependencies.createSuggestionService?.() ?? createProactiveScanSuggestionService();
+  const providerMetadata = suggestionProviderMetadata(suggestionService);
 
   const [transactions, inflows, existingProposals] = await Promise.all([
     loadTransactions(client, userId, {
@@ -188,6 +239,7 @@ export async function runProactiveReimbursementScan(
       errorCode: "detector_failed",
       fromDate,
       maxTransactions,
+      ...providerMetadata,
       scannedTransactionCount: transactions.length,
       status: "failed",
       toDate
@@ -214,6 +266,7 @@ export async function runProactiveReimbursementScan(
     errorCode: null,
     fromDate,
     maxTransactions,
+    ...providerMetadata,
     scannedTransactionCount: transactions.length,
     status: "succeeded",
     toDate

@@ -74,6 +74,11 @@ function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
 }
 
+export function isPlaidServerConfigurationErrorCode(code: string | null) {
+  const normalized = normalizedCode(code);
+  return Boolean(normalized && SERVER_CONFIGURATION_ERROR_CODES.has(normalized));
+}
+
 function validTimestamp(value: string | null) {
   if (!value) return null;
   const time = Date.parse(value);
@@ -124,7 +129,7 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
     };
   }
 
-  if (code && SERVER_CONFIGURATION_ERROR_CODES.has(code)) {
+  if (isPlaidServerConfigurationErrorCode(code)) {
     return {
       action: "retry",
       detail: "Plaid server configuration needs attention before sync can run. Check production environment variables and retry sync.",

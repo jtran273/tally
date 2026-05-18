@@ -782,7 +782,8 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/review");
 
-  await expect(page.getByLabel("Review queue summary")).toContainText("Needs your input");
+  await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
+  await expect(page.getByLabel("Review queue summary")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: /peer-to-peer/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Categorize/i })).toBeVisible();
 
@@ -833,15 +834,15 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expectNoSensitiveFinanceText(page);
 });
 
-test("recurring and accounts pages render cashflow, accounts, and seeded finance rows", async ({ baseURL, context, page }) => {
+test("recurring and accounts pages render focused recurring rows and active accounts", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
 
   await page.goto("/recurring");
-  await expect(page.getByLabel("Recurring summary")).toContainText("Tracked recurring");
-  await expect(page.getByLabel("Recurring summary")).toContainText("Monthly estimate");
-  await expect(page.getByRole("heading", { name: "Next 30 days" })).toBeVisible();
+  await expect(page.getByLabel("Recurring summary")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Next 30 days" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Recurring expenses" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Patterns from real transactions" })).toBeVisible();
   await expect(page.getByText("Demo recurring patterns are read-only")).toBeVisible();
   await expect(page.getByText("Equinox").first()).toBeVisible();
   await expect(page.getByText("Substack").first()).toBeVisible();
@@ -854,10 +855,10 @@ test("recurring and accounts pages render cashflow, accounts, and seeded finance
 
   await page.goto("/accounts");
   const connectedAccounts = page.getByLabel("Connected accounts");
-  await expect(connectedAccounts).toContainText("Balances first");
+  await expect(connectedAccounts).toContainText("Accounts with the newest recent transactions appear first.");
   await expect(connectedAccounts).toContainText("Schools First");
   await expect(connectedAccounts).toContainText("Chase");
-  await expect(connectedAccounts).toContainText("Vanguard Roth IRA");
+  await expect(connectedAccounts).toContainText("Charles Schwab Checking");
   await expect(connectedAccounts).toContainText("Recent");
   await expect(connectedAccounts).toContainText("PAYROLL DEPOSIT");
   await expect(connectedAccounts).not.toContainText("Net balance");
@@ -865,10 +866,7 @@ test("recurring and accounts pages render cashflow, accounts, and seeded finance
   await expect(connectedAccounts).not.toContainText("Never synced");
   await expect(connectedAccounts).not.toContainText("No sync yet");
   await expect(page.getByLabel("Accounts summary")).toHaveCount(0);
-  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(5);
   await expect(connectedAccounts.getByRole("link", { exact: true, name: "Manage connections" })).toHaveAttribute("href", "/settings");
-  const schwabCard = connectedAccounts.locator("article").filter({ hasText: "Charles Schwab Checking" });
-  await expect(schwabCard).not.toContainText("Recent");
   await expect(page.getByRole("button", { name: /^Sync$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /disconnect/i })).toHaveCount(0);
   await expect(page.getByLabel("Bank connections")).toHaveCount(0);
@@ -882,6 +880,7 @@ test("recurring and accounts pages render cashflow, accounts, and seeded finance
     }))
   ));
   expect(accountLinks.length).toBeGreaterThan(1);
+  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(5);
   const accountParams = new Set<string>();
   for (const accountLink of accountLinks) {
     expect(accountLink.href).toMatch(/^\/transactions\?account=/);

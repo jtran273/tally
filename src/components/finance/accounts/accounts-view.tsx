@@ -93,10 +93,25 @@ function isValuationOnlyAccount(account: AccountRecord) {
   return account.type === "investment" || account.type === "retirement";
 }
 
-function sortAccountsForCards(accounts: readonly AccountRecord[]) {
+function latestRecentTransactionDate(transactions: readonly TransactionRecord[]) {
+  return transactions.reduce<string | null>((latestDate, transaction) => {
+    if (!latestDate || transaction.date > latestDate) return transaction.date;
+    return latestDate;
+  }, null);
+}
+
+function sortAccountsForCards(
+  accounts: readonly AccountRecord[],
+  recentTransactionsByAccount: Readonly<Record<string, readonly TransactionRecord[]>>
+) {
   return [...accounts].sort((a, b) => {
-    const balanceDelta = Math.abs(balanceContribution(b)) - Math.abs(balanceContribution(a));
-    if (balanceDelta !== 0) return balanceDelta;
+    const aLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[a.id] ?? []);
+    const bLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[b.id] ?? []);
+    if (aLatestDate && !bLatestDate) return -1;
+    if (!aLatestDate && bLatestDate) return 1;
+
+    const recentTransactionDelta = (bLatestDate ?? "").localeCompare(aLatestDate ?? "");
+    if (recentTransactionDelta !== 0) return recentTransactionDelta;
 
     const institutionDelta = a.institutionName.localeCompare(b.institutionName);
     if (institutionDelta !== 0) return institutionDelta;
@@ -343,7 +358,7 @@ export function AccountsView({
   snapshots
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
-  const sortedAccounts = sortAccountsForCards(accounts);
+  const sortedAccounts = sortAccountsForCards(accounts, recentTransactionsByAccount);
 
   return (
     <div className={styles.shell}>
@@ -385,7 +400,7 @@ export function AccountsView({
             <div className={styles.accountListHead}>
               <div>
                 <h2>Connected accounts</h2>
-                <p>Balances first, with recent activity only where Tally has transactions.</p>
+                <p>Accounts with the newest recent transactions appear first.</p>
               </div>
               <LinkButton href="/settings">
                 <Settings size={13} aria-hidden />

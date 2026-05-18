@@ -10,6 +10,7 @@ import {
   isPlaidItemDueForOpportunisticSync,
   isRecentRunningPlaidSync,
   isSkippablePlaidTransactionsError,
+  listPlaidConnections,
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
   revokePlaidConnection,
@@ -299,6 +300,29 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
   assert.equal(summary.rawTransactionsUpserted, 4);
   assert.equal("plaidItemId" in summary.items[0], false);
   assert.equal("transactionCursor" in summary.items[0], false);
+});
+
+test("Plaid connection summaries do not treat server config failures as item attention", async () => {
+  const client = new PurgeFinanceClient({
+    institutions: [
+      institutionRow()
+    ],
+    plaid_items: [
+      {
+        ...plaidItemRow("ciphertext"),
+        error_code: "PLAID_CONFIGURATION_ERROR",
+        error_message: "Plaid sync failed.",
+        status: "error"
+      }
+    ]
+  });
+
+  const connections = await listPlaidConnections(client.asClient(), userId);
+
+  assert.equal(connections.length, 1);
+  assert.equal(connections[0]?.status, "active");
+  assert.equal(connections[0]?.errorCode, null);
+  assert.equal(connections[0]?.issue, null);
 });
 
 test("Plaid item ledger purge removes item-scoped finance rows and leaves other items intact", async () => {
@@ -671,6 +695,10 @@ class PurgeQueryBuilder {
 
   in(column: string, values: readonly unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+
+  order() {
     return this;
   }
 

@@ -5,8 +5,10 @@ import type { AgentProposalRecord, TransactionRecord } from "@/lib/db";
 import type { TransactionListFilters } from "@/lib/db/queries";
 import type { PersistReimbursementCandidateInput } from "@/lib/review/reimbursement-candidates";
 import {
+  createDisabledProactiveScanResult,
   createProactiveScanSuggestionService,
   proactiveScanWindow,
+  resolveProactiveScanEnabled,
   resolveProactiveScanMaxTransactions,
   runProactiveReimbursementScan
 } from "./proactive-scan";
@@ -198,6 +200,83 @@ test("proactive scan max transaction env parser falls back and clamps", () => {
   assert.equal(resolveProactiveScanMaxTransactions("12.8"), 12);
   assert.equal(resolveProactiveScanMaxTransactions("0"), 1);
   assert.equal(resolveProactiveScanMaxTransactions("not-a-number"), 100);
+});
+
+test("proactive scan requires an explicit enable flag", () => {
+  assert.equal(resolveProactiveScanEnabled(undefined), false);
+  assert.equal(resolveProactiveScanEnabled(""), false);
+  assert.equal(resolveProactiveScanEnabled("false"), false);
+  assert.equal(resolveProactiveScanEnabled("TRUE"), true);
+});
+
+test("disabled proactive scan result exposes only safe operational metadata", () => {
+  const previousAutoReview = process.env.ENABLE_OPENAI_AUTO_REVIEW;
+
+  try {
+    delete process.env.ENABLE_OPENAI_AUTO_REVIEW;
+
+    const result = createDisabledProactiveScanResult({
+      maxTransactions: 25,
+      now
+    });
+
+    assert.deepEqual(result, {
+      createdProposalCount: 0,
+      errorCode: null,
+      fromDate: "2026-03-29",
+      maxTransactions: 25,
+      openAiAutoReviewEnabled: false,
+      scannedTransactionCount: 0,
+      status: "disabled",
+      suggestionProviderKind: null,
+      suggestionProviderVersion: null,
+      toDate: "2026-05-13"
+    });
+  } finally {
+    if (previousAutoReview === undefined) {
+      delete process.env.ENABLE_OPENAI_AUTO_REVIEW;
+    } else {
+      process.env.ENABLE_OPENAI_AUTO_REVIEW = previousAutoReview;
+    }
+  }
+});
+
+test("proactive scan result includes safe suggestion provider metadata", async () => {
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousAutoReview = process.env.ENABLE_OPENAI_AUTO_REVIEW;
+
+  try {
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.ENABLE_OPENAI_AUTO_REVIEW = "true";
+
+    const result = await runProactiveReimbursementScan(client, userId, {
+      maxTransactions: 5,
+      now
+    }, {
+      createDetectedReimbursementCandidateProposals: async () => [],
+      createSuggestionService: () => createProactiveScanSuggestionService(),
+      listAgentProposals: async () => [],
+      listTransactions: async () => [transaction({ id: "tx-dinner" })],
+      recordAuditEvent: async () => ({})
+    });
+
+    assert.equal(result.status, "succeeded");
+    assert.equal(result.openAiAutoReviewEnabled, true);
+    assert.equal(result.suggestionProviderKind, "openai");
+    assert.match(result.suggestionProviderVersion ?? "", /^openai-suggestions-v2:/);
+  } finally {
+    if (previousOpenAiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = previousOpenAiKey;
+    }
+
+    if (previousAutoReview === undefined) {
+      delete process.env.ENABLE_OPENAI_AUTO_REVIEW;
+    } else {
+      process.env.ENABLE_OPENAI_AUTO_REVIEW = previousAutoReview;
+    }
+  }
 });
 
 test("proactive scan uses the automatic AI opt-in before OpenAI", () => {

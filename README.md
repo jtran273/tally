@@ -110,7 +110,7 @@ The review queue flags transactions that need judgment, including:
 - missing categories,
 - recurring candidates.
 
-Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. OpenAI-backed automatic review cleanup and proactive scans are off by default to control token usage; users can generate AI suggestions manually from review items, or enable automatic OpenAI work with `ENABLE_OPENAI_AUTO_REVIEW=true`. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
+Plaid import automatically applies high-confidence, ordinary merchant/category/intent cleanup before the rows reach the user. OpenAI-backed automatic review cleanup and proactive scans are off by default to control token usage; users can generate AI suggestions manually from review items, enable automatic OpenAI work with `ENABLE_OPENAI_AUTO_REVIEW=true`, and enable the scheduled proactive detector separately with `PROACTIVE_SCAN_ENABLED=true`. Manual review is still required for peer-to-peer payments, large charges, shared/reimbursable intent, transfers, missing AI confidence, and unknown categories.
 Users can accept ready suggestions one at a time, generate a suggestion for one review item, dismiss non-peer-to-peer review items, edit a transaction inline, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows require an explanation and split allocation before leaving review.
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
@@ -255,6 +255,7 @@ CRON_SECRET=
 OPENCLAW_TOKEN=
 OPENCLAW_USER_ID=
 OPENCLAW_BRIEFING_CADENCE=weekly
+PROACTIVE_SCAN_ENABLED=false
 PROACTIVE_SCAN_USER_ID=
 PROACTIVE_SCAN_MAX_TX=100
 FIDELITY_HOLDINGS=AAPL:10,NVDA:2,cash:0
