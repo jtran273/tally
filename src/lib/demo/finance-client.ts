@@ -384,10 +384,73 @@ const insights: InsightRow[] = [
   }
 ];
 
+const auditEvents: AuditEventRow[] = [
+  {
+    id: "demo-audit-seed",
+    user_id: DEMO_USER_ID,
+    entity_table: "seed",
+    entity_id: null,
+    action: "ledger_seed_loaded",
+    actor_id: null,
+    before_data: null,
+    after_data: { accounts: 4, transactions: 28, review_items: 6, recurring_expenses: 5 },
+    metadata: { source: "demo.seed" },
+    created_at: NOW
+  },
+  {
+    id: "demo-audit-review-accept",
+    user_id: DEMO_USER_ID,
+    entity_table: "review_items",
+    entity_id: "demo-review-001",
+    action: "review.suggestion_accepted",
+    actor_id: DEMO_USER_ID,
+    before_data: { merchantName: "AMAZON MKT", categoryName: "Uncategorized", confidence: 0.4 },
+    after_data: { merchantName: "Amazon", categoryName: "Household", confidence: 0.93 },
+    metadata: { reason: "merchant_cleanup" },
+    created_at: NOW
+  },
+  {
+    id: "demo-audit-merchant-rule",
+    user_id: DEMO_USER_ID,
+    entity_table: "merchant_rules",
+    entity_id: "demo-rule-001",
+    action: "merchant_rule.ai_accepted_upserted",
+    actor_id: DEMO_USER_ID,
+    before_data: null,
+    after_data: { merchantName: "Spotify", categoryName: "Subscriptions" },
+    metadata: { source: "review_accept" },
+    created_at: NOW
+  },
+  {
+    id: "demo-audit-recurring",
+    user_id: DEMO_USER_ID,
+    entity_table: "recurring_expenses",
+    entity_id: "demo-recurring-001",
+    action: "recurring.candidate_confirmed",
+    actor_id: DEMO_USER_ID,
+    before_data: { status: "pending" },
+    after_data: { status: "active", merchant: "Netflix", monthlyAverage: 15.49 },
+    metadata: { source: "review" },
+    created_at: NOW
+  },
+  {
+    id: "demo-audit-reimbursement",
+    user_id: DEMO_USER_ID,
+    entity_table: "reimbursement_records",
+    entity_id: "demo-reimbursement-001",
+    action: "reimbursement.inflow_linked",
+    actor_id: DEMO_USER_ID,
+    before_data: { status: "expected" },
+    after_data: { status: "received", appliedAmount: 42.75, transactionId: "demo-tx-venmo-001" },
+    metadata: { source: "review" },
+    created_at: NOW
+  }
+];
+
 const rows = {
   accounts,
   agent_proposals: [] as AgentProposalRow[],
-  audit_events: [] as AuditEventRow[],
+  audit_events: auditEvents,
   balance_snapshots: balanceSnapshots,
   categories,
   enriched_transactions: enrichedTransactions,
@@ -404,6 +467,17 @@ const rows = {
   review_items: reviewItems,
   transaction_splits: transactionSplits
 } satisfies { [Table in FinanceTableName]: TableRow<Table>[] };
+
+function likePatternToRegExp(pattern: string, caseInsensitive: boolean): RegExp {
+  let body = "^";
+  for (const char of pattern) {
+    if (char === "%") body += ".*";
+    else if (char === "_") body += ".";
+    else body += char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  body += "$";
+  return new RegExp(body, caseInsensitive ? "i" : "");
+}
 
 function compareValues(left: unknown, right: unknown) {
   if (typeof left === "number" && typeof right === "number") return left - right;
@@ -445,6 +519,18 @@ class DemoFilterBuilder<Row extends Record<string, unknown>> implements PromiseL
 
   lte(column: string, value: string | number) {
     this.filters.push((row) => compareValues(row[column], value) <= 0);
+    return this;
+  }
+
+  like(column: string, pattern: string) {
+    const regex = likePatternToRegExp(pattern, false);
+    this.filters.push((row) => typeof row[column] === "string" && regex.test(row[column] as string));
+    return this;
+  }
+
+  ilike(column: string, pattern: string) {
+    const regex = likePatternToRegExp(pattern, true);
+    this.filters.push((row) => typeof row[column] === "string" && regex.test(row[column] as string));
     return this;
   }
 

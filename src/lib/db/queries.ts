@@ -76,6 +76,8 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   in(column: string, values: readonly unknown[]): FinanceFilterBuilder<Row>;
   gte(column: string, value: string | number): FinanceFilterBuilder<Row>;
   lte(column: string, value: string | number): FinanceFilterBuilder<Row>;
+  like(column: string, pattern: string): FinanceFilterBuilder<Row>;
+  ilike(column: string, pattern: string): FinanceFilterBuilder<Row>;
   neq(column: string, value: unknown): FinanceFilterBuilder<Row>;
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FinanceFilterBuilder<Row>;
   limit(count: number): FinanceFilterBuilder<Row>;
@@ -1804,6 +1806,44 @@ export async function unlinkReimbursementReceivedTransaction(
   });
 
   return toReimbursementRecord(after);
+}
+
+export interface AuditEventListFilters {
+  entityTable?: string;
+  actionPrefix?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+}
+
+export async function listAuditEvents(
+  client: FinanceSupabaseClient,
+  userId: string,
+  filters: AuditEventListFilters = {}
+): Promise<AuditEventRow[]> {
+  let query = client
+    .from("audit_events")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (filters.entityTable) {
+    query = query.eq("entity_table", filters.entityTable);
+  }
+  if (filters.actionPrefix) {
+    query = query.like("action", `${filters.actionPrefix}%`);
+  }
+  if (filters.fromDate) {
+    query = query.gte("created_at", filters.fromDate);
+  }
+  if (filters.toDate) {
+    query = query.lte("created_at", filters.toDate);
+  }
+  if (filters.limit !== undefined) {
+    query = query.limit(filters.limit);
+  }
+
+  return expectData(await query, "List audit events");
 }
 
 export async function recordAuditEvent(

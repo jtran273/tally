@@ -117,14 +117,7 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 
 **Priority:** P2
 
-**Why:** Audit events are written for material changes, but there is no reviewer-friendly way to inspect change history.
-
-**Acceptance criteria:**
-
-- A dedicated route lists recent audit events for transaction edits, review decisions, merchant-rule writes, Plaid disconnects, and seed/demo events.
-- Rows show action, safe entity labels, actor, timestamp, and redacted before/after summaries.
-- Filters support action type and date range.
-- No secrets, raw payloads, auth headers, or provider ids are rendered.
+**Status:** Shipped. `/audit` lists recent events with group/date filters and sanitized before/after summaries. Raw Plaid payloads, tokens, and auth headers are dropped before rendering.
 
 ## Suggested Labels
 
