@@ -386,15 +386,25 @@ export function splitSpendingAmount(split: Pick<TransactionSplitRecord, "amount"
 }
 
 export function transactionSpendingAmount(
-  transaction: Pick<TransactionRecord, "amount" | "intent" | "splits">
+  transaction: Pick<TransactionRecord, "amount" | "intent" | "reimbursements" | "splits">
 ) {
   if (transaction.amount >= 0) return 0;
 
-  if (transaction.splits.length > 0) {
-    return roundMoney(transaction.splits.reduce((sum, split) => sum + splitSpendingAmount(split), 0));
-  }
+  const grossSpending = transaction.splits.length > 0
+    ? transaction.splits.reduce((sum, split) => sum + splitSpendingAmount(split), 0)
+    : isSpendingIntent(transaction.intent)
+      ? Math.abs(transaction.amount)
+      : 0;
+  if (grossSpending <= 0) return 0;
 
-  return isSpendingIntent(transaction.intent) ? Math.abs(transaction.amount) : 0;
+  const confirmedReimbursements = transaction.reimbursements.reduce((sum, reimbursement) => {
+    if (reimbursement.receivedTransactionId && reimbursement.status === "received") {
+      return sum + reimbursement.receivedAmount;
+    }
+    return sum;
+  }, 0);
+
+  return roundMoney(Math.max(0, grossSpending - confirmedReimbursements));
 }
 
 export function hasOpenReview(
