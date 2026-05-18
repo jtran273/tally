@@ -922,11 +922,14 @@ test("audit page lists demo audit events with sanitized summaries", async ({ bas
   await expect(page.getByText("Recurring candidate confirmed")).toBeVisible();
   await expect(page.getByText("Reimbursement linked")).toBeVisible();
 
-  // No raw Plaid payloads, tokens, or auth headers in rendered content
+  // Confirm no actual token values, raw Plaid payloads, or bearer headers leak through.
+  // (The page copy intentionally mentions the words "tokens" and "authorization headers"
+  //  to describe the redaction policy, so we look for value-shaped patterns instead.)
   const body = (await page.textContent("body")) ?? "";
-  expect(body).not.toMatch(/access_token/i);
-  expect(body).not.toMatch(/raw_payload/i);
-  expect(body).not.toMatch(/authorization/i);
+  expect(body).not.toMatch(/access_token\s*[":=]/i);
+  expect(body).not.toMatch(/raw_payload\s*[":=]/i);
+  expect(body).not.toMatch(/Bearer\s+[A-Za-z0-9_.-]+/);
+  expect(body).not.toMatch(/sk-[A-Za-z0-9]/);
 
   // Filter narrows the list
   await page.locator("select[name='group']").selectOption("seed-demo");
