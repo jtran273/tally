@@ -310,3 +310,106 @@
   border-color: color-mix(in oklab, var(--accent) 26%, var(--line));
   color: var(--ink);
 }
+
+@media (max-width: 600px) {
+  .shell {
+    gap: 12px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .summaryTile {
+    min-height: 66px;
+    padding: 10px;
+  }
+
+  .summaryTile:nth-child(n+3) {
+    display: none;
+  }
+
+  .summaryTile span {
+    font-size: var(--text-kbd);
+    line-height: 1.15;
+  }
+
+  .summaryTile strong {
+    font-size: 20px;
+  }
+
+  .safetyPanel {
+    padding: 12px;
+  }
+
+  .safetyPanel p {
+    display: none;
+  }
+
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .filterField:nth-child(4),
+  .filterActions {
+    grid-column: 1 / -1;
+  }
+
+  .filterField select,
+  .filterField input,
+  .applyButton,
+  .resetLink,
+  .pagerLink {
+    min-height: 40px;
+  }
+
+  .filterActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .applyButton,
+  .resetLink,
+  .pagerLink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .row {
+    padding: 12px;
+  }
+
+  .rowMeta {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .rowMeta span:last-child,
+  .actorRow {
+    display: none;
+  }
+
+  .rowChanges {
+    gap: 6px;
+  }
+
+  .changeColumn {
+    padding: 8px;
+  }
+
+  .changeColumn dl {
+    grid-template-columns: 1fr;
+    gap: 1px;
+  }
+
+  .changeColumn dd {
+    margin-bottom: 5px;
+  }
+}

@@ -18,6 +18,38 @@
     padding: 14px;
     gap: 10px;
   }
+
+  .header h2 {
+    font-size: 19px;
+  }
+
+  .header .sub,
+  .metric .subMuted,
+  .priceChanges {
+    display: none;
+  }
+
+  .netBlock strong {
+    font-size: 23px;
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metricGrid .metric:nth-child(n+3) {
+    display: none;
+  }
+
+  .metric {
+    min-height: 68px;
+    padding: 9px;
+  }
+
+  .metric span {
+    font-size: var(--text-kbd);
+    line-height: 1.15;
+  }
 }
 
 .header {
@@ -90,12 +122,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
-}
-
-@media (max-width: 480px) {
-  .metricGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 .metric {

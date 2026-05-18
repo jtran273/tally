@@ -1364,6 +1364,12 @@
     font-size: 14px;
   }
 
+  .categoryActionLink {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+  }
+
   .iconLink {
     width: 100%;
   }
