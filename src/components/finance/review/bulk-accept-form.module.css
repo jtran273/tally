@@ -182,3 +182,52 @@
   color: var(--neg);
   font-size: var(--text-meta);
 }
+
+@media (max-width: 600px) {
+  .panel {
+    padding: 12px;
+  }
+
+  .header {
+    gap: 8px;
+  }
+
+  .header p {
+    display: none;
+  }
+
+  .expandButton,
+  .primaryButton {
+    min-height: 38px;
+  }
+
+  .previewRow {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    gap: 7px 9px;
+    padding: 9px;
+  }
+
+  .previewMain {
+    min-width: 0;
+  }
+
+  .previewMain span {
+    white-space: normal;
+  }
+
+  .previewMeta {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .previewAmount {
+    grid-column: 3;
+    grid-row: 1;
+    font-size: var(--text-meta);
+  }
+
+  .footer,
+  .primaryButton {
+    width: 100%;
+  }
+}

@@ -107,7 +107,7 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
 };
 
 const navigation: RouteKey[] = ["dashboard", "transactions", "agentInbox", "review", "recurring", "accounts", "audit", "settings"];
-const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "audit", "settings"];
+const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
 
 function currentRoute(pathname: string): RouteKey {
   const match = navigation.find((route) => pathname === routeHref[route] || pathname.startsWith(`${routeHref[route]}/`));
@@ -289,7 +289,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item}
                 aria-current={active ? "page" : undefined}
-                className={`nav-item ${active ? "active" : ""}`}
+                className={`nav-item nav-${item} ${active ? "active" : ""}`}
                 href={routeHref[item]}
               >
                 <Icon size={16} aria-hidden />

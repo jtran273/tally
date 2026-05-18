@@ -765,6 +765,26 @@
     overflow-wrap: anywhere;
   }
 
+  .metaLine span:nth-child(n+2) {
+    display: none;
+  }
+
+  .confidenceBadge {
+    min-width: 0;
+  }
+
+  .confidenceTrack {
+    display: none;
+  }
+
+  .suggestionCompact span:first-child {
+    display: none;
+  }
+
+  .auditLinkRow {
+    display: none;
+  }
+
   .cardActions,
   .actionForms,
   .inlineEditActions,
