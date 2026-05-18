@@ -1,6 +1,7 @@
 import { ReviewQueueView } from "@/components/finance/review/review-queue-view";
 import {
   listCategories,
+  listMerchantRules,
   recordAuditEvent,
   resolveReviewItem,
   listReviewItems,
@@ -9,12 +10,18 @@ import {
   type EnrichedTransactionRow,
   type FinanceSupabaseClient,
   type Json,
+  type MerchantRuleRow,
   type ReviewQueueItem
 } from "@/lib/db";
 import { getAiProviderStatus } from "@/lib/ai/server";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { runAiReviewCleanup } from "@/lib/review/auto-cleanup";
 import { planMissingCategoryAutofixes } from "@/lib/review/missing-category-autofix";
+import {
+  buildEnrichedMerchantCounts,
+  summarizeAiReviewQuality,
+  type AiSuggestionQualitySummary
+} from "@/lib/review/quality";
 import { isRecurringReview } from "@/lib/review/reasons";
 
 export const dynamic = "force-dynamic";
@@ -193,6 +200,7 @@ export default async function ReviewPage() {
   let isSignedIn = false;
   let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
+  let qualitySummary: AiSuggestionQualitySummary | undefined;
   const aiStatus = getAiProviderStatus();
 
   const context = await getFinanceServerContext();
@@ -241,6 +249,35 @@ export default async function ReviewPage() {
       }
 
       reviewItems = actionableReviewItems(reviewItems);
+
+      try {
+        const [allReviewItems, merchantRules, enrichedRows] = await Promise.all([
+          listReviewItems(context.client, context.userId, "all"),
+          listMerchantRules(context.client, context.userId),
+          context.client
+            .from("enriched_transactions")
+            .select("*")
+            .eq("user_id", context.userId)
+            .limit(5000)
+        ]);
+        const enrichedData = enrichedRows.data ?? [];
+        const merchantCounts = buildEnrichedMerchantCounts(
+          enrichedData.map((row) => ({ merchant_name: row.merchant_name }))
+        );
+        qualitySummary = summarizeAiReviewQuality({
+          reviews: allReviewItems.map((item) => ({
+            review: item,
+            merchant: item.transaction.merchant,
+            category: item.transaction.category
+          })),
+          merchantRules: merchantRules as MerchantRuleRow[],
+          enrichedMerchantCounts: merchantCounts
+        });
+      } catch (qualityError) {
+        console.warn("ai_quality_summary_failed", {
+          error: qualityError instanceof Error ? qualityError.message : "Unknown"
+        });
+      }
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -254,6 +291,7 @@ export default async function ReviewPage() {
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
+      qualitySummary={qualitySummary}
       reviewItems={reviewItems}
     />
   );

@@ -63,16 +63,7 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 
 ### 4. Track AI suggestion quality and review savings
 
-**Priority:** P2
-
-**Why:** Merchant rules and AI suggestions should reduce review work over time. Tally needs first-party metrics to show whether automation is trusted.
-
-**Acceptance criteria:**
-
-- Accepted, dismissed, and manually edited AI-suggested review items can be counted by reason, category, merchant, and provider.
-- Review shows a compact quality summary.
-- Metrics include estimated repeated reviews avoided by merchant rules.
-- Metrics never include raw Plaid payloads, secrets, auth headers, or account identifiers.
+**Status:** Shipped. The Review page now opens with an AI quality panel summarizing acceptance rate, accepted/edited/dismissed counts, top reasons/categories/merchants, and an estimate of repeated reviews avoided via AI-derived merchant rules. Metrics are derived from resolved review items and merchant rule provenance only — no raw Plaid payloads, secrets, or account identifiers are surfaced.
 
 ### 5. Harden pending-to-posted transaction handling
 
