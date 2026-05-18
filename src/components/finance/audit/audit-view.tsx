@@ -19,7 +19,24 @@ interface AuditViewProps {
     group: AuditActionGroup | "all";
     fromDate?: string;
     toDate?: string;
+    searchText?: string;
   };
+  nextCursor?: string;
+  hasActiveCursor?: boolean;
+}
+
+function buildPagerHref(
+  filters: AuditViewProps["appliedFilters"],
+  options: { before?: string } = {}
+): string {
+  const params = new URLSearchParams();
+  if (filters.group !== "all") params.set("group", filters.group);
+  if (filters.fromDate) params.set("from", filters.fromDate);
+  if (filters.toDate) params.set("to", filters.toDate);
+  if (filters.searchText) params.set("q", filters.searchText);
+  if (options.before) params.set("before", options.before);
+  const serialized = params.toString();
+  return serialized ? `/audit?${serialized}` : "/audit";
 }
 
 const ENTITY_FILTERS: Array<{ value: string; label: string }> = [
@@ -97,7 +114,15 @@ function EventRow({ event }: { event: DisplayAuditEvent }) {
   );
 }
 
-export function AuditView({ events, dataError, isConfigured, isSignedIn, appliedFilters }: AuditViewProps) {
+export function AuditView({
+  events,
+  dataError,
+  isConfigured,
+  isSignedIn,
+  appliedFilters,
+  nextCursor,
+  hasActiveCursor
+}: AuditViewProps) {
   const canShow = isConfigured && isSignedIn && !dataError;
   const display = events.map(formatAuditEvent);
   const counts = countByGroup(events);
@@ -155,6 +180,16 @@ export function AuditView({ events, dataError, isConfigured, isSignedIn, applied
           To
           <input type="date" name="to" defaultValue={appliedFilters.toDate ?? ""} />
         </label>
+        <label className={styles.filterField}>
+          Search
+          <input
+            type="search"
+            name="q"
+            defaultValue={appliedFilters.searchText ?? ""}
+            placeholder="action, entity, or id"
+            maxLength={80}
+          />
+        </label>
         <div className={styles.filterActions}>
           <button className={styles.applyButton} type="submit">Apply filters</button>
           <a className={styles.resetLink} href="/audit">Reset</a>
@@ -186,11 +221,23 @@ export function AuditView({ events, dataError, isConfigured, isSignedIn, applied
           <p>Material changes appear here within seconds of being written by the app.</p>
         </div>
       ) : (
-        <div className={styles.list}>
-          {display.map((event) => (
-            <EventRow key={event.id} event={event} />
-          ))}
-        </div>
+        <>
+          <div className={styles.list}>
+            {display.map((event) => (
+              <EventRow key={event.id} event={event} />
+            ))}
+          </div>
+          <nav className={styles.pager} aria-label="Audit pagination">
+            {hasActiveCursor ? (
+              <a className={styles.pagerLink} href={buildPagerHref(appliedFilters)}>← Newest</a>
+            ) : <span />}
+            {nextCursor ? (
+              <a className={styles.pagerLink} href={buildPagerHref(appliedFilters, { before: nextCursor })}>
+                Older →
+              </a>
+            ) : <span />}
+          </nav>
+        </>
       )}
     </div>
   );

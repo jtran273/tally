@@ -284,3 +284,29 @@
   color: var(--ink);
   font-size: var(--text-label);
 }
+
+.pager {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pagerLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-ui);
+  text-decoration: none;
+}
+
+.pagerLink:hover {
+  border-color: color-mix(in oklab, var(--accent) 26%, var(--line));
+  color: var(--ink);
+}
