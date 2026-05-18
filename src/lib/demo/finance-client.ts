@@ -517,6 +517,11 @@ class DemoFilterBuilder<Row extends Record<string, unknown>> implements PromiseL
     return this;
   }
 
+  lt(column: string, value: string | number) {
+    this.filters.push((row) => compareValues(row[column], value) < 0);
+    return this;
+  }
+
   lte(column: string, value: string | number) {
     this.filters.push((row) => compareValues(row[column], value) <= 0);
     return this;

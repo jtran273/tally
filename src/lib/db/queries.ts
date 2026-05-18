@@ -75,6 +75,7 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   eq(column: string, value: unknown): FinanceFilterBuilder<Row>;
   in(column: string, values: readonly unknown[]): FinanceFilterBuilder<Row>;
   gte(column: string, value: string | number): FinanceFilterBuilder<Row>;
+  lt(column: string, value: string | number): FinanceFilterBuilder<Row>;
   lte(column: string, value: string | number): FinanceFilterBuilder<Row>;
   like(column: string, pattern: string): FinanceFilterBuilder<Row>;
   ilike(column: string, pattern: string): FinanceFilterBuilder<Row>;
@@ -1813,6 +1814,8 @@ export interface AuditEventListFilters {
   actionPrefix?: string;
   fromDate?: string;
   toDate?: string;
+  before?: string;
+  searchText?: string;
   limit?: number;
 }
 
@@ -1839,11 +1842,23 @@ export async function listAuditEvents(
   if (filters.toDate) {
     query = query.lte("created_at", filters.toDate);
   }
+  if (filters.before) {
+    query = query.lt("created_at", filters.before);
+  }
   if (filters.limit !== undefined) {
     query = query.limit(filters.limit);
   }
 
-  return expectData(await query, "List audit events");
+  const rows = expectData(await query, "List audit events");
+
+  if (!filters.searchText) return rows;
+  const needle = filters.searchText.trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter((row) =>
+    row.action.toLowerCase().includes(needle) ||
+    row.entity_table.toLowerCase().includes(needle) ||
+    (row.entity_id?.toLowerCase().includes(needle) ?? false)
+  );
 }
 
 export async function recordAuditEvent(

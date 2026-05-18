@@ -5,6 +5,8 @@ import { getFinanceServerContext } from "@/lib/demo/server";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 50;
+
 const GROUP_TO_ACTION_PREFIX: Record<AuditActionGroup, string | null> = {
   review: "review.",
   "merchant-rule": "merchant_rule.",
@@ -33,6 +35,20 @@ function parseDate(value: string | string[] | undefined): string | undefined {
   return match ? raw : undefined;
 }
 
+function parseIsoTimestamp(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function parseSearchText(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 || trimmed.length > 80 ? undefined : trimmed;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to load audit history.";
 }
@@ -46,13 +62,17 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
   const group = parseGroup(params.group);
   const fromDate = parseDate(params.from);
   const toDate = parseDate(params.to);
+  const before = parseIsoTimestamp(params.before);
+  const searchText = parseSearchText(params.q);
 
   const context = await getFinanceServerContext();
   let dataError = context.dataError;
   let events: AuditEventRow[] = [];
+  let hasMore = false;
+  let nextCursor: string | undefined;
 
   if (context.client && context.userId) {
-    const filters: AuditEventListFilters = { limit: 100 };
+    const filters: AuditEventListFilters = { limit: PAGE_SIZE + 1 };
     if (group !== "all") {
       const prefix = GROUP_TO_ACTION_PREFIX[group];
       const entityTable = GROUP_TO_ENTITY_TABLE[group];
@@ -61,9 +81,16 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
     }
     if (fromDate) filters.fromDate = `${fromDate}T00:00:00.000Z`;
     if (toDate) filters.toDate = `${toDate}T23:59:59.999Z`;
+    if (before) filters.before = before;
+    if (searchText) filters.searchText = searchText;
 
     try {
-      events = await listAuditEvents(context.client, context.userId, filters);
+      const rows = await listAuditEvents(context.client, context.userId, filters);
+      hasMore = rows.length > PAGE_SIZE;
+      events = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+      if (hasMore && events.length > 0) {
+        nextCursor = events[events.length - 1].created_at;
+      }
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -75,7 +102,9 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
       dataError={dataError}
       isConfigured={context.isConfigured}
       isSignedIn={context.isSignedIn}
-      appliedFilters={{ group, fromDate, toDate }}
+      appliedFilters={{ group, fromDate, toDate, searchText }}
+      nextCursor={hasMore ? nextCursor : undefined}
+      hasActiveCursor={Boolean(before)}
     />
   );
 }
