@@ -144,6 +144,7 @@
   min-height: 76px;
   flex-direction: column;
   justify-content: space-between;
+  overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: var(--radius-card);
   padding: 11px 12px;
@@ -153,6 +154,7 @@
   font: inherit;
   text-align: left;
 }
+
 
 .balanceViewButton:hover,
 .balanceViewButton:focus-visible,
@@ -550,6 +552,8 @@
 
 .transactionRow div {
   min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
 }
 
 .transactionRow strong,
