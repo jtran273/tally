@@ -1440,41 +1440,47 @@ function CategorySpendingPanel({
           </div>
 
           <div className={styles.categoryRows}>
-            {trend.series.map((row) => (
-              <Link
-                className={styles.categoryRow}
-                href={transactionsHref({
-                  category: row.id ?? undefined,
-                  direction: "spending",
-                  exclude_transfers: true,
-                  from: fromDate,
-                  q: row.id ? undefined : row.label,
-                  to: toDate
-                })}
-                key={row.id ?? row.label}
-                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
-              >
-                <div className={styles.categoryRowHead}>
-                  <span className={styles.categoryLegendLabel}>
-                    <span style={{ background: row.color }} />
-                    <strong>{row.label}</strong>
-                  </span>
-                  <strong>{formatMoney(row.total)}</strong>
-                </div>
-                <div className={styles.categoryRowMeta}>
-                  <span>
-                    {row.count} {row.count === 1 ? "transaction" : "transactions"}
-                    {row.trustedAmount > 0 ? ` - ${formatMoney(row.trustedAmount)} trusted` : ""}
-                  </span>
-                  {row.unresolvedReviewAmount > 0 ? (
-                    <span>
-                      {formatMoney(row.unresolvedReviewAmount)} in review
-                      {row.openReviewCount > 0 ? ` (${row.openReviewCount})` : ""}
+            {trend.series.map((row) => {
+              const hasUnresolved = row.unresolvedReviewAmount > 0;
+              return (
+                <Link
+                  className={styles.categoryRow}
+                  href={transactionsHref({
+                    category: row.id ?? undefined,
+                    direction: "spending",
+                    exclude_transfers: true,
+                    from: fromDate,
+                    q: row.id ? undefined : row.label,
+                    review: hasUnresolved ? "open" : undefined,
+                    to: toDate
+                  })}
+                  key={row.id ?? row.label}
+                  title={hasUnresolved
+                    ? `Open the ${row.openReviewCount} unresolved review item${row.openReviewCount === 1 ? "" : "s"} in ${row.label}`
+                    : `See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
+                >
+                  <div className={styles.categoryRowHead}>
+                    <span className={styles.categoryLegendLabel}>
+                      <span style={{ background: row.color }} />
+                      <strong>{row.label}</strong>
                     </span>
-                  ) : row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
-                </div>
-              </Link>
-            ))}
+                    <strong>{formatMoney(row.total)}</strong>
+                  </div>
+                  <div className={styles.categoryRowMeta}>
+                    <span>
+                      {row.count} {row.count === 1 ? "transaction" : "transactions"}
+                      {row.trustedAmount > 0 ? ` - ${formatMoney(row.trustedAmount)} trusted` : ""}
+                    </span>
+                    {hasUnresolved ? (
+                      <span>
+                        {formatMoney(row.unresolvedReviewAmount)} in review
+                        {row.openReviewCount > 0 ? ` (${row.openReviewCount})` : ""}
+                      </span>
+                    ) : row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
+                  </div>
+                </Link>
+              );
+            })}
             {otherAmount > 0 ? (
               <div className={styles.categoryOtherRow}>
                 <span>Other categories</span>
@@ -1509,6 +1515,7 @@ function CategorySpendingPanel({
                 const deltaLabel = row.previousAmount > 0
                   ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
                   : "New this month";
+                const hasOpenReview = row.openReviewCount > 0;
                 return (
                   <Link
                     className={styles.categoryRow}
@@ -1518,10 +1525,13 @@ function CategorySpendingPanel({
                       exclude_transfers: true,
                       from: breakdown.fromDate,
                       q: row.id ? undefined : row.label,
+                      review: hasOpenReview ? "open" : undefined,
                       to: breakdown.toDate
                     })}
                     key={row.id ?? row.label}
-                    title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+                    title={hasOpenReview
+                      ? `Open the ${row.openReviewCount} unresolved review item${row.openReviewCount === 1 ? "" : "s"} in ${row.label} for ${monthLabel}`
+                      : `See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
                   >
                     <div className={styles.categoryRowHead}>
                       <strong>{row.label}</strong>
