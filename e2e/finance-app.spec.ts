@@ -522,6 +522,8 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
   const spendingPanel = page.getByLabel("Spending by category");
+  await expect(spendingPanel).toContainText("trusted");
+  await expect(spendingPanel).toContainText("in review");
   const spendingTrendLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));

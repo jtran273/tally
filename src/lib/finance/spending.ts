@@ -408,7 +408,9 @@ export function transactionSpendingAmount(
 }
 
 export function hasOpenReview(
-  transaction: Pick<TransactionRecord, "reviewItems" | "reviewStatus">
+  transaction: Pick<TransactionRecord, "reviewStatus"> & {
+    reviewItems: readonly Pick<TransactionRecord["reviewItems"][number], "reason" | "status">[];
+  }
 ) {
   if (transaction.reviewItems.length > 0) {
     return transaction.reviewItems.some((item) => item.status === "open" && !isRecurringReview(item.reason));
