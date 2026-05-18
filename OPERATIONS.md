@@ -216,6 +216,8 @@ Expected healthy state:
 - Calendar connection rows never expose encrypted access or refresh token fields to authenticated browser clients.
 - OpenClaw signals include `calendarContext` with `status: "ready"` only when Calendar is connected.
 - Agent context includes only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
+- `npm run calendar:prod-smoke` passes with production Calendar env vars loaded. Add `OPENCLAW_SIGNALS_URL` and `OPENCLAW_TOKEN` to safely verify the live `/api/openclaw/signals` response shape without printing secrets or raw event data.
+- The smoke check confirms category inference for travel, dining, gift, and wedding planning signals.
 
 If Calendar connection fails:
 
