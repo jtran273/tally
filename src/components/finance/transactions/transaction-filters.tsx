@@ -221,12 +221,12 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
           <SlidersHorizontal size={14} aria-hidden />
           Apply
         </button>
-        <Link className={styles.secondaryButton} href={transactionFiltersHref("/api/export/transactions", filters)} prefetch={false}>
+        <Link className={`${styles.secondaryButton} ${styles.exportButton}`} href={transactionFiltersHref("/api/export/transactions", filters)} prefetch={false}>
           <Download size={14} aria-hidden />
           Export CSV
         </Link>
         {filters.hasActiveFilters ? (
-          <Link className={styles.secondaryButton} href="/transactions">
+          <Link className={`${styles.secondaryButton} ${styles.resetButton}`} href="/transactions">
             <X size={14} aria-hidden />
             Reset
           </Link>
