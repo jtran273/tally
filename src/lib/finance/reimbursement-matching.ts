@@ -61,6 +61,10 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function allowedOverage(expectedAmount: number) {
+  return Math.max(5, expectedAmount * 0.1);
+}
+
 function daysBetween(left: string, right: string) {
   const leftDate = Date.parse(`${left}T12:00:00.000Z`);
   const rightDate = Date.parse(`${right}T12:00:00.000Z`);
@@ -106,7 +110,7 @@ function amountScore(group: ScoredInflowGroup, expectedAmount: number) {
   }
 
   const overage = group.matchedAmount - expectedAmount;
-  return overage <= Math.max(5, expectedAmount * 0.1) ? 12 : 0;
+  return overage <= allowedOverage(expectedAmount) ? 12 : 0;
 }
 
 function timingScore(daysAfterExpense: number) {
@@ -162,8 +166,10 @@ function buildReasons(
     reasons.push("Expense category commonly appears in shared reimbursement workflows.");
   }
 
-  if (group.amountKind !== "exact") {
+  if (group.amountKind === "partial") {
     reasons.push(`${roundMoney(expectedAmount - group.matchedAmount)} remains unmatched.`);
+  } else if (group.amountKind === "over") {
+    reasons.push(`Inflow exceeds the outstanding reimbursement by ${roundMoney(group.matchedAmount - expectedAmount)}.`);
   }
 
   return reasons;
@@ -209,11 +215,14 @@ function combinationGroups(
   expectedAmount: number,
   maxCombinationSize: number
 ): ScoredInflowGroup[] {
-  const groups: ScoredInflowGroup[] = inflows.map((inflow) => ({
-    amountKind: amountKind(inflow.amount, expectedAmount),
-    inflows: [inflow],
-    matchedAmount: roundMoney(inflow.amount)
-  }));
+  const maxMatchedAmount = expectedAmount + allowedOverage(expectedAmount);
+  const groups: ScoredInflowGroup[] = inflows
+    .filter((inflow) => inflow.amount <= maxMatchedAmount)
+    .map((inflow) => ({
+      amountKind: amountKind(inflow.amount, expectedAmount),
+      inflows: [inflow],
+      matchedAmount: roundMoney(inflow.amount)
+    }));
 
   function visit(start: number, selected: ReimbursementMatchInflow[], amount: number) {
     if (selected.length >= 2) {
@@ -227,7 +236,7 @@ function combinationGroups(
 
     for (let index = start; index < inflows.length; index += 1) {
       const nextAmount = roundMoney(amount + inflows[index].amount);
-      if (nextAmount > expectedAmount + Math.max(5, expectedAmount * 0.1)) continue;
+      if (nextAmount > maxMatchedAmount) continue;
       visit(index + 1, [...selected, inflows[index]], nextAmount);
     }
   }
