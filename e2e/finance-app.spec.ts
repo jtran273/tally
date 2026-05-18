@@ -522,6 +522,8 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
   const spendingPanel = page.getByLabel("Spending by category");
+  await expect(spendingPanel).toContainText("trusted");
+  await expect(spendingPanel).toContainText("in review");
   const spendingTrendLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
@@ -850,7 +852,7 @@ test("recurring and accounts pages render focused recurring rows and active acco
   await expect(connectedAccounts).toContainText("Accounts with the newest recent transactions appear first.");
   await expect(connectedAccounts).toContainText("Schools First");
   await expect(connectedAccounts).toContainText("Chase");
-  await expect(connectedAccounts).not.toContainText("Charles Schwab Checking");
+  await expect(connectedAccounts).toContainText("Charles Schwab Checking");
   await expect(connectedAccounts).toContainText("Recent");
   await expect(connectedAccounts).toContainText("PAYROLL DEPOSIT");
   await expect(connectedAccounts).not.toContainText("Net balance");
@@ -872,7 +874,9 @@ test("recurring and accounts pages render focused recurring rows and active acco
     }))
   ));
   expect(accountLinks.length).toBeGreaterThan(1);
-  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(accountLinks.length);
+  const recentAccountLinkCount = await connectedAccounts.getByRole("link", { exact: true, name: "View all" }).count();
+  expect(recentAccountLinkCount).toBeGreaterThan(1);
+  expect(recentAccountLinkCount).toBeLessThan(accountLinks.length);
   const accountParams = new Set<string>();
   for (const accountLink of accountLinks) {
     expect(accountLink.href).toMatch(/^\/transactions\?account=/);

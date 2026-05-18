@@ -109,6 +109,11 @@ export default async function DashboardPage() {
     id: transaction.id,
     intent: transaction.intent,
     merchant: transaction.merchant,
+    reviewItems: transaction.reviewItems.map((review) => ({
+      reason: review.reason,
+      status: review.status
+    })),
+    reviewStatus: transaction.reviewStatus,
     splits: transaction.splits.map((split) => ({
       amount: split.amount,
       intent: split.intent

@@ -3,6 +3,8 @@
 import type {
   AccountRecord,
   RecurringExpenseRecord,
+  ReviewReason,
+  ReviewStatus,
   TransactionIntent,
   TransactionStatus
 } from "@/lib/db";
@@ -17,7 +19,7 @@ import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-d
 import { displayCategoryName } from "@/lib/finance/classification";
 import { CADENCE_LABEL, recurringMonthlyAmount } from "@/lib/finance/recurring-cadence";
 import { isReportableIncomeIntent } from "@/lib/finance/reimbursement-linking";
-import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
+import { hasOpenReview, isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
 import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   Clock3,
@@ -46,6 +48,8 @@ export interface DashboardBalanceTransaction {
   id: string;
   intent: TransactionIntent;
   merchant: string;
+  reviewItems: { reason: ReviewReason; status: ReviewStatus }[];
+  reviewStatus: ReviewStatus | null;
   splits: { amount: number; intent: TransactionIntent }[];
   status: TransactionStatus;
 }
@@ -860,9 +864,12 @@ interface CategoryTrendSeries {
   count: number;
   id: string | null;
   label: string;
+  openReviewCount: number;
   pendingAmount: number;
   points: CategoryTrendPoint[];
+  trustedAmount: number;
   total: number;
+  unresolvedReviewAmount: number;
 }
 
 interface IncomeBreakdownRow {
@@ -1072,8 +1079,11 @@ function buildCategoryTrend(
     count: number;
     id: string | null;
     label: string;
+    openReviewCount: number;
     pendingAmount: number;
+    trustedAmount: number;
     total: number;
+    unresolvedReviewAmount: number;
   }>();
   let totalAmount = 0;
   let totalCount = 0;
@@ -1093,13 +1103,22 @@ function buildCategoryTrend(
       count: 0,
       id: null,
       label,
+      openReviewCount: 0,
       pendingAmount: 0,
-      total: 0
+      trustedAmount: 0,
+      total: 0,
+      unresolvedReviewAmount: 0
     };
 
     group.byDate.set(transaction.date, roundMoney((group.byDate.get(transaction.date) ?? 0) + amount));
     group.count += 1;
     group.total = roundMoney(group.total + amount);
+    if (hasOpenReview(transaction)) {
+      group.openReviewCount += 1;
+      group.unresolvedReviewAmount = roundMoney(group.unresolvedReviewAmount + amount);
+    } else {
+      group.trustedAmount = roundMoney(group.trustedAmount + amount);
+    }
     if (transaction.categoryId) group.categoryIds.add(transaction.categoryId);
     if (transaction.status === "pending") group.pendingAmount = roundMoney(group.pendingAmount + amount);
     grouped.set(key, group);
@@ -1120,12 +1139,15 @@ function buildCategoryTrend(
         count: group.count,
         id: categoryIdsValue(group.categoryIds),
         label: group.label,
+        openReviewCount: group.openReviewCount,
         pendingAmount: group.pendingAmount,
         points: dates.map((date) => {
           cumulative = roundMoney(cumulative + (group.byDate.get(date) ?? 0));
           return { amount: cumulative, date };
         }),
-        total: group.total
+        total: group.total,
+        trustedAmount: group.trustedAmount,
+        unresolvedReviewAmount: group.unresolvedReviewAmount
       };
     });
 
@@ -1440,8 +1462,16 @@ function CategorySpendingPanel({
                   <strong>{formatMoney(row.total)}</strong>
                 </div>
                 <div className={styles.categoryRowMeta}>
-                  <span>{row.count} {row.count === 1 ? "transaction" : "transactions"}</span>
-                  {row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
+                  <span>
+                    {row.count} {row.count === 1 ? "transaction" : "transactions"}
+                    {row.trustedAmount > 0 ? ` - ${formatMoney(row.trustedAmount)} trusted` : ""}
+                  </span>
+                  {row.unresolvedReviewAmount > 0 ? (
+                    <span>
+                      {formatMoney(row.unresolvedReviewAmount)} in review
+                      {row.openReviewCount > 0 ? ` (${row.openReviewCount})` : ""}
+                    </span>
+                  ) : row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
                 </div>
               </Link>
             ))}
