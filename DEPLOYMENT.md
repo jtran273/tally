@@ -146,11 +146,12 @@ Google Calendar is optional and read-only. It gives OpenClaw a minimized upcomin
 
 1. Create a Google Cloud OAuth client for a web app.
 2. Add the callback URL: `https://personal-finance-os-jtran273s-projects.vercel.app/api/calendar/callback`.
-3. Set `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, and `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`.
+3. Set `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`, and `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` in the production server environment. In Vercel, verify presence without revealing values: `vercel env ls production | grep GOOGLE_CALENDAR`.
 4. Deploy, sign in, and connect Calendar from `/settings`.
-5. Confirm `/api/openclaw/signals` includes `calendarContext` with only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
+5. Run the safe smoke check with production values loaded: `npm run calendar:prod-smoke`. To include the live OpenClaw endpoint, also set `OPENCLAW_SIGNALS_URL=https://<production-host>/api/openclaw/signals` and `OPENCLAW_TOKEN`; the script prints only status/counts and never prints token values or raw events.
+6. Confirm `/api/openclaw/signals` includes `calendarContext` with `status: "ready"` only after Calendar is connected, and that each event includes only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
 
-The app requests only `https://www.googleapis.com/auth/calendar.readonly`. It does not store descriptions, attendees, attendee emails, or raw event payloads in agent context.
+The app requests only `https://www.googleapis.com/auth/calendar.readonly`. It does not store descriptions, attendees, attendee emails, or raw Google event payloads in agent context. The offline smoke fixture covers travel, dining, gift, and wedding category inference before a live account is tested.
 
 ## OpenAI Setup
 

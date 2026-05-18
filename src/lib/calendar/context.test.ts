@@ -96,6 +96,7 @@ test("calendar categorizer recognizes planning pressure keywords", () => {
   assert.equal(categorizeCalendarEvent("LAX flight to NYC"), "travel");
   assert.equal(categorizeCalendarEvent("Hotel check-in"), "lodging");
   assert.equal(categorizeCalendarEvent("Ryan birthday"), "birthday");
+  assert.equal(categorizeCalendarEvent("Buy graduation gift"), "gift");
   assert.equal(categorizeCalendarEvent("Wedding rehearsal dinner"), "wedding");
   assert.equal(categorizeCalendarEvent("Lyft to dinner reservation"), "dining");
   assert.equal(categorizeCalendarEvent("Team planning"), "other");

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "calendar:prod-smoke": "tsx scripts/google-calendar-prod-smoke.ts",
     "start": "next start",
     "lint": "eslint .",
     "openclaw:clarifications": "tsx scripts/openclaw-clarification-loop.ts",

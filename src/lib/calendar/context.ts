@@ -152,6 +152,7 @@ export type UpcomingCalendarSuspectedCategory =
   | "birthday"
   | "delivery"
   | "dining"
+  | "gift"
   | "lodging"
   | "other"
   | "rideshare"
@@ -281,6 +282,7 @@ export function categorizeCalendarEvent(
 
   if (/\bwedding|rehearsal dinner|bridal|groomsmen|bridesmaid\b/i.test(haystack)) return "wedding";
   if (/\bbirthday|bday\b/i.test(haystack)) return "birthday";
+  if (/\b(?:gift|present|graduation gift|registry|shower gift)\b/i.test(haystack)) return "gift";
   if (/\bflight|airport|airline|tsa|trip|travel\b/i.test(haystack)) return "travel";
   if (/\bhotel|airbnb|lodging|check[- ]?in|checkout\b/i.test(haystack)) return "lodging";
   if (/\buber eats|doordash|reservation|dinner|lunch|brunch|restaurant|drinks\b/i.test(haystack)) return "dining";
