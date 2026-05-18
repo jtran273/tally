@@ -765,6 +765,14 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await page.locator("select[name='categoryId']").selectOption("__new_category__");
   await expect(page.locator("input[name='newCategoryName']")).toBeVisible();
   await expect(page.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
+
+  await page.goto("/transactions/t25");
+  const reimbursementApproval = page.getByLabel("Reimbursement linking");
+  await expect(reimbursementApproval).toContainText("Reimbursement approval");
+  await expect(reimbursementApproval).toContainText("Link this positive inflow");
+  await expect(reimbursementApproval).toContainText("$60.00 outstanding");
+  await expect(reimbursementApproval).toContainText("preview-only");
+  await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });

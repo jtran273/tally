@@ -109,6 +109,27 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected positive transactions to preserve sign semantics and not count as spending.");
   }
 
+  const partiallyReimbursedDinner = transaction({
+    amount: -100,
+    category: "Food",
+    categoryId: "category-food",
+    date: "2026-05-04",
+    id: "tx-dinner-reimbursed",
+    merchant: "Group dinner",
+    reimbursements: [reimbursement({
+      expectedAmount: 70,
+      receivedAmount: 40,
+      receivedAt: "2026-05-05",
+      receivedTransactionId: "tx-reimbursement-inflow",
+      status: "received",
+      transactionId: "tx-dinner-reimbursed"
+    })]
+  });
+
+  if (transactionSpendingAmount(partiallyReimbursedDinner) !== 60) {
+    throw new Error("Expected confirmed reimbursements to net against spending reports.");
+  }
+
   const summary = buildSpendingInsightSummary([
     transaction({
       amount: -400,
@@ -118,6 +139,7 @@ function assertSpendingFixtures(): true {
       id: "tx-flight",
       merchant: "Delta"
     }),
+    partiallyReimbursedDinner,
     transaction({
       amount: -80,
       category: "Groceries",
@@ -190,16 +212,16 @@ function assertSpendingFixtures(): true {
     })
   ], { asOfDate: "2026-05-06" });
 
-  if (summary.currentWeek.spending !== 522 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2478) {
-    throw new Error("Expected current week cashflow to count spend, income, transfer exclusions, and reimbursement inflow exclusions deterministically.");
+  if (summary.currentWeek.spending !== 582 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2418) {
+    throw new Error("Expected current week cashflow to count net spend, income, transfer exclusions, and reimbursement inflow exclusions deterministically.");
   }
 
-  if (summary.currentWeek.reimbursable !== 75 || summary.currentWeek.reimbursementOutstanding !== 75) {
+  if (summary.currentWeek.reimbursable !== 145 || summary.currentWeek.reimbursementOutstanding !== 105) {
     throw new Error("Expected spending summaries to surface reimbursable and outstanding reimbursement dollars.");
   }
 
-  if (summary.currentWeek.trustedSpending !== 480 || summary.currentWeek.unresolvedReviewSpending !== 42 || summary.currentWeek.openReviewTransactionCount !== 1) {
-    throw new Error("Expected spending windows to separate trusted spending from open-review spending.");
+  if (summary.currentWeek.trustedSpending !== 540 || summary.currentWeek.unresolvedReviewSpending !== 42 || summary.currentWeek.openReviewTransactionCount !== 1) {
+    throw new Error("Expected spending windows to separate trusted net spending from open-review spending.");
   }
 
   if (summary.previousWeek.spending !== 60 || summary.currentMonth.topCategories[0]?.label !== "Travel") {
@@ -227,11 +249,11 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected confidence caveats to stay separate from raw transaction facts.");
   }
 
-  if (summary.confidence.spendingTransactionCount !== 3 || summary.confidence.trustedSpendingTransactionCount !== 2) {
+  if (summary.confidence.spendingTransactionCount !== 4 || summary.confidence.trustedSpendingTransactionCount !== 3) {
     throw new Error("Expected confidence coverage to count only owned spending transactions.");
   }
 
-  if (summary.confidence.categoryCoveragePercent !== 66.7 || summary.confidence.cleanupCandidateAmount !== 42 || summary.confidence.cleanupCandidateCount !== 1) {
+  if (summary.confidence.categoryCoveragePercent !== 75 || summary.confidence.cleanupCandidateAmount !== 42 || summary.confidence.cleanupCandidateCount !== 1) {
     throw new Error("Expected confidence coverage to quantify category cleanup scope.");
   }
 

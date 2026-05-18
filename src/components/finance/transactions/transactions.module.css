@@ -1012,10 +1012,106 @@
   font-weight: 500;
 }
 
+.reimbursementPanel {
+  display: flex;
+  width: min(100%, 1040px);
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in oklab, var(--pos) 18%, var(--line));
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: color-mix(in oklab, var(--sage-soft) 32%, var(--surface));
+}
+
+.reimbursementPanelHeader {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reimbursementPanelHeader > span {
+  color: var(--pos);
+  font-size: var(--text-label);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reimbursementPanelHeader strong {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.reimbursementPanelHeader p,
+.reimbursementEmpty,
+.reimbursementOptionCopy span {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-ui);
+  line-height: 1.45;
+}
+
+.reimbursementStack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reimbursementLinkForm {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.35fr) auto;
+  align-items: end;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.reimbursementLinkForm .formError,
+.reimbursementLinkForm .formSuccess {
+  grid-column: 1 / -1;
+}
+
+.reimbursementOptionCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reimbursementOptionCopy strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+
+.reimbursementOptionCopy a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.reimbursementEmpty {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--surface);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .summaryCard,
   .filters,
   .cleanupPanel,
+  .reimbursementPanel,
+  .reimbursementLinkForm,
   .table tbody tr td,
   .badge,
   .intentChip,
@@ -1057,6 +1153,7 @@
   .summaryGrid,
   .filters,
   .cleanupForm,
+  .reimbursementLinkForm,
   .editGrid,
   .editPanel {
     grid-template-columns: 1fr;

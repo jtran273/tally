@@ -225,24 +225,42 @@ const transactionSplits: TransactionSplitRow[] = ledgerData.txns.flatMap((transa
   }))
 );
 
-const reimbursementRecords: ReimbursementRecordRow[] = transactionSplits
-  .filter((split) => split.intent === "reimbursable")
-  .map((split) => ({
-    counterparty: split.label.replace(/^covered for\s+/i, "") || null,
+const reimbursementRecords: ReimbursementRecordRow[] = [
+  ...transactionSplits
+    .filter((split) => split.intent === "reimbursable")
+    .map((split) => ({
+      counterparty: split.label.replace(/^covered for\s+/i, "") || null,
+      created_at: NOW,
+      due_date: isoDaysFromBase(12),
+      enriched_transaction_id: split.enriched_transaction_id,
+      expected_amount: split.amount,
+      id: `demo-reimbursement-${split.id}`,
+      notes: "Demo reimbursement tracked from a reimbursable split.",
+      received_amount: 0,
+      received_at: null,
+      received_transaction_id: null,
+      split_id: split.id,
+      status: "expected" as const,
+      updated_at: NOW,
+      user_id: DEMO_USER_ID
+    })),
+  {
+    counterparty: "Chris L.",
     created_at: NOW,
     due_date: isoDaysFromBase(12),
-    enriched_transaction_id: split.enriched_transaction_id,
-    expected_amount: split.amount,
-    id: `demo-reimbursement-${split.id}`,
-    notes: "Demo reimbursement tracked from a reimbursable split.",
+    enriched_transaction_id: "t28",
+    expected_amount: 60,
+    id: "demo-reimbursement-t28-chris",
+    notes: "Demo reimbursement awaiting approval from an incoming payment.",
     received_amount: 0,
     received_at: null,
     received_transaction_id: null,
-    split_id: split.id,
+    split_id: null,
     status: "expected",
     updated_at: NOW,
     user_id: DEMO_USER_ID
-  }));
+  }
+];
 
 const recurringExpenses: RecurringExpenseRow[] = ledgerData.recurring.map((expense) => ({
   account_id: accounts.find((account) => account.type === "credit")?.id ?? null,
