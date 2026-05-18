@@ -38,7 +38,15 @@ test("buildReimbursementLinkDecision validates positive inflows and applied amou
       { amount: 25, date: "2026-05-12" },
       { appliedAmount: 30 }
     ),
-    /cannot exceed/
+    /received inflow/
+  );
+  assert.throws(
+    () => buildReimbursementLinkDecision(
+      { expectedAmount: 75, receivedAmount: 0 },
+      { amount: 100, date: "2026-05-12" },
+      { appliedAmount: 80 }
+    ),
+    /expected reimbursement/
   );
 });
 

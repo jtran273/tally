@@ -33,6 +33,9 @@ export function buildReimbursementLinkDecision(
   if (appliedAmount > roundMoney(receivedTransaction.amount)) {
     throw new Error("Applied reimbursement amount cannot exceed the received inflow.");
   }
+  if (appliedAmount > roundMoney(reimbursement.expectedAmount)) {
+    throw new Error("Applied reimbursement amount cannot exceed the expected reimbursement.");
+  }
 
   const outstandingAmount = roundMoney(Math.max(0, reimbursement.expectedAmount - appliedAmount));
 
