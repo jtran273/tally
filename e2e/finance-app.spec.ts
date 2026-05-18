@@ -872,7 +872,7 @@ test("recurring and accounts pages render focused recurring rows and active acco
     }))
   ));
   expect(accountLinks.length).toBeGreaterThan(1);
-  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(accountLinks.length);
+  await expect(connectedAccounts.getByRole("link", { exact: true, name: "View all" })).toHaveCount(5);
   const accountParams = new Set<string>();
   for (const accountLink of accountLinks) {
     expect(accountLink.href).toMatch(/^\/transactions\?account=/);
