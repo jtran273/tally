@@ -1,60 +1,50 @@
 # Tally Roadmap
 
-This roadmap reflects the current codebase after the May 2026 buildout. Earlier roadmap items that are now implemented are listed as shipped so the active backlog only contains work that still needs product or engineering effort.
+This roadmap reflects the current codebase. The active backlog only contains work that still needs product or engineering effort; shipped items have been promoted to the recap section so they aren't re-discussed.
 
-## Shipped Since The Original Roadmap
+## Recently Shipped
 
-- Earlier Settings setup panels were removed in favor of a minimal bank-connections and access page.
-- Review reasons for peer-to-peer, large, transfer pair, new recurring, low confidence, missing category, unclear transfer, and recurring candidate.
-- Seeded demo review cases for missing-category, unclear-transfer, recurring-candidate, and merchant cleanup workflows.
-- Single-item AI suggestions, accept/dismiss actions, inline review edits, and peer-to-peer split resolution.
-- Merchant rules saved from accepted AI cleanup, review inline edits, and transaction merchant cleanup.
-- Merchant-rule application during Plaid enrichment for future imports.
-- Transaction filters for month, date range, account, category, intent, review state, review reason, quality, row limit, and transfer exclusion.
-- Transaction merchant cleanup and CSV export using the active filters.
-- Dashboard balance scopes for net worth, cash, liabilities, and cash minus liabilities with selectable trend ranges.
-- Dashboard liabilities-due panel and category spending trend/month views.
-- Recurring detection, tracked recurring rows, and next-30-day cashflow timeline.
-- Plaid repair flow through Link update mode and one-item follow-up sync.
-- Persisted Plaid sync runs and sync-run item summaries.
-- Scheduled sync route at `/api/plaid/sync/scheduled` guarded by `CRON_SECRET`.
+- **Dashboard cashflow runway card** (PR #143): current vs previous month income/spending/net, confirmed vs pending recurring load, recurring price-change links, partial-month and stale-sync caveats.
+- **AI suggestion quality panel on /review** (PR #144): acceptance rate, accepted/edited/dismissed counts by reason/category/merchant, estimated reviews avoided via AI-derived merchant rules.
+- **/audit reporting UI** (PR #140, PR #150): group/date/text filters, keyset pagination, sanitized before/after summaries with redaction of tokens / raw payloads / authorization values.
+- **Dashboard deep-links into open reviews** (PR #151): category trend/month rows now land on `/transactions?review=open` when a category has unresolved review impact.
+- **Agent inbox audit cross-link** (PR #155): each proposal links to its transaction's audit history.
+- **Dashboard typography hardening** (PR #149, PR #156): clipped balance buttons and recent-transaction links; relaxed the design-tokens overflow threshold so narrow-viewport rounding noise no longer turns CI red.
+
+## Shipped Earlier
+
+- Settings simplified to bank-connections + access; review reasons for p2p/large/transfer-pair/new-recurring/low-confidence/missing-category/unclear-transfer/recurring-candidate; seeded demo cases for these.
+- Single-item AI suggestions, accept/dismiss, inline review edits, p2p split resolution.
+- Merchant rules saved from accepted AI cleanup and from inline edits; applied during Plaid enrichment for future imports.
+- Transaction filters for month, range, account, category, intent, review state, review reason, quality, row limit, transfer exclusion; CSV export and merchant cleanup using the active filters.
+- Dashboard balance scopes (net worth, cash, liabilities, cash − liabilities) with selectable trend ranges; liabilities-due panel; category spending trend/month views; trusted vs open-review separation in trend rows (PR #142).
+- Recurring detection, tracked recurring rows, next-30-day cashflow timeline; Plaid repair via Link update mode and one-item follow-up sync; persisted sync runs with item summaries; scheduled sync route guarded by `CRON_SECRET`.
 - Proposal-only finance action manifest and derived agent inbox for sanitized review proposals.
 
 ## Active Backlog
 
-### 1. Bring trusted vs unresolved spending into the dashboard
+### 1. Finish trusted vs unresolved spending in the dashboard
 
-**Priority:** P0
+**Priority:** P0 (partial — tracked in issue #133)
 
-**Why:** Review already separates trusted spending from unresolved review impact. The dashboard should make that distinction visible where category and balance decisions are made.
+**Status:** Trend rows split trusted vs unresolved (#142), and rows with open reviews now deep-link to `/transactions?review=open` (#151). **Remaining:**
 
-**Acceptance criteria:**
-
-- Dashboard spending panels separate trusted spending from unresolved review spending.
-- Category trend/month rows show review impact without treating open review items as final truth.
-- Links from unresolved dashboard amounts open matching `/review` or `/transactions` filters.
-- Unit tests cover split transactions, reimbursable portions, transfers, and open review items.
-
-### 2. Add dashboard cashflow runway
-
-**Status:** Shipped. The dashboard now opens with a cashflow runway card showing current-month income/spending/net with last-month deltas, confirmed vs pending recurring load, and recurring price-change links into the matching transaction. Partial-month and stale-sync state are surfaced inline.
+- Dashboard balance/summary tiles (Spendable, Net worth) also separate trusted spending from unresolved review impact.
+- Unit tests covering split transactions, reimbursable portions, transfers, and open review items at the summary level.
+- A `/review` deep link (today only `/transactions?review=open` is supported) for users who want the queue view rather than the transaction list.
 
 ### 3. Add bulk review actions with per-item preview
 
 **Priority:** P1
 
-**Why:** Review suggestions can be generated and accepted one item at a time. Bulk acceptance would reduce repetitive cleanup while still requiring transparent user approval.
+**Why:** Review suggestions can be generated and accepted one item at a time. Bulk acceptance would reduce repetitive cleanup while still requiring transparent user approval. The existing `applyAcceptedReviewSuggestion` helper already accepts a `source: "bulk" | "single"` option, so the heavy lifting is the UI and a small batching action.
 
 **Acceptance criteria:**
 
 - Review queue has a bulk mode for AI-eligible items with accept-ready suggestions.
-- The user can preview current versus proposed merchant, category, intent, recurring, and confidence values before applying.
+- Preview current vs proposed merchant, category, intent, recurring, and confidence values before applying.
 - Bulk apply skips peer-to-peer items and any stale or missing suggestions.
 - Results summarize accepted, skipped, and failed items with audit events for each accepted row.
-
-### 4. Track AI suggestion quality and review savings
-
-**Status:** Shipped. The Review page now opens with an AI quality panel summarizing acceptance rate, accepted/edited/dismissed counts, top reasons/categories/merchants, and an estimate of repeated reviews avoided via AI-derived merchant rules. Metrics are derived from resolved review items and merchant rule provenance only — no raw Plaid payloads, secrets, or account identifiers are surfaced.
 
 ### 5. Harden pending-to-posted transaction handling
 
@@ -86,7 +76,7 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 
 **Priority:** P1
 
-**Why:** The current agent inbox is derived from open review items and stored review suggestions. Broader agent workflows need a user-owned proposal store for recurring, merchant-rule, reimbursement, and review changes.
+**Why:** The current agent inbox is derived from open review items and stored review suggestions. Broader agent workflows need a user-owned proposal store for recurring, merchant-rule, reimbursement, and review changes. (In flight under `codex/agent-proposal-store`.)
 
 **Acceptance criteria:**
 
@@ -95,22 +85,16 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 - Users can accept, dismiss, or edit a proposal before applying it.
 - Accepted proposals reuse existing mutation paths and write audit events.
 
-### 8. Add audit reporting UI
+### Quality / follow-up debt
 
-**Priority:** P2
-
-**Status:** Shipped. `/audit` lists recent events with group/date filters and sanitized before/after summaries. Raw Plaid payloads, tokens, and auth headers are dropped before rendering.
+- **#145** — replace `merchant_rules.notes` string sniffing with a structured `source` enum (AI quality metrics currently sniff for "ai"/"auto" in notes).
+- **#146** — replace `review_items.resolution_note` string sniffing with a structured `resolution_kind` enum (AI quality metrics currently look for the word "edit" in the note).
+- **#152** — weekly digest surface pulling cashflow + AI quality + review + reimbursements into one view.
+- **#153** — saved/bookmarked transaction filter views.
+- **#154** — finish audit cross-links on the review queue and transaction detail page (agent inbox done in #155).
 
 ## Suggested Labels
 
-- `priority:p0`
-- `priority:p1`
-- `priority:p2`
-- `area:dashboard`
-- `area:review`
-- `area:ai`
-- `area:plaid`
-- `area:data`
-- `area:agents`
-- `area:security`
-- `area:operations`
+- `priority:p0`, `priority:p1`, `priority:p2`
+- `area:dashboard`, `area:review`, `area:ai`, `area:plaid`, `area:data`, `area:agents`, `area:operations`
+- `area:transactions`, `area:accounts`, `area:reimbursements`, `area:mobile`

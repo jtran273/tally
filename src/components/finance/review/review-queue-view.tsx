@@ -10,6 +10,7 @@ import {
 } from "@/lib/finance/classification";
 import { getReviewReasonCopy, isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
+import Link from "next/link";
 import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   ArrowRight,
@@ -188,6 +189,12 @@ function ReviewCard({
             />
           </>
         )}
+      </div>
+
+      <div className={styles.auditLinkRow}>
+        <Link href={`/audit?q=${encodeURIComponent(item.transaction.id)}`}>
+          View this transaction&apos;s audit history →
+        </Link>
       </div>
     </article>
   );

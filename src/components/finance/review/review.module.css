@@ -305,6 +305,21 @@
   padding-top: 10px;
 }
 
+.auditLinkRow {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.auditLinkRow a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.auditLinkRow a:hover {
+  color: var(--ink);
+}
+
 .actionForms {
   display: flex;
   min-width: 0;

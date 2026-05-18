@@ -352,6 +352,21 @@
   color: var(--neg);
 }
 
+.auditLinkRow {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.auditLinkRow a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.auditLinkRow a:hover {
+  color: var(--ink);
+}
+
 .tableShell {
   container-type: inline-size;
   max-width: 100%;

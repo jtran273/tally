@@ -12,6 +12,7 @@ import {
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -143,6 +144,11 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
         linkOptions={reimbursementOptions}
         transaction={transaction}
       />
+      <p className={styles.auditLinkRow}>
+        <Link href={`/audit?q=${encodeURIComponent(transaction.id)}`}>
+          View this transaction&apos;s audit history →
+        </Link>
+      </p>
     </>
   );
 }
