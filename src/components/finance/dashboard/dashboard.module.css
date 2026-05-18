@@ -550,14 +550,14 @@
   }
 }
 
-.transactionRow div {
+.transactionRowCopy {
   min-width: 0;
   flex: 1 1 0;
   overflow: hidden;
 }
 
-.transactionRow strong,
-.transactionRow span {
+.transactionMerchant,
+.transactionMeta {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -565,13 +565,13 @@
   white-space: nowrap;
 }
 
-.transactionRow strong {
+.transactionMerchant {
   color: var(--ink);
   font-size: var(--text-ui);
   font-weight: 500;
 }
 
-.transactionRow span {
+.transactionMeta {
   color: var(--muted);
   font-size: var(--text-meta);
 }
@@ -754,10 +754,36 @@
   .transactionRow {
     align-items: flex-start;
     flex-direction: column;
+    gap: 7px;
+  }
+
+  .transactionRowCopy {
+    width: 100%;
+    overflow: visible;
+  }
+
+  .transactionMerchant,
+  .transactionMeta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .transactionMerchant {
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .transactionMeta {
+    font-size: 12px;
+    line-height: 1.35;
   }
 
   .amount {
     align-self: flex-start;
+    order: -1;
+    font-size: 16px;
+    font-weight: 700;
     text-align: left;
   }
 

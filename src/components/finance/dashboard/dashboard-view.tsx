@@ -387,9 +387,9 @@ function TransactionRows({
           href={`/transactions/${transaction.id}`}
           key={transaction.id}
         >
-          <div>
-            <strong>{transaction.merchant}</strong>
-            <span>
+          <div className={styles.transactionRowCopy}>
+            <strong className={styles.transactionMerchant}>{transaction.merchant || "Transaction"}</strong>
+            <span className={styles.transactionMeta}>
               {transaction.status === "pending" ? "Pending - " : ""}
               {formatDate(transaction.date)} - {transaction.accountName} - {transaction.category}
             </span>
