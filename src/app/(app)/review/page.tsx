@@ -9,12 +9,10 @@ import {
   type EnrichedTransactionRow,
   type FinanceSupabaseClient,
   type Json,
-  type ReviewQueueItem,
-  type TransactionIntent
+  type ReviewQueueItem
 } from "@/lib/db";
 import { getAiProviderStatus } from "@/lib/ai/server";
 import { getFinanceServerContext } from "@/lib/demo/server";
-import { isSpendingIntent, splitSpendingAmount } from "@/lib/finance/spending";
 import { runAiReviewCleanup } from "@/lib/review/auto-cleanup";
 import { planMissingCategoryAutofixes } from "@/lib/review/missing-category-autofix";
 import { isRecurringReview } from "@/lib/review/reasons";
@@ -23,10 +21,6 @@ export const dynamic = "force-dynamic";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to load persisted review queue.";
-}
-
-function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
 }
 
 function reviewAuditData(item: ReviewQueueItem): Record<string, Json> {
@@ -137,52 +131,6 @@ async function ensureMissingCategoryReviews(client: FinanceSupabaseClient, userI
   return reviewItems.length + reopenTransactionIds.length;
 }
 
-async function loadTrustedSpendingTotal(
-  client: FinanceSupabaseClient,
-  userId: string,
-  openReviewItems: readonly ReviewQueueItem[]
-) {
-  const openTransactionIds = new Set(openReviewItems.map((item) => item.transaction.id));
-  const [transactions, splits] = await Promise.all([
-    client
-      .from("enriched_transactions")
-      .select("id,amount,intent")
-      .eq("user_id", userId)
-      .lte("amount", -0.01),
-    client
-      .from("transaction_splits")
-      .select("enriched_transaction_id,amount,intent")
-      .eq("user_id", userId)
-  ]);
-  const splitsByTransaction = new Map<string, Array<{ amount: number; intent: TransactionIntent }>>();
-
-  expectRows<{ enriched_transaction_id: string; amount: number; intent: TransactionIntent }>(
-    splits,
-    "Load review trusted spending splits"
-  ).forEach((split) => {
-    splitsByTransaction.set(split.enriched_transaction_id, [
-      ...(splitsByTransaction.get(split.enriched_transaction_id) ?? []),
-      split
-    ]);
-  });
-
-  return expectRows<{ id: string; amount: number; intent: TransactionIntent }>(
-    transactions,
-    "Load review trusted spending transactions"
-  ).reduce((sum, transaction) => {
-    if (openTransactionIds.has(transaction.id)) return sum;
-
-    const transactionSplits = splitsByTransaction.get(transaction.id) ?? [];
-    const amount = transactionSplits.length > 0
-      ? transactionSplits.reduce((splitSum, split) => splitSum + splitSpendingAmount(split), 0)
-      : isSpendingIntent(transaction.intent)
-        ? Math.abs(transaction.amount)
-        : 0;
-
-    return roundMoney(sum + roundMoney(amount));
-  }, 0);
-}
-
 async function autoFixMissingCategoryReviews(
   client: FinanceSupabaseClient,
   userId: string,
@@ -245,7 +193,6 @@ export default async function ReviewPage() {
   let isSignedIn = false;
   let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
-  let trustedSpending = 0;
   const aiStatus = getAiProviderStatus();
 
   const context = await getFinanceServerContext();
@@ -294,7 +241,6 @@ export default async function ReviewPage() {
       }
 
       reviewItems = actionableReviewItems(reviewItems);
-      trustedSpending = await loadTrustedSpendingTotal(context.client, context.userId, reviewItems);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -303,14 +249,12 @@ export default async function ReviewPage() {
   return (
     <ReviewQueueView
       aiProviderKind={aiStatus.activeKind}
-      aiAutoReviewEnabled={aiStatus.autoReviewEnabled}
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
       reviewItems={reviewItems}
-      trustedSpending={trustedSpending}
     />
   );
 }

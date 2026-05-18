@@ -6,15 +6,12 @@ import {
   transactionTagFromIntent,
   transactionTagLabel
 } from "@/lib/finance/classification";
-import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { getReviewReasonCopy, isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
-import { LinkButton, MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
+import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   ArrowRight,
   CheckCircle2,
-  CircleDollarSign,
-  ShieldCheck,
   Sparkles,
   TriangleAlert
 } from "lucide-react";
@@ -24,7 +21,6 @@ import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
 import styles from "./review.module.css";
 
 interface ReviewQueueViewProps {
-  aiAutoReviewEnabled: boolean;
   aiProviderKind: AiSuggestionProviderKind;
   categories: CategoryRecord[];
   dataError?: string;
@@ -32,7 +28,6 @@ interface ReviewQueueViewProps {
   isDemo: boolean;
   isSignedIn: boolean;
   reviewItems: ReviewQueueItem[];
-  trustedSpending: number;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -55,10 +50,6 @@ const intentLabels: Record<TransactionIntent, string> = {
   shared: "Shared",
   transfer: "Transfer"
 };
-
-function formatMoney(value: number) {
-  return moneyFormatter.format(value);
-}
 
 function formatSignedMoney(value: number) {
   const formatted = moneyFormatter.format(Math.abs(value));
@@ -214,62 +205,20 @@ function EmptyQueue() {
 }
 
 export function ReviewQueueView({
-  aiAutoReviewEnabled,
   aiProviderKind,
   categories,
   dataError,
   isConfigured,
   isDemo,
   isSignedIn,
-  reviewItems,
-  trustedSpending
+  reviewItems
 }: ReviewQueueViewProps) {
   const canShowQueue = isConfigured && isSignedIn && !dataError;
-  const unresolvedSpending = reviewItems.reduce(
-    (sum, item) => sum + transactionSpendingAmount(item.transaction),
-    0
-  );
-
   const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
   const aiItems = reviewItems.filter((item) => !isPeerToPeerReview(item.reason));
 
   return (
     <div className={styles.shell}>
-      <section aria-label="Review queue summary">
-        <MetricGrid className={styles.summaryGrid}>
-          <MetricCard
-            label={(
-              <>
-                <TriangleAlert size={13} aria-hidden />
-                Needs your input
-              </>
-            )}
-            tone={reviewItems.length > 0 ? "warning" : "neutral"}
-            value={reviewItems.length.toLocaleString("en-US")}
-          />
-          <MetricCard
-            label={(
-              <>
-                <ShieldCheck size={13} aria-hidden />
-                Trusted spending
-              </>
-            )}
-            tone="trusted"
-            value={formatMoney(trustedSpending)}
-          />
-          <MetricCard
-            label={(
-              <>
-                <CircleDollarSign size={13} aria-hidden />
-                Unresolved spending
-              </>
-            )}
-            tone={unresolvedSpending > 0 ? "warning" : "neutral"}
-            value={formatMoney(unresolvedSpending)}
-          />
-        </MetricGrid>
-      </section>
-
       {!isConfigured ? (
         <Notice role="status">
           Supabase is not configured for this environment, so persisted review items cannot be loaded.
@@ -285,17 +234,6 @@ export function ReviewQueueView({
       {dataError ? (
         <Notice role="alert" tone="error">
           {dataError}
-        </Notice>
-      ) : null}
-
-      {canShowQueue ? (
-        <Notice className={styles.aiNotice} role="status" tone="info">
-          <Sparkles size={13} aria-hidden />
-          {aiProviderKind === "openai"
-            ? aiAutoReviewEnabled
-              ? "OpenAI can suggest cleanup. You still approve review items here."
-              : "OpenAI is available only when you ask for a suggestion."
-            : "Suggestions use local rules."}
         </Notice>
       ) : null}
 

@@ -1,14 +1,11 @@
 import { RecurringView } from "@/components/finance/recurring/recurring-view";
 import {
-  listAccounts,
   listRecurringExpenses,
   listTransactions,
-  type AccountRecord,
   type RecurringExpenseRecord,
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
-import { buildUpcomingCashflowTimeline } from "@/lib/finance/cashflow";
 import { detectRecurringCandidates, normalizeRecurringMerchant, type RecurringCandidate } from "@/lib/recurring";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +35,6 @@ export default async function RecurringPage() {
   let allRecurringExpenses: RecurringExpenseRecord[] = [];
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let transactions: TransactionRecord[] = [];
-  let accounts: AccountRecord[] = [];
   let isDemo = false;
 
   const context = await getFinanceServerContext();
@@ -50,8 +46,7 @@ export default async function RecurringPage() {
   if (context.client && context.userId) {
     try {
       const fromDate = recurringTransactionFromDate(asOfDate);
-      [accounts, allRecurringExpenses, transactions] = await Promise.all([
-        listAccounts(context.client, context.userId),
+      [allRecurringExpenses, transactions] = await Promise.all([
         listRecurringExpenses(context.client, context.userId, ["active", "pending", "paused", "dismissed"]),
         listTransactions(context.client, context.userId, {
           fromDate,
@@ -81,12 +76,6 @@ export default async function RecurringPage() {
       isDemo={isDemo}
       isSignedIn={isSignedIn}
       recurringExpenses={recurringExpenses}
-      upcomingCashflow={buildUpcomingCashflowTimeline({
-        accounts,
-        asOfDate,
-        recurringExpenses,
-        transactions
-      })}
     />
   );
 }

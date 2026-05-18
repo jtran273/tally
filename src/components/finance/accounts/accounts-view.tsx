@@ -93,10 +93,22 @@ function isValuationOnlyAccount(account: AccountRecord) {
   return account.type === "investment" || account.type === "retirement";
 }
 
-function sortAccountsForCards(accounts: readonly AccountRecord[]) {
+function latestRecentTransactionDate(transactions: readonly TransactionRecord[]) {
+  return transactions.reduce<string | null>((latestDate, transaction) => {
+    if (!latestDate || transaction.date > latestDate) return transaction.date;
+    return latestDate;
+  }, null);
+}
+
+function sortAccountsForCards(
+  accounts: readonly AccountRecord[],
+  recentTransactionsByAccount: Readonly<Record<string, readonly TransactionRecord[]>>
+) {
   return [...accounts].sort((a, b) => {
-    const balanceDelta = Math.abs(balanceContribution(b)) - Math.abs(balanceContribution(a));
-    if (balanceDelta !== 0) return balanceDelta;
+    const aLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[a.id] ?? []);
+    const bLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[b.id] ?? []);
+    const recentTransactionDelta = (bLatestDate ?? "").localeCompare(aLatestDate ?? "");
+    if (recentTransactionDelta !== 0) return recentTransactionDelta;
 
     const institutionDelta = a.institutionName.localeCompare(b.institutionName);
     if (institutionDelta !== 0) return institutionDelta;
@@ -343,7 +355,10 @@ export function AccountsView({
   snapshots
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
-  const sortedAccounts = sortAccountsForCards(accounts);
+  const sortedAccounts = sortAccountsForCards(
+    accounts.filter((account) => (recentTransactionsByAccount[account.id]?.length ?? 0) > 0),
+    recentTransactionsByAccount
+  );
 
   return (
     <div className={styles.shell}>
@@ -379,13 +394,21 @@ export function AccountsView({
             <span>Connected accounts will appear here with balances, snapshots, and sync status.</span>
           </div>
         </div>
+      ) : sortedAccounts.length === 0 ? (
+        <div className={styles.emptyState}>
+          <Database size={24} aria-hidden />
+          <div>
+            <strong>No recent account activity yet</strong>
+            <span>Accounts will appear here once Tally has recent transactions for them.</span>
+          </div>
+        </div>
       ) : (
         <>
           <section className={styles.accountListSection} aria-label="Connected accounts">
             <div className={styles.accountListHead}>
               <div>
                 <h2>Connected accounts</h2>
-                <p>Balances first, with recent activity only where Tally has transactions.</p>
+                <p>Accounts with the newest recent transactions appear first.</p>
               </div>
               <LinkButton href="/settings">
                 <Settings size={13} aria-hidden />
