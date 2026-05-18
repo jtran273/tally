@@ -4,7 +4,6 @@ import type { CategoryRecord, TransactionRecord } from "@/lib/db";
 import {
   categoryOptionGroups,
   displayTransactionIntent,
-  isTransferCategoryName,
   primaryCategoryIdForId,
   transactionIntentFromUi,
   transactionTagFromIntent,
@@ -13,6 +12,7 @@ import {
   type TransactionTag,
   type UserTransactionIntent
 } from "@/lib/finance/classification";
+import { defaultReviewCategoryId } from "@/lib/review/category-defaults";
 import type { NormalizedReviewSuggestion } from "@/lib/review/suggestions";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
@@ -81,27 +81,12 @@ function getServerMobileViewportSnapshot() {
   return false;
 }
 
-function findCategoryId(categories: CategoryRecord[], categoryName: string | undefined) {
-  if (!categoryName) return null;
-  if (isTransferCategoryName(categoryName)) return null;
-
-  const normalized = categoryName.trim().toLowerCase();
-  return categories.find((category) => category.name.trim().toLowerCase() === normalized)?.id ?? null;
-}
-
 function defaultCategoryId(
   categories: CategoryRecord[],
   suggestion: NormalizedReviewSuggestion,
   transaction: TransactionRecord
 ) {
-  const suggestedCategoryId = suggestion.categoryId && categories.some((category) => category.id === suggestion.categoryId)
-    ? suggestion.categoryId
-    : findCategoryId(categories, suggestion.categoryName);
-
-  return primaryCategoryIdForId(suggestedCategoryId, categories) ??
-    (isTransferCategoryName(transaction.category) ? null : primaryCategoryIdForId(transaction.categoryId, categories)) ??
-    categories.find((category) => category.name === "Uncategorized")?.id ??
-    "none";
+  return defaultReviewCategoryId(categories, suggestion, transaction);
 }
 
 function defaultBaseIntent(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): UserTransactionIntent {
@@ -159,6 +144,7 @@ export function PeerToPeerSplitForm({
   const allocatedCents = rows.reduce((sum, row) => sum + amountToCents(row.amount), 0);
   const remainingCents = totalCents - allocatedCents;
   const fullyAllocated = remainingCents === 0;
+  const rowsHaveCategories = rows.every((row) => row.categoryId !== "none");
   const fallbackCategoryId = defaultCategoryId(categories, suggestion, transaction);
   const categoryGroups = categoryOptionGroups(categories);
   const isMobileViewport = useSyncExternalStore(
@@ -210,7 +196,7 @@ export function PeerToPeerSplitForm({
       action={formAction}
       className={styles.peerForm}
       onSubmit={(event) => {
-        if (isDemo) event.preventDefault();
+        if (isDemo || !rowsHaveCategories) event.preventDefault();
       }}
     >
       <input name="reviewItemId" type="hidden" value={reviewItemId} />
@@ -360,7 +346,7 @@ export function PeerToPeerSplitForm({
         </button>
         <button
           className={styles.primaryButton}
-          disabled={isDemo || isPending || !fullyAllocated || explanation.trim().length < 6}
+          disabled={isDemo || isPending || !fullyAllocated || !rowsHaveCategories || explanation.trim().length < 6}
           type="submit"
         >
           <Check size={14} aria-hidden />

@@ -150,10 +150,10 @@ async function withMockedFetch<T>(
   }
 }
 
-function adapter() {
+function adapter(customFallback: AiSuggestionAdapter = fallback) {
   return createOpenAiSuggestionAdapter({
     apiKey: "sk-test",
-    fallback,
+    fallback: customFallback,
     model: "gpt-test"
   });
 }
@@ -210,6 +210,70 @@ test("OpenAI adapter falls back on provider HTTP failures", async () => {
 
   assert.equal(suggestion.provider.kind, "mock");
   assert.equal(suggestion, baseline);
+});
+
+test("OpenAI adapter coerces Uncategorized responses to a concrete low-confidence category", async () => {
+  const uncategorizedBaseline: TransactionAiSuggestion = {
+    ...baseline,
+    category: {
+      ...baseline.category,
+      value: {
+        id: "cat-uncategorized",
+        name: "Uncategorized"
+      }
+    },
+    confidence: 0.86
+  };
+  const uncategorizedFallback: AiSuggestionAdapter = {
+    descriptor: baseline.provider,
+    async suggestTransaction() {
+      return uncategorizedBaseline;
+    }
+  };
+  const suggestion = await withMockedFetch(
+    async () => new Response(JSON.stringify({
+      output_text: JSON.stringify({
+        categoryName: "Uncategorized",
+        confidence: 0.96,
+        intent: "personal",
+        merchantName: "POS Purchase",
+        reason: "No category signal.",
+        recurring: false,
+        signals: ["no category signal"]
+      }),
+      status: "completed"
+    }), { status: 200 }),
+    () => adapter(uncategorizedFallback).suggestTransaction({
+      ...request,
+      categories: [
+        ...request.categories!,
+        {
+          color: null,
+          icon: null,
+          id: "cat-shopping",
+          isSystem: true,
+          name: "Shopping",
+          parentId: null,
+          userId: "user-test"
+        },
+        {
+          color: null,
+          icon: null,
+          id: "cat-uncategorized",
+          isSystem: true,
+          name: "Uncategorized",
+          parentId: null,
+          userId: "user-test"
+        }
+      ]
+    })
+  );
+
+  assert.equal(suggestion.provider.kind, "openai");
+  assert.equal(suggestion.category.value.name, "Shopping");
+  assert.equal(suggestion.category.value.id, "cat-shopping");
+  assert(suggestion.confidence < 0.7, `Expected reviewable confidence, got ${suggestion.confidence}`);
+  assert.equal(suggestion.signals.includes("openai category fallback"), true);
 });
 
 test("OpenAI adapter can refine reimbursement candidate suggestions", async () => {

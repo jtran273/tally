@@ -11,7 +11,8 @@ import type {
   TransactionSuggestionRequest
 } from "./types";
 
-const DEFAULT_CATEGORY = "Uncategorized";
+const PEER_TO_PEER_CATEGORY = "Uncategorized";
+const FALLBACK_SPENDING_CATEGORY = "Shopping";
 const MOCK_VERSION = "mock-v2";
 
 export const MOCK_AI_SUGGESTION_PROVIDER: AiSuggestionProviderDescriptor = {
@@ -53,7 +54,7 @@ interface PlaidCategoryCue {
 const MERCHANT_CUES: readonly MerchantCue[] = [
   {
     patterns: ["VENMO", "ZELLE", "CASH APP", "PAYPAL"],
-    categoryName: DEFAULT_CATEGORY,
+    categoryName: PEER_TO_PEER_CATEGORY,
     intent: "shared",
     confidence: 0.64,
     reason: "Peer-to-peer payment needs an explanation before Tally should trust a spend bucket.",
@@ -505,10 +506,10 @@ function findAmountCue(amount: number): Cue | null {
 
 function fallbackCue(cleanedMerchant: string): Cue {
   return {
-    categoryName: DEFAULT_CATEGORY,
+    categoryName: FALLBACK_SPENDING_CATEGORY,
     intent: "personal",
     confidence: 0.45,
-    reason: `${cleanedMerchant} has no strong merchant or category cue.`,
+    reason: `${cleanedMerchant} has no strong merchant or category cue, so Tally proposes a low-confidence spending category for review.`,
     source: "fallback",
     signals: ["fallback cue"]
   };

@@ -326,17 +326,20 @@ export function TransactionTable({
                   </td>
                   <td data-label="Category">
                     <div className={styles.categoryCell}>
-                      <span>{displayCategoryName(transaction.category)}</span>
+                      <span className={styles.categoryLabel}>{displayCategoryName(transaction.category)}</span>
                       {showConfidenceContext ? (
-                        <span className={confidenceNeedsReview ? styles.categoryWarning : styles.categoryHint} title={confidenceCopy(transaction)}>
+                        <span
+                          className={`${styles.categoryMeta} ${confidenceNeedsReview ? styles.categoryWarning : styles.categoryHint}`}
+                          title={confidenceCopy(transaction)}
+                        >
                           {confidenceCopy(transaction)}
                         </span>
                       ) : null}
                       {suggestedCategory ? (
-                        <span className={styles.categoryHint}>Suggested: {suggestedCategory}</span>
+                        <span className={`${styles.categoryMeta} ${styles.categoryHint}`}>Suggested: {suggestedCategory}</span>
                       ) : null}
                       {isUncategorized ? (
-                        <span className={styles.categoryWarning}>Needs a real category</span>
+                        <span className={`${styles.categoryMeta} ${styles.categoryWarning}`}>Needs a real category</span>
                       ) : null}
                       {isUncategorized ? (
                         actionableReview ? (

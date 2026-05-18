@@ -252,6 +252,8 @@ test("mock provider: unknown merchant falls back with low confidence", () => {
     rawTransaction: raw({ id: "raw-10", name: "POS PURCHASE 7734", merchant_name: null, amount: -37, plaid_category: null })
   });
 
+  assert.equal(result.category.value.name, "Shopping");
+  assert.equal(result.category.value.id, "cat-shopping");
   assert(result.confidence <= 0.65, `Expected fallback confidence <= 0.65, got ${result.confidence}`);
   assert(result.signals.includes("fallback cue"), "Expected fallback cue signal");
 });

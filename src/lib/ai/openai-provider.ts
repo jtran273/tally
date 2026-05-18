@@ -58,6 +58,8 @@ interface OpenAiResponseBody {
 type SupportedIntent = TransactionAiSuggestion["intent"]["value"];
 
 const SUPPORTED_INTENTS = new Set<SupportedIntent>(["business", "personal", "reimbursable", "shared", "transfer"]);
+const REVIEWABLE_CATEGORY_FALLBACK_CONFIDENCE = 0.64;
+const PREFERRED_CONCRETE_FALLBACK_CATEGORIES = ["Shopping", "Food", "Groceries", "Entertainment"];
 
 function assertServerRuntime() {
   if (typeof window !== "undefined") {
@@ -296,12 +298,20 @@ async function suggestTransactionWithOpenAi({
   request: TransactionSuggestionRequest;
 }): Promise<TransactionAiSuggestion> {
   const payload = await callOpenAi({ apiKey, baseline, model, request });
-  const category = coerceCategory(payload.categoryName, request, baseline.category.value);
+  const categoryResult = coerceCategory(payload.categoryName, request, baseline.category.value);
+  const category = categoryResult.category;
   const intent = coerceIntent(payload.intent, baseline.intent.value);
-  const confidence = coerceConfidence(payload.confidence, baseline.confidence);
+  const payloadConfidence = coerceConfidence(payload.confidence, baseline.confidence);
+  const confidence = categoryResult.usedFallback
+    ? Math.min(payloadConfidence, baseline.confidence, REVIEWABLE_CATEGORY_FALLBACK_CONFIDENCE)
+    : payloadConfidence;
   const merchantName = coerceString(payload.merchantName) ?? baseline.merchantCleanup.value.normalized;
-  const reason = coerceString(payload.reason) ?? baseline.reason;
-  const signals = coerceSignals(payload.signals, baseline.signals);
+  const reason = categoryResult.usedFallback
+    ? "OpenAI returned no concrete category; using a low-confidence fallback for review."
+    : coerceString(payload.reason) ?? baseline.reason;
+  const signals = categoryResult.usedFallback
+    ? [...coerceSignals(payload.signals, baseline.signals), "openai category fallback"].slice(0, 5)
+    : coerceSignals(payload.signals, baseline.signals);
   const recurring = typeof payload.recurring === "boolean" ? payload.recurring : baseline.recurring?.value;
 
   return {
@@ -469,14 +479,15 @@ function buildSystemPrompt(request: TransactionSuggestionRequest) {
     "You categorize personal bank transactions. Return ONE JSON object matching the schema.",
     "",
     "Rules:",
-    "- Pick categoryName from the user's category list verbatim. If nothing fits, return 'Uncategorized'.",
+    "- Pick categoryName from the user's category list verbatim.",
+    "- Never return 'Uncategorized'. If nothing clearly fits, choose the closest concrete category and set confidence below 0.7.",
     "- intent ∈ {personal, business, shared, reimbursable, transfer}. Default to personal unless evidence says otherwise.",
     "- merchantName: human-friendly normalization (e.g. 'AMZN MKTP US*ABC' → 'Amazon').",
     "- recurring: true only for clearly repeating subscriptions/bills.",
     "- confidence ∈ [0,1]. ≥0.85 = sure (auto-apply). 0.7–0.85 = likely. <0.7 = user should review.",
     "- reason: ONE short sentence (< 80 chars) citing the evidence you used.",
     "",
-    `Available categories: ${categoryList.join(", ") || "Uncategorized"}`
+    `Available categories: ${categoryList.join(", ") || "Shopping"}`
   ];
 
   if (merchantRules.length > 0) {
@@ -578,18 +589,57 @@ function coerceCategory(
   value: unknown,
   request: TransactionSuggestionRequest,
   fallback: CategorySuggestion
-): CategorySuggestion {
+): { category: CategorySuggestion; usedFallback: boolean } {
   const categoryName = coerceString(value);
-  if (!categoryName) return fallback;
+  if (!categoryName || isUncategorizedCategoryName(categoryName)) {
+    return {
+      category: concreteFallbackCategory(request, fallback),
+      usedFallback: true
+    };
+  }
 
   const category = request.categories?.find((candidate) =>
     candidate.name.toLowerCase() === categoryName.toLowerCase()
   );
 
+  if (!category) {
+    return {
+      category: concreteFallbackCategory(request, fallback),
+      usedFallback: true
+    };
+  }
+
   return {
-    id: category?.id ?? fallback.id,
-    name: category?.name ?? categoryName
+    category: {
+      id: category.id,
+      name: category.name
+    },
+    usedFallback: false
   };
+}
+
+function isUncategorizedCategoryName(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase() === "uncategorized";
+}
+
+function concreteFallbackCategory(
+  request: TransactionSuggestionRequest,
+  fallback: CategorySuggestion
+): CategorySuggestion {
+  if (!isUncategorizedCategoryName(fallback.name)) return fallback;
+
+  const categories = (request.categories ?? []).filter((category) =>
+    !isUncategorizedCategoryName(category.name) &&
+    category.name.trim().toLowerCase() !== "transfer"
+  );
+  const preferredCategory = PREFERRED_CONCRETE_FALLBACK_CATEGORIES
+    .map((name) => categories.find((category) => category.name.toLowerCase() === name.toLowerCase()))
+    .find((category): category is NonNullable<typeof category> => Boolean(category));
+  const category = preferredCategory ?? categories[0];
+
+  return category
+    ? { id: category.id, name: category.name }
+    : fallback;
 }
 
 function coerceIntent(value: unknown, fallback: SupportedIntent): SupportedIntent {
