@@ -850,7 +850,7 @@ test("recurring and accounts pages render focused recurring rows and active acco
   await expect(connectedAccounts).toContainText("Accounts with the newest recent transactions appear first.");
   await expect(connectedAccounts).toContainText("Schools First");
   await expect(connectedAccounts).toContainText("Chase");
-  await expect(connectedAccounts).not.toContainText("Charles Schwab Checking");
+  await expect(connectedAccounts).toContainText("Charles Schwab Checking");
   await expect(connectedAccounts).toContainText("Recent");
   await expect(connectedAccounts).toContainText("PAYROLL DEPOSIT");
   await expect(connectedAccounts).not.toContainText("Net balance");
