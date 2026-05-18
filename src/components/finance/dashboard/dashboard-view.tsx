@@ -1907,49 +1907,20 @@ function SpendableComparisonPanel({
     .reduce((sum, account) => sum + account.balance, 0);
   const debtTotal = totals.liabilities;
   const spendable = liquidTotal - debtTotal;
-  const denominator = Math.max(liquidTotal, debtTotal, 1);
   const coverageOk = liquidTotal >= debtTotal;
-  const ratio = debtTotal > 0 ? liquidTotal / debtTotal : null;
+  const plainEnglish = coverageOk
+    ? `You would have ${formatMoney(spendable)} left if every card were paid off today.`
+    : `You are ${formatMoney(Math.abs(spendable))} short of paying off every card today.`;
 
   return (
     <section aria-label="Spendable comparison" className={styles.liabilityPanel}>
       <div className={styles.liabilityPanelHead}>
         <div>
-          <span className={styles.eyebrow}>Spendable math</span>
+          <span className={styles.eyebrow}>After card debt</span>
           <h3 className={`${styles.liabilityHeadline} ${coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}`}>
             {formatMoney(spendable)}
           </h3>
-          <p className={styles.liabilityCoverage}>
-            {coverageOk
-              ? `Liquid assets cover debt with ${formatMoney(spendable)} to spare.`
-              : `Debt exceeds liquid assets by ${formatMoney(Math.abs(spendable))}.`}
-            {ratio !== null ? ` Liquid is ${ratio.toFixed(1)}× debt.` : ""}
-          </p>
-        </div>
-      </div>
-
-      <div className={styles.compositionStack} aria-label="Liquid versus debt">
-        <div className={styles.compositionRow}>
-          <span className={styles.compositionRowLabel}>Liquid assets</span>
-          <div className={styles.compositionBar} role="img" aria-label="Liquid assets bar">
-            <span
-              className={styles.compositionSegment}
-              style={{ background: "var(--sage-ink)", width: `${(liquidTotal / denominator) * 100}%` }}
-            />
-          </div>
-          <span className={styles.compositionRowValue}>{formatMoney(liquidTotal)}</span>
-        </div>
-        <div className={styles.compositionRow}>
-          <span className={styles.compositionRowLabel}>Debt</span>
-          <div className={styles.compositionBar} role="img" aria-label="Debt bar">
-            <span
-              className={styles.compositionSegment}
-              style={{ background: "var(--neg)", width: `${(debtTotal / denominator) * 100}%` }}
-            />
-          </div>
-          <span className={`${styles.compositionRowValue} ${styles.liabilityOverdue}`}>
-            −{formatMoney(debtTotal)}
-          </span>
+          <p className={styles.liabilityCoverage}>{plainEnglish}</p>
         </div>
       </div>
 
@@ -1957,34 +1928,25 @@ function SpendableComparisonPanel({
         <div className={styles.liabilityRow}>
           <div className={styles.liabilityRowMain}>
             <div>
-              <strong>Liquid assets − Debt</strong>
-              <span>What&apos;s truly available after paying off cards.</span>
+              <strong>Cash available</strong>
+              <span>Checking and savings.</span>
             </div>
             <div className={styles.liabilityRowAmount}>
-              <strong className={coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}>
-                {formatMoney(spendable)}
-              </strong>
+              <strong>{formatMoney(liquidTotal)}</strong>
             </div>
           </div>
         </div>
-        {liabilitiesDue.totalOwed > 0 ? (
-          <div className={styles.liabilityRow}>
-            <div className={styles.liabilityRowMain}>
-              <div>
-                <strong>Coverage</strong>
-                <span>{liabilitiesDue.hasOverdue ? "Includes overdue balances." : liabilitiesDue.hasDueSoon ? "Includes balances due soon." : "No urgent balances."}</span>
-              </div>
-              <div className={styles.liabilityRowAmount}>
-                <strong className={liabilitiesDue.coverageDelta >= 0 ? styles.liabilityPaid : styles.liabilityOverdue}>
-                  {liabilitiesDue.coverageDelta >= 0
-                    ? `+${formatMoney(liabilitiesDue.coverageDelta)}`
-                    : `−${formatMoney(Math.abs(liabilitiesDue.coverageDelta))}`}
-                </strong>
-                <span className={styles.liabilityCurrent}>after paying due cards</span>
-              </div>
+        <div className={styles.liabilityRow}>
+          <div className={styles.liabilityRowMain}>
+            <div>
+              <strong>Total card debt</strong>
+              <span>{liabilitiesDue.totalOwed > 0 ? "Includes cards due now/soon." : "All card balances."}</span>
+            </div>
+            <div className={styles.liabilityRowAmount}>
+              <strong className={styles.liabilityOverdue}>−{formatMoney(debtTotal)}</strong>
             </div>
           </div>
-        ) : null}
+        </div>
       </div>
     </section>
   );
