@@ -9,6 +9,7 @@ const responsiveRoutes = [
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
   { path: "/accounts", heading: "Accounts" },
+  { path: "/audit", heading: "Audit history" },
   { path: "/settings", heading: "Settings" }
 ] as const;
 
@@ -894,6 +895,30 @@ test("recurring and accounts pages render focused recurring rows and active acco
     await expect(page.getByLabel("Active filters")).toContainText("Account:");
   }
   expect(accountParams.size).toBe(accountLinks.length);
+});
+
+test("audit page lists demo audit events with sanitized summaries", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/audit");
+
+  await expect(page.getByRole("heading", { name: /audit history is sanitized/i })).toBeVisible();
+  await expect(page.getByText("Seed data loaded")).toBeVisible();
+  await expect(page.getByText("AI suggestion accepted")).toBeVisible();
+  await expect(page.getByText("Recurring candidate confirmed")).toBeVisible();
+  await expect(page.getByText("Reimbursement linked")).toBeVisible();
+
+  // No raw Plaid payloads, tokens, or auth headers in rendered content
+  const body = (await page.textContent("body")) ?? "";
+  expect(body).not.toMatch(/access_token/i);
+  expect(body).not.toMatch(/raw_payload/i);
+  expect(body).not.toMatch(/authorization/i);
+
+  // Filter narrows the list
+  await page.locator("select[name='group']").selectOption("seed-demo");
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page.getByText("Seed data loaded")).toBeVisible();
+  await expect(page.getByText("AI suggestion accepted")).toHaveCount(0);
 });
 
 test("settings keeps bank connections and access controls simple", async ({ baseURL, context, page }) => {
