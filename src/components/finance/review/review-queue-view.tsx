@@ -2,6 +2,7 @@ import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import type { CategoryRecord, ReviewQueueItem, TransactionIntent } from "@/lib/db";
 import type { AiSuggestionQualitySummary } from "@/lib/review/quality";
 import { AiQualityPanel } from "./ai-quality-panel";
+import { BulkAcceptForm, type BulkAcceptCandidate } from "./bulk-accept-form";
 import {
   displayCategoryName,
   displayTransactionIntent,
@@ -227,6 +228,23 @@ export function ReviewQueueView({
   const canShowQueue = isConfigured && isSignedIn && !dataError;
   const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
   const aiItems = reviewItems.filter((item) => !isPeerToPeerReview(item.reason));
+  const bulkCandidates: BulkAcceptCandidate[] = aiItems
+    .map((item) => {
+      const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
+      if (!hasReviewSuggestionValue(suggestion)) return null;
+      return {
+        id: item.id,
+        transactionId: item.transaction.id,
+        merchant: suggestion.merchantName ?? item.transaction.merchant,
+        amount: item.transaction.amount,
+        currentCategory: item.transaction.category,
+        proposedCategory: suggestion.categoryName ?? null,
+        proposedMerchant: suggestion.merchantName ?? null,
+        proposedIntent: suggestion.intent ?? null,
+        confidence: suggestion.confidence ?? item.confidence ?? null
+      } satisfies BulkAcceptCandidate;
+    })
+    .filter((value): value is BulkAcceptCandidate => value !== null);
 
   return (
     <div className={styles.shell}>
@@ -250,6 +268,10 @@ export function ReviewQueueView({
 
       {canShowQueue && qualitySummary && qualitySummary.totalReviewedWithSuggestion + qualitySummary.openCount > 0 ? (
         <AiQualityPanel summary={qualitySummary} />
+      ) : null}
+
+      {canShowQueue && bulkCandidates.length > 1 ? (
+        <BulkAcceptForm candidates={bulkCandidates} isDemo={isDemo} />
       ) : null}
 
       {!canShowQueue ? null : reviewItems.length === 0 ? (

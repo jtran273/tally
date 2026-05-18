@@ -466,6 +466,96 @@ export async function acceptReviewSuggestionAction(
   }
 }
 
+export interface BulkAcceptReviewState extends ReviewActionState {
+  accepted?: number;
+  skipped?: number;
+  failed?: number;
+  failures?: Array<{ reviewItemId: string; reason: string }>;
+}
+
+const BULK_ACCEPT_LIMIT = 25;
+
+export async function bulkAcceptReviewSuggestionsAction(
+  _state: BulkAcceptReviewState,
+  formData: FormData
+): Promise<BulkAcceptReviewState> {
+  try {
+    const rawIds = formData.getAll("reviewItemId").map((value) => String(value));
+    const reviewItemIds = Array.from(
+      new Set(rawIds.filter((id) => uuidPattern.test(id)))
+    ).slice(0, BULK_ACCEPT_LIMIT);
+
+    if (reviewItemIds.length === 0) {
+      return { error: "Select at least one accept-ready review item." };
+    }
+
+    const { client, userId } = await getWritableFinanceContext("bulk-accept suggestions for");
+    const reviewedAt = new Date().toISOString();
+    const categories = await listCategories(client, userId);
+
+    let accepted = 0;
+    let skipped = 0;
+    const failures: Array<{ reviewItemId: string; reason: string }> = [];
+    const touchedTransactionIds: string[] = [];
+
+    for (const reviewItemId of reviewItemIds) {
+      try {
+        const item = await getOpenReviewItem(client, userId, reviewItemId);
+        if (isPeerToPeerReview(item.reason)) {
+          skipped += 1;
+          failures.push({ reviewItemId, reason: "Peer-to-peer items must be resolved one by one." });
+          continue;
+        }
+        const { suggestion } = buildAcceptedReviewSuggestionPatch(item.aiSuggestion, categories, {
+          reviewedAt
+        });
+        if (!hasReviewSuggestionValue(suggestion)) {
+          skipped += 1;
+          failures.push({ reviewItemId, reason: "No accept-ready suggestion attached." });
+          continue;
+        }
+
+        const result = await applyAcceptedReviewSuggestion(client, userId, item, categories, {
+          reviewedAt,
+          source: "bulk"
+        });
+        accepted += 1;
+        touchedTransactionIds.push(result.transactionId);
+      } catch (itemError) {
+        failures.push({
+          reviewItemId,
+          reason: itemError instanceof Error ? itemError.message : "Unknown error."
+        });
+      }
+    }
+
+    if (touchedTransactionIds.length > 0) {
+      revalidateReviewListPaths();
+      Array.from(new Set(touchedTransactionIds)).forEach((id) => {
+        revalidatePath(`/transactions/${id}`);
+      });
+    }
+
+    const failedCount = failures.length - skipped;
+    const summaryParts = [
+      `${accepted} accepted`,
+      skipped > 0 ? `${skipped} skipped` : null,
+      failedCount > 0 ? `${failedCount} failed` : null
+    ].filter((part): part is string => Boolean(part));
+
+    return {
+      accepted,
+      skipped,
+      failed: Math.max(0, failedCount),
+      failures: failures.length > 0 ? failures.slice(0, 5) : undefined,
+      message: accepted > 0 ? `Bulk apply complete: ${summaryParts.join(", ")}.` : undefined,
+      error: accepted === 0 ? summaryParts.join(", ") : undefined
+    };
+  } catch (error) {
+    return errorState(error) as BulkAcceptReviewState;
+  }
+}
+
 export async function dismissReviewItemAction(
   _state: ReviewActionState,
   formData: FormData
