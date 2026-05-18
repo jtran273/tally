@@ -188,6 +188,12 @@ The helper accepts the app origin, forwarded host origin, `NEXT_PUBLIC_APP_URL`,
 
 Server actions also rely on Next.js server action origin checks and Supabase session verification.
 
+## Mobile Install And Notifications
+
+Tally exposes a web app manifest so the app can be installed to a mobile home screen. The first pass intentionally does not add a service worker, offline finance data cache, offline mutation path, or browser push subscription flow.
+
+If push notifications are added later, they must be opt-in, manageable from Settings, and limited to non-conversational status alerts. Notification payloads must not include merchant names, amounts, account names, transaction ids, provider ids, notes, raw payload fragments, or other private finance data. Conversational reminders, clarification questions, and assistant-style nudges belong to OpenClaw unless this boundary is deliberately changed. See `docs/mobile-pwa-notifications.md`.
+
 ## Browser Security Headers
 
 `next.config.ts` sets baseline headers:

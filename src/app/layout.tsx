@@ -3,7 +3,18 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Tally - Personal Finance Copilot",
-  description: "A calm personal finance dashboard for reviewing bank data, recurring spending, and trusted budget records."
+  description: "A calm personal finance dashboard for reviewing bank data, recurring spending, and trusted budget records.",
+  applicationName: "Tally",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Tally"
+  },
+  icons: {
+    apple: "/icons/tally-icon-192.png",
+    icon: "/icons/tally-icon-192.png"
+  }
 };
 
 export const viewport: Viewport = {

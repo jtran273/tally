@@ -89,6 +89,11 @@
   line-height: 1.4;
 }
 
+.inlineIcon {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
 .secondaryButton {
   display: inline-flex;
   min-width: 0;

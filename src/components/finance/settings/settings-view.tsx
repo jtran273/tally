@@ -1,7 +1,7 @@
 import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
 import { GoogleCalendarConnectionPanel } from "@/components/calendar/google-calendar-connection-panel";
 import { Button, Notice, Panel, PanelHeader, SectionHeading } from "@/components/ui/primitives";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { BellOff, LogOut, ShieldCheck, Smartphone } from "lucide-react";
 import styles from "./settings.module.css";
 
 interface SettingsViewProps {
@@ -48,6 +48,33 @@ export function SettingsView({
         initialError={calendarError}
         initialSuccessMessage={calendarMessage}
       />
+
+      <Panel>
+        <PanelHeader
+          actions={(
+            <Smartphone size={16} aria-hidden />
+          )}
+        >
+          <SectionHeading eyebrow="Mobile" title="Install & notifications" />
+        </PanelHeader>
+        <div className={styles.accessRow}>
+          <div>
+            <div className={styles.settingTitle}>Home screen install</div>
+            <div className={styles.settingSub}>
+              Tally can be added to your mobile home screen as a standalone app. It does not enable offline financial edits or background bank syncs.
+            </div>
+          </div>
+        </div>
+        <div className={styles.accessRow}>
+          <div>
+            <div className={styles.settingTitle}>Push notifications deferred</div>
+            <div className={styles.settingSub}>
+              <BellOff size={13} aria-hidden className={styles.inlineIcon} />
+              Conversational nudges stay in OpenClaw. If Tally adds notifications later, they should be opt-in status alerts only and must not include private finance data.
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <Panel>
         <PanelHeader
