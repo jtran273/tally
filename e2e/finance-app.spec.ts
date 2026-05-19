@@ -345,6 +345,7 @@ test("mobile transactions align filters, card header, and bottom navigation", as
     const dateCell = firstRow?.querySelector("td[data-label='Date']");
     const categoryCell = firstRow?.querySelector("td[data-label='Category']");
     const mobileMeta = firstRow?.querySelector("[class*='mobileCardMeta']");
+    const statusTags = firstRow?.querySelector("[class*='statusTags']");
     const filterControls = Array.from(document.querySelectorAll("form[aria-label='Transaction filters'] label"))
       .filter((label) => ["Month", "Account"].includes(label.querySelector("span")?.textContent ?? ""))
       .map((label) => {
@@ -373,10 +374,12 @@ test("mobile transactions align filters, card header, and bottom navigation", as
       categoryCellDisplay: categoryCell ? getComputedStyle(categoryCell).display : null,
       dateCellDisplay: dateCell ? getComputedStyle(dateCell).display : null,
       filterControls,
+      merchantNameBottom: merchant?.querySelector("[class*='merchantName']")?.getBoundingClientRect().bottom ?? null,
       merchantTop: merchant?.getBoundingClientRect().top ?? null,
       mobileMetaDisplay: mobileMeta ? getComputedStyle(mobileMeta).display : null,
       mobileMetaText: mobileMeta?.textContent ?? null,
-      navItems
+      navItems,
+      statusTagsTop: statusTags?.getBoundingClientRect().top ?? null
     };
   });
 
@@ -393,6 +396,9 @@ test("mobile transactions align filters, card header, and bottom navigation", as
   expect(metrics.mobileMetaText).toMatch(/\w+.*\w+/);
   expect(metrics.dateCellDisplay).toBe("none");
   expect(metrics.categoryCellDisplay).toBe("none");
+  expect(metrics.statusTagsTop).not.toBeNull();
+  expect(metrics.merchantNameBottom).not.toBeNull();
+  expect(metrics.statusTagsTop ?? 0).toBeGreaterThanOrEqual(metrics.merchantNameBottom ?? 0);
 
   expect(metrics.amountTop).not.toBeNull();
   expect(metrics.merchantTop).not.toBeNull();
