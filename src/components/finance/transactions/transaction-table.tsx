@@ -314,6 +314,10 @@ export function TransactionTable({
                           </StatusBadge>
                         ) : null}
                       </div>
+                      <div className={styles.mobileCardMeta} aria-hidden="true">
+                        <span>{displayCategoryName(transaction.category)}</span>
+                        <span>{formatDate(transaction.date)}</span>
+                      </div>
                       {reimbursement.state !== "none" ? (
                         <div className={styles.reimbursementLine}>
                           {formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from {formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable

@@ -342,6 +342,9 @@ test("mobile transactions align filters, card header, and bottom navigation", as
     const firstRow = document.querySelector("tbody tr");
     const merchant = firstRow?.querySelector("td[data-label='Merchant']");
     const amount = firstRow?.querySelector("td[data-label='Amount']");
+    const dateCell = firstRow?.querySelector("td[data-label='Date']");
+    const categoryCell = firstRow?.querySelector("td[data-label='Category']");
+    const mobileMeta = firstRow?.querySelector("[class*='mobileCardMeta']");
     const filterControls = Array.from(document.querySelectorAll("form[aria-label='Transaction filters'] label"))
       .filter((label) => ["Month", "Account"].includes(label.querySelector("span")?.textContent ?? ""))
       .map((label) => {
@@ -367,8 +370,12 @@ test("mobile transactions align filters, card header, and bottom navigation", as
 
     return {
       amountTop: amount?.getBoundingClientRect().top ?? null,
+      categoryCellDisplay: categoryCell ? getComputedStyle(categoryCell).display : null,
+      dateCellDisplay: dateCell ? getComputedStyle(dateCell).display : null,
       filterControls,
       merchantTop: merchant?.getBoundingClientRect().top ?? null,
+      mobileMetaDisplay: mobileMeta ? getComputedStyle(mobileMeta).display : null,
+      mobileMetaText: mobileMeta?.textContent ?? null,
       navItems
     };
   });
@@ -381,6 +388,11 @@ test("mobile transactions align filters, card header, and bottom navigation", as
   expect(accountControl.controlTop).not.toBeNull();
   expect(Math.abs((monthControl.controlTop ?? 0) - (accountControl.controlTop ?? 0))).toBeLessThanOrEqual(1);
   expect(monthControl.controlHeight).toBe(accountControl.controlHeight);
+
+  expect(metrics.mobileMetaDisplay).toBe("flex");
+  expect(metrics.mobileMetaText).toMatch(/\w+.*\w+/);
+  expect(metrics.dateCellDisplay).toBe("none");
+  expect(metrics.categoryCellDisplay).toBe("none");
 
   expect(metrics.amountTop).not.toBeNull();
   expect(metrics.merchantTop).not.toBeNull();

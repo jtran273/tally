@@ -504,6 +504,10 @@
   line-height: 1.25;
 }
 
+.mobileCardMeta {
+  display: none;
+}
+
 .categoryLabel {
   color: var(--ink-2);
   font-size: var(--text-ui-sm);
@@ -1562,19 +1566,14 @@
     display: none;
   }
 
-  .table td[data-label="Date"] {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
   .table td[data-label="Merchant"] {
     grid-column: 1;
     grid-row: 1;
   }
 
+  .table td[data-label="Date"],
   .table td[data-label="Category"] {
-    grid-column: 1 / -1;
-    grid-row: 3;
+    display: none;
   }
 
   .table td[data-label="Account"] {
@@ -1593,7 +1592,7 @@
 
   .table td[data-label="Edit"] {
     grid-column: 1 / -1;
-    grid-row: 4;
+    grid-row: 2;
     align-self: stretch;
     justify-self: stretch;
   }
@@ -1645,6 +1644,23 @@
   .merchantCell .reimbursementLine,
   .merchantCell .secondaryLine {
     flex-basis: 100%;
+  }
+
+  .mobileCardMeta {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .mobileCardMeta span + span::before {
+    content: "•";
+    margin-right: 8px;
+    color: var(--muted-2);
   }
 
   .dateCell span:first-child {
