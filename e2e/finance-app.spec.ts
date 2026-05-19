@@ -332,6 +332,47 @@ for (const route of responsiveRoutes) {
   }
 }
 
+test("mobile transactions align card header and bottom navigation", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto("/transactions");
+
+  await expect(page.getByRole("heading", { exact: true, name: "Transactions" })).toBeVisible();
+  const metrics = await page.evaluate(() => {
+    const firstRow = document.querySelector("tbody tr");
+    const merchant = firstRow?.querySelector("td[data-label='Merchant']");
+    const amount = firstRow?.querySelector("td[data-label='Amount']");
+    const navItems = Array.from(document.querySelectorAll(".nav-item")).map((item) => {
+      const itemRect = item.getBoundingClientRect();
+      const iconRect = item.querySelector("svg")?.getBoundingClientRect();
+      const labelRect = item.querySelector("span:not(.nav-badge)")?.getBoundingClientRect();
+      return {
+        iconCenter: iconRect ? iconRect.left + iconRect.width / 2 : null,
+        itemCenter: itemRect.left + itemRect.width / 2,
+        labelCenter: labelRect ? labelRect.left + labelRect.width / 2 : null,
+        text: item.textContent?.trim()
+      };
+    });
+
+    return {
+      amountTop: amount?.getBoundingClientRect().top ?? null,
+      merchantTop: merchant?.getBoundingClientRect().top ?? null,
+      navItems
+    };
+  });
+
+  expect(metrics.amountTop).not.toBeNull();
+  expect(metrics.merchantTop).not.toBeNull();
+  expect(Math.abs((metrics.amountTop ?? 0) - (metrics.merchantTop ?? 0))).toBeLessThanOrEqual(4);
+
+  for (const item of metrics.navItems) {
+    expect(item.iconCenter, `${item.text} icon center`).not.toBeNull();
+    expect(item.labelCenter, `${item.text} label center`).not.toBeNull();
+    expect(Math.abs((item.iconCenter ?? 0) - item.itemCenter), `${item.text} icon centered`).toBeLessThanOrEqual(1);
+    expect(Math.abs((item.labelCenter ?? 0) - item.itemCenter), `${item.text} label centered`).toBeLessThanOrEqual(1.5);
+  }
+});
+
 test("desktop sidebar wheel input scrolls long workspace pages", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });

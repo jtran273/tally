@@ -1621,10 +1621,30 @@
     line-height: 1.28;
   }
 
-  .merchantCell,
   .dateCell,
   .categoryCell {
     gap: 4px;
+  }
+
+  .merchantCell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+
+  .merchantName {
+    flex: 0 1 auto;
+  }
+
+  .merchantCell .statusTags {
+    flex: 0 0 auto;
+  }
+
+  .merchantCell .noteLine,
+  .merchantCell .reimbursementLine,
+  .merchantCell .secondaryLine {
+    flex-basis: 100%;
   }
 
   .dateCell span:first-child {

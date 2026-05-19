@@ -5,8 +5,8 @@ import {
   History,
   Home,
   Inbox,
-  Landmark,
   List,
+  WalletCards,
   Repeat,
   RefreshCw,
   Search,
@@ -88,7 +88,7 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
   },
   accounts: {
     eyebrow: "Connected institutions",
-    icon: Landmark,
+    icon: WalletCards,
     label: "Accounts",
     title: "Accounts"
   },
