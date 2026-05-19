@@ -1248,7 +1248,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .headerPanel {
     gap: 8px;
     border: 0;
@@ -1539,7 +1539,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   .table tbody {
     display: grid;
     gap: 12px;

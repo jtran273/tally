@@ -17,6 +17,7 @@ const responsiveViewports = [
   { height: 812, name: "mobile-375", width: 375 },
   { height: 844, name: "mobile-390", width: 390 },
   { height: 932, name: "mobile-430", width: 430 },
+  { height: 932, name: "mobile-603", width: 603 },
   { height: 1024, name: "tablet", width: 768 },
   { height: 900, name: "desktop", width: 1440 }
 ] as const;
@@ -334,7 +335,7 @@ for (const route of responsiveRoutes) {
 
 test("mobile transactions align filters, card header, and bottom navigation", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
-  await page.setViewportSize({ height: 844, width: 390 });
+  await page.setViewportSize({ height: 844, width: 603 });
   await page.goto("/transactions");
 
   await expect(page.getByRole("heading", { exact: true, name: "Transactions" })).toBeVisible();
