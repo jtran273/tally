@@ -332,7 +332,7 @@ for (const route of responsiveRoutes) {
   }
 }
 
-test("mobile transactions align card header and bottom navigation", async ({ baseURL, context, page }) => {
+test("mobile transactions align filters, card header, and bottom navigation", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/transactions");
@@ -342,6 +342,17 @@ test("mobile transactions align card header and bottom navigation", async ({ bas
     const firstRow = document.querySelector("tbody tr");
     const merchant = firstRow?.querySelector("td[data-label='Merchant']");
     const amount = firstRow?.querySelector("td[data-label='Amount']");
+    const filterControls = Array.from(document.querySelectorAll("form[aria-label='Transaction filters'] label"))
+      .filter((label) => ["Month", "Account"].includes(label.querySelector("span")?.textContent ?? ""))
+      .map((label) => {
+        const control = label.querySelector("select")?.getBoundingClientRect();
+        return {
+          controlHeight: control?.height ?? null,
+          controlTop: control?.top ?? null,
+          label: label.querySelector("span")?.textContent,
+          tagName: label.querySelector("select")?.tagName ?? null
+        };
+      });
     const navItems = Array.from(document.querySelectorAll(".nav-item")).map((item) => {
       const itemRect = item.getBoundingClientRect();
       const iconRect = item.querySelector("svg")?.getBoundingClientRect();
@@ -356,10 +367,20 @@ test("mobile transactions align card header and bottom navigation", async ({ bas
 
     return {
       amountTop: amount?.getBoundingClientRect().top ?? null,
+      filterControls,
       merchantTop: merchant?.getBoundingClientRect().top ?? null,
       navItems
     };
   });
+
+  expect(metrics.filterControls).toHaveLength(2);
+  const [monthControl, accountControl] = metrics.filterControls;
+  expect(monthControl.tagName).toBe("SELECT");
+  expect(accountControl.tagName).toBe("SELECT");
+  expect(monthControl.controlTop).not.toBeNull();
+  expect(accountControl.controlTop).not.toBeNull();
+  expect(Math.abs((monthControl.controlTop ?? 0) - (accountControl.controlTop ?? 0))).toBeLessThanOrEqual(1);
+  expect(monthControl.controlHeight).toBe(accountControl.controlHeight);
 
   expect(metrics.amountTop).not.toBeNull();
   expect(metrics.merchantTop).not.toBeNull();

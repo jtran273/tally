@@ -63,6 +63,32 @@ function accountLabel(account: AccountRecord) {
   return `${institutionName} ${accountName}`;
 }
 
+function recentMonthOptions(selectedMonth: string) {
+  const options = new Map<string, string>();
+  const today = new Date();
+  const cursor = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric"
+  });
+
+  for (let index = 0; index < 18; index += 1) {
+    const value = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;
+    options.set(value, formatter.format(cursor));
+    cursor.setUTCMonth(cursor.getUTCMonth() - 1);
+  }
+
+  if (selectedMonth && !options.has(selectedMonth)) {
+    const selectedDate = new Date(`${selectedMonth}-01T12:00:00.000Z`);
+    if (!Number.isNaN(selectedDate.getTime())) {
+      options.set(selectedMonth, formatter.format(selectedDate));
+    }
+  }
+
+  return Array.from(options, ([value, label]) => ({ value, label }));
+}
+
 interface ActiveChip {
   key: string;
   label: string;
@@ -154,6 +180,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
   ));
   const activeChips = buildActiveChips(filters, accounts, categories);
   const categoryGroups = categoryOptionGroups(categories);
+  const monthOptions = recentMonthOptions(filters.month);
 
   return (
     <form action="/transactions" className={styles.filters} role="search" aria-label="Transaction filters">
@@ -182,7 +209,12 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
 
       <label className={styles.field}>
         <span>Month</span>
-        <input className={styles.inputControl} defaultValue={filters.month} name="month" type="month" />
+        <select className={styles.selectControl} defaultValue={filters.month} name="month">
+          <option value="">All months</option>
+          {monthOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
       </label>
 
       <label className={styles.field}>
