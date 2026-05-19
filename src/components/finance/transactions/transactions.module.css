@@ -628,6 +628,7 @@
   flex: 0 1 auto;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   min-width: 0;
   min-height: 22px;
   border: 1px solid var(--line);
@@ -1664,11 +1665,15 @@
   }
 
   .statusTags {
-    gap: 5px;
+    gap: 4px;
   }
 
   .badge {
+    min-height: 20px;
     max-width: 100%;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 11px;
   }
 
   .badgeText {
