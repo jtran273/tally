@@ -87,12 +87,12 @@ function confidenceLabel(confidence: number) {
 
 function confidenceCopy(transaction: TransactionRecord) {
   if (transaction.confidence >= 0.95 || transaction.reviewedAt) {
-    return "Trusted manual review";
+    return "Reviewed";
   }
   if (transaction.confidence < 0.75) {
-    return `Confidence ${confidenceLabel(transaction.confidence)} from import classification. Review before trusting.`;
+    return `${confidenceLabel(transaction.confidence)} confidence — review`;
   }
-  return `Confidence ${confidenceLabel(transaction.confidence)} from import classification.`;
+  return `${confidenceLabel(transaction.confidence)} confidence`;
 }
 
 function needsCategory(transaction: TransactionRecord) {
