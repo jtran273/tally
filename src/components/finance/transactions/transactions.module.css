@@ -1537,15 +1537,16 @@
 @media (max-width: 600px) {
   .table tbody {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     padding: 0;
   }
 
   .table tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-    padding: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 14px 15px;
     box-shadow: var(--shadow-sm);
   }
 
@@ -1561,8 +1562,8 @@
   }
 
   .table td[data-label="Date"] {
-    grid-column: 1;
-    grid-row: 3;
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .table td[data-label="Merchant"] {
@@ -1571,8 +1572,8 @@
   }
 
   .table td[data-label="Category"] {
-    grid-column: 1;
-    grid-row: 4;
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 
   .table td[data-label="Account"] {
@@ -1580,18 +1581,18 @@
   }
 
   .table td[data-label="Amount"] {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
     max-width: none;
     overflow: hidden;
-    text-align: left;
+    text-align: right;
     text-overflow: ellipsis;
   }
 
   .table td[data-label="Edit"] {
-    grid-column: 1;
-    grid-row: 5;
+    grid-column: 1 / -1;
+    grid-row: 4;
     align-self: stretch;
     justify-self: stretch;
   }
@@ -1617,6 +1618,44 @@
   .merchantName {
     font-size: 16px;
     line-height: 1.28;
+  }
+
+  .merchantCell,
+  .dateCell,
+  .categoryCell {
+    gap: 4px;
+  }
+
+  .dateCell span:first-child {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .dateCell span:last-child {
+    display: none;
+  }
+
+  .categoryCell {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .categoryLabel {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .categoryMeta {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .amountCell {
