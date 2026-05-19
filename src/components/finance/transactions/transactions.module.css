@@ -1633,11 +1633,12 @@
   }
 
   .merchantName {
-    flex: 0 1 auto;
+    flex: 1 1 100%;
   }
 
   .merchantCell .statusTags {
     flex: 0 0 auto;
+    margin-top: 1px;
   }
 
   .merchantCell .noteLine,
