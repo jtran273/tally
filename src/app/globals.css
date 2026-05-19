@@ -2456,15 +2456,15 @@ kbd {
 
   .nav {
     align-self: stretch;
+    display: grid;
     flex: 1;
-    flex-direction: row;
-    justify-content: space-around;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 2px;
   }
 
   .nav-item {
     position: relative;
-    min-width: 60px;
+    min-width: 0;
     flex: 1;
     flex-direction: column;
     justify-content: center;
@@ -2475,8 +2475,17 @@ kbd {
     text-align: center;
   }
 
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    margin: 0 auto;
+  }
+
   .nav-item span:not(.nav-badge) {
     font-size: 10.5px;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
   .nav-item.active {
@@ -2980,7 +2989,6 @@ kbd {
   }
 
   .nav-item {
-    min-width: 54px;
     padding: 6px 5px;
   }
 
