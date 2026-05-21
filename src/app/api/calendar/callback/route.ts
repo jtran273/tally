@@ -19,10 +19,17 @@ function settingsRedirect(request: NextRequest, params: Record<string, string>) 
   return url;
 }
 
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
 function clearStateCookie(response: NextResponse) {
   response.cookies.set(GOOGLE_CALENDAR_OAUTH_STATE_COOKIE, "", {
+    httpOnly: true,
     maxAge: 0,
-    path: "/api/calendar/callback"
+    path: "/api/calendar/callback",
+    sameSite: "lax",
+    secure: isProductionRuntime()
   });
   return response;
 }
