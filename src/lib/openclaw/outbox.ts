@@ -3,6 +3,7 @@ import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./t
 
 export type OpenClawOutboxMessageKind = "budget_briefing" | "reimbursement_clarification";
 export type OpenClawOutboxMessagePriority = "normal" | "high";
+export type OpenClawOutboxMinimumPriority = OpenClawOutboxMessagePriority;
 
 export interface OpenClawOutboxReplyAction {
   endpoint: "/api/openclaw/replies";
@@ -35,6 +36,10 @@ export interface OpenClawOutboxResponse {
 
 const MAX_MESSAGE_LENGTH = 320;
 const MAX_QUESTION_LENGTH = 180;
+const PRIORITY_RANK: Record<OpenClawOutboxMessagePriority, number> = {
+  normal: 0,
+  high: 1
+};
 
 function money(value: number) {
   const rounded = Math.round(value);
@@ -130,14 +135,20 @@ function budgetBriefingMessage(signals: OpenClawSignalsResponse): OpenClawOutbox
 
 export function buildOpenClawOutboxResponse(
   signals: OpenClawSignalsResponse,
-  options: { includeBudgetBriefing?: boolean; messageLimit?: number } = {}
+  options: {
+    includeBudgetBriefing?: boolean;
+    messageLimit?: number;
+    minPriority?: OpenClawOutboxMinimumPriority;
+  } = {}
 ): OpenClawOutboxResponse {
   const includeBudgetBriefing = options.includeBudgetBriefing ?? true;
   const messageLimit = Math.max(0, Math.min(options.messageLimit ?? 5, 25));
+  const minPriority = options.minPriority ?? "normal";
   const messages = [
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
     ...(includeBudgetBriefing ? [budgetBriefingMessage(signals)] : [])
-  ].slice(0, messageLimit);
+  ].filter((message) => PRIORITY_RANK[message.priority] >= PRIORITY_RANK[minPriority])
+    .slice(0, messageLimit);
 
   const response: OpenClawOutboxResponse = {
     object: "ledger.openclaw.outbox",

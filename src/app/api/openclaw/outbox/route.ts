@@ -12,6 +12,7 @@ import {
 } from "@/lib/openclaw/signals";
 import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore } from "@/lib/security/request";
+import type { OpenClawOutboxMinimumPriority } from "@/lib/openclaw/outbox";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,6 +34,13 @@ function parseIncludeBudget(value: string | null) {
   throw new OpenClawSignalsBadRequestError("include_budget must be true or false.");
 }
 
+function parseMinPriority(value: string | null): OpenClawOutboxMinimumPriority | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "normal" || normalized === "high") return normalized;
+  throw new OpenClawSignalsBadRequestError("min_priority must be normal or high.");
+}
+
 export async function GET(request: NextRequest) {
   const unauthorized = requireOpenClawAuth(request);
   if (unauthorized) return unauthorized;
@@ -40,10 +48,12 @@ export async function GET(request: NextRequest) {
   let since: string;
   let messageLimit: number | undefined;
   let includeBudgetBriefing: boolean | undefined;
+  let minPriority: OpenClawOutboxMinimumPriority | undefined;
   try {
     since = resolveOpenClawSince(request.nextUrl.searchParams.get("since"));
     messageLimit = parseMessageLimit(request.nextUrl.searchParams.get("limit"));
     includeBudgetBriefing = parseIncludeBudget(request.nextUrl.searchParams.get("include_budget"));
+    minPriority = parseMinPriority(request.nextUrl.searchParams.get("min_priority"));
   } catch (error) {
     if (error instanceof OpenClawSignalsBadRequestError) {
       return jsonNoStore({ error: error.message }, { status: 400 });
@@ -54,7 +64,7 @@ export async function GET(request: NextRequest) {
   try {
     const { client, userId } = createOpenClawServiceContext();
     const signals = await loadOpenClawSignals(client, userId, { since });
-    return jsonNoStore(buildOpenClawOutboxResponse(signals, { includeBudgetBriefing, messageLimit }));
+    return jsonNoStore(buildOpenClawOutboxResponse(signals, { includeBudgetBriefing, messageLimit, minPriority }));
   } catch (error) {
     if (error instanceof OpenClawRouteConfigurationError) {
       return jsonNoStore({ error: "OpenClaw integration is not configured." }, { status: 503 });

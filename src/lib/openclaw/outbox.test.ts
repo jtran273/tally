@@ -31,3 +31,24 @@ test("OpenClaw outbox does not include delivery addresses or direct write author
   assert.doesNotMatch(serializedMessages, /phone|twilio|service_role|access_token|plaid/i);
   assertAssistantContextSafe(outbox);
 });
+
+test("OpenClaw outbox can filter to high-priority messages only", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    minPriority: "high"
+  });
+
+  assert.equal(outbox.messages.length, 1);
+  assert.equal(outbox.messages[0]?.kind, "reimbursement_clarification");
+  assert.equal(outbox.messages[0]?.priority, "high");
+  assertAssistantContextSafe(outbox);
+});
+
+test("OpenClaw outbox applies priority filtering before message limits", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    messageLimit: 1,
+    minPriority: "normal"
+  });
+
+  assert.equal(outbox.messages.length, 1);
+  assert.equal(outbox.messages[0]?.kind, "reimbursement_clarification");
+});

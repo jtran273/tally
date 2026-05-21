@@ -77,6 +77,13 @@ Optional query parameters:
 | `since` | ISO cursor forwarded to the signals loader. |
 | `limit` | Maximum outbox messages, from `0` to `25`; defaults to `5`. |
 | `include_budget` | `true`/`false` flag for adding the budget briefing; defaults to `true`. |
+| `min_priority` | `normal` or `high`; use `high` for scheduled notification loops that should only interrupt on actionable finance items. |
+
+Recommended polling modes:
+
+- `include_budget=false&limit=5`: ask only actionable clarification questions.
+- `min_priority=high&limit=5`: allow future high-priority budget warnings while suppressing normal status summaries.
+- `include_budget=true&limit=5`: manual status pull, useful when James explicitly asks for the current Tally picture.
 
 ## Fixtures
 
