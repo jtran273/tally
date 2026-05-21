@@ -180,6 +180,7 @@ function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentIn
         canApprove={acceptReady}
         isDemo={isDemo}
         reviewItemId={proposal.reviewItemId}
+        transactionLabel={proposal.merchant}
         transactionId={proposal.transactionId}
       />
 

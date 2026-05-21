@@ -598,14 +598,15 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
             Automatically refresh every bank connection once a day. Turn off to sync only when you click Sync.
           </span>
         </span>
-        <span className="switch" aria-hidden>
+        <span className="switch">
           <input
+            aria-label={`Daily auto-sync is ${autoSyncEnabled ? "on" : "off"}`}
             checked={autoSyncEnabled}
             disabled={isDemo || autoSyncUpdating || syncableConnectionCount === 0}
             onChange={(event) => void toggleAutoSync(event.target.checked)}
             type="checkbox"
           />
-          <span />
+          <span aria-hidden="true" />
         </span>
       </label>
 

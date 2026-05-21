@@ -14,12 +14,19 @@ interface AgentInboxActionsProps {
   canApprove: boolean;
   isDemo: boolean;
   reviewItemId: string;
+  transactionLabel: string;
   transactionId: string;
 }
 
 const initialState: ReviewActionState = {};
 
-export function AgentInboxActions({ canApprove, isDemo, reviewItemId, transactionId }: AgentInboxActionsProps) {
+export function AgentInboxActions({
+  canApprove,
+  isDemo,
+  reviewItemId,
+  transactionLabel,
+  transactionId
+}: AgentInboxActionsProps) {
   const [approveState, approveAction, approving] = useActionState(acceptReviewSuggestionAction, initialState);
   const [dismissState, dismissAction, dismissing] = useActionState(dismissReviewItemAction, initialState);
 
@@ -64,7 +71,11 @@ export function AgentInboxActions({ canApprove, isDemo, reviewItemId, transactio
         Review
       </Link>
 
-      <Link className={styles.iconLink} href={`/transactions/${transactionId}`} aria-label="Open transaction">
+      <Link
+        className={styles.iconLink}
+        href={`/transactions/${transactionId}`}
+        aria-label={`Open transaction for ${transactionLabel}`}
+      >
         <ExternalLink size={14} aria-hidden />
       </Link>
 
