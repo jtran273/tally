@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountRecord, CategoryRecord } from "@/lib/db";
 import {
+  hasOnlyAccountFilter,
   normalizeTransactionFilters,
   parseTransactionFilters,
   toTransactionListFilters,
@@ -106,6 +107,27 @@ test("normalizeTransactionFilters clears stale account/category ids", () => {
   assert.equal(normalized.accountId, "all");
   assert.equal(normalized.categoryId, "all");
   assert.equal(normalized.search, "coffee");
+});
+
+test("hasOnlyAccountFilter rejects hidden review and quality filters", () => {
+  assert.equal(
+    hasOnlyAccountFilter(parseTransactionFilters({ account: account.id })),
+    true
+  );
+  assert.equal(
+    hasOnlyAccountFilter(parseTransactionFilters({
+      account: account.id,
+      quality: "low-confidence"
+    })),
+    false
+  );
+  assert.equal(
+    hasOnlyAccountFilter(parseTransactionFilters({
+      account: account.id,
+      reason: "large"
+    })),
+    false
+  );
 });
 
 test("toTransactionListFilters and export href preserve the same filter fields", () => {

@@ -5,7 +5,7 @@ import { MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
 import type { PlaidConnectionSummary } from "@/lib/plaid/service";
 import { isRecurringReview } from "@/lib/review/reasons";
 import { Database, Inbox, WalletCards } from "lucide-react";
-import { transactionPeriodTitle, type TransactionFilterState } from "./filters";
+import { hasOnlyAccountFilter, transactionPeriodTitle, type TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
@@ -70,18 +70,7 @@ export function TransactionsView({
   const selectedAccount = filters.accountId === "all"
     ? null
     : accounts.find((account) => account.id === filters.accountId) ?? null;
-  const accountOnlyFilter = Boolean(
-    selectedAccount &&
-    !filters.search &&
-    filters.categoryId === "all" &&
-    filters.direction === "all" &&
-    filters.intent === "all" &&
-    filters.reviewStatus === "all" &&
-    !filters.month &&
-    !filters.fromDate &&
-    !filters.toDate &&
-    !filters.excludeTransfers
-  );
+  const accountOnlyFilter = Boolean(selectedAccount && hasOnlyAccountFilter(filters));
   const connectionByInstitutionId = new Map(plaidConnections.map((connection) => [connection.institutionId, connection]));
   const selectedAccountIssue = selectedAccount
     ? connectionByInstitutionId.get(selectedAccount.institutionId)?.issue ?? null

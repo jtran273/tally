@@ -278,6 +278,23 @@ export function toTransactionListFilters(filters: TransactionFilterState): Trans
   };
 }
 
+export function hasOnlyAccountFilter(filters: TransactionFilterState) {
+  return Boolean(
+    filters.accountId !== "all" &&
+    !filters.search &&
+    filters.categoryId === "all" &&
+    filters.direction === "all" &&
+    filters.intent === "all" &&
+    filters.reviewStatus === "all" &&
+    filters.reviewReason === "all" &&
+    filters.quality === "all" &&
+    !filters.month &&
+    !filters.fromDate &&
+    !filters.toDate &&
+    !filters.excludeTransfers
+  );
+}
+
 export function transactionFiltersToSearchParams(filters: TransactionFilterState) {
   const params = new URLSearchParams();
 
