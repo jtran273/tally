@@ -167,6 +167,15 @@ function accountLabel(transaction: TransactionRecord) {
   return `${institutionName} ${accountName}`;
 }
 
+function compactAccountLabel(transaction: TransactionRecord) {
+  const accountName = displayName(transaction.accountName);
+  const institutionName = displayName(transaction.institutionName);
+  const genericAccount = /^(checking|savings|credit card|cash|depository|account)$/i.test(accountName);
+  return genericAccount && institutionName && institutionName !== "Unknown institution"
+    ? institutionName
+    : accountName || institutionName || "Account";
+}
+
 function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
   if (accountOnlyFilter && selectedAccount) return `No transaction rows for ${selectedAccount.name}`;
   return filtersActive ? "No rows match the current filters" : "No persisted transactions yet";
@@ -316,6 +325,7 @@ export function TransactionTable({
                       </div>
                       <div className={styles.mobileCardMeta} aria-hidden="true">
                         <span>{displayCategoryName(transaction.category)}</span>
+                        <span>{compactAccountLabel(transaction)}</span>
                         <span>{formatDate(transaction.date)}</span>
                       </div>
                       {reimbursement.state !== "none" ? (

@@ -1212,6 +1212,35 @@
   .editHeader {
     align-items: flex-start;
     flex-direction: column-reverse;
+    gap: 10px;
+  }
+
+  .editHeader h2 {
+    margin-top: 2px;
+    font-size: 24px;
+    line-height: 1.08;
+  }
+
+  .editShell {
+    gap: 12px;
+  }
+
+  .editPanel {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .readonlyGrid {
+    gap: 8px;
+  }
+
+  .readonlyGrid > div {
+    padding-bottom: 8px;
+  }
+
+  .auditLinkRow {
+    margin-top: -4px;
+    padding: 0 2px;
   }
 
   .searchField {

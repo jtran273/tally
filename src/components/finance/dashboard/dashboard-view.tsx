@@ -1969,7 +1969,7 @@ function CashAccountsPanel({ accounts }: { accounts: readonly AccountRecord[] })
       <div className={styles.liabilityPanelHead}>
         <div>
           <span className={styles.eyebrow}>Liquid accounts</span>
-          <h3 className={styles.liabilityHeadline}>{formatMoney(total)} across {cashAccounts.length}</h3>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(total)}</h3>
           <p className={styles.liabilityCoverage}>Checking and savings — money available right now.</p>
         </div>
       </div>
