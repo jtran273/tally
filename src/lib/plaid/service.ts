@@ -639,7 +639,7 @@ export interface PendingRawReplacement {
   rawTransactionId: string;
 }
 
-export function getPlaidPendingReplacementIds(transactions: readonly PendingRawReplacementCandidate[]) {
+function getPlaidPendingReplacementIds(transactions: readonly PendingRawReplacementCandidate[]) {
   return new Set(
     transactions
       .filter((transaction) => transaction.status === "posted")
@@ -2459,33 +2459,6 @@ function toPersistedSyncRunSummary(
     totalItems: run.total_items,
     transactionsRemoved: run.transactions_removed
   };
-}
-
-export async function getLatestPlaidSyncRun(
-  client: FinanceSupabaseClient,
-  userId: string
-): Promise<PlaidPersistedSyncRunSummary | null> {
-  const runResult = await client
-    .from("plaid_sync_runs")
-    .select(PLAID_SYNC_RUN_COLUMNS)
-    .eq("user_id", userId)
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (runResult.error) throw new Error(`Load latest Plaid sync run: ${runResult.error.message}`);
-  if (!runResult.data) return null;
-
-  const run = runResult.data as unknown as PlaidSyncRunRow;
-  const itemResult = await client
-    .from("plaid_sync_run_items")
-    .select(PLAID_SYNC_RUN_ITEM_COLUMNS)
-    .eq("user_id", userId)
-    .eq("sync_run_id", run.id)
-    .order("completed_at", { ascending: false });
-
-  const items = expectData(itemResult, "Load latest Plaid sync run items") as unknown as PlaidSyncRunItemRow[];
-  return toPersistedSyncRunSummary(run, items);
 }
 
 async function listUsersWithSyncablePlaidItems(client: FinanceSupabaseClient) {
