@@ -5,6 +5,7 @@ import {
 } from "@/lib/agents";
 import type { AgentProposalRecord, FinanceSupabaseClient, Json } from "@/lib/db";
 import {
+  FinanceDbError,
   listAccounts,
   listAgentProposals,
   listRecurringExpenses,
@@ -60,6 +61,12 @@ function addDays(value: string, days: number) {
 
 function defaultSince(now: Date) {
   return new Date(now.getTime() - DEFAULT_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+}
+
+export function isMissingAgentProposalsTable(error: unknown) {
+  return error instanceof FinanceDbError &&
+    error.message.toLowerCase().includes("agent_proposals") &&
+    error.message.toLowerCase().includes("could not find the table");
 }
 
 export function openClawTransactionWindow(now = new Date()) {
@@ -185,6 +192,14 @@ export async function loadOpenClawSignals(
   const since = resolveOpenClawSince(options.since, now);
   const { asOfDate, fromDate, toDate } = openClawTransactionWindow(now);
   const openQuestionLimit = options.openQuestionLimit ?? DEFAULT_OPEN_QUESTION_LIMIT;
+  const proposalsOrEmpty = async (listOptions: Parameters<typeof listAgentProposals>[2]) => {
+    try {
+      return await listAgentProposals(client, userId, listOptions);
+    } catch (error) {
+      if (isMissingAgentProposalsTable(error)) return [];
+      throw error;
+    }
+  };
 
   const [
     pendingProposals,
@@ -195,8 +210,8 @@ export async function loadOpenClawSignals(
     reviewItems,
     recurringExpenses
   ] = await Promise.all([
-    listAgentProposals(client, userId, { since, status: "pending" }),
-    listAgentProposals(client, userId, { status: "pending" }),
+    proposalsOrEmpty({ since, status: "pending" }),
+    proposalsOrEmpty({ status: "pending" }),
     listAccounts(client, userId),
     loadUpcomingCalendarContext(client, userId, { generatedAt, now }),
     listTransactions(client, userId, { fromDate, limit: DEFAULT_TRANSACTION_LIMIT, toDate }),

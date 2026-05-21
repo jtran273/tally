@@ -3,10 +3,11 @@ import test from "node:test";
 import { assertAssistantContextSafe } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
 import { buildUpcomingCalendarContext } from "@/lib/calendar";
-import type { AgentProposalRecord } from "@/lib/db";
+import { FinanceDbError, type AgentProposalRecord } from "@/lib/db";
 import {
   OpenClawSignalsBadRequestError,
   buildOpenClawSignalsResponse,
+  isMissingAgentProposalsTable,
   openClawTransactionWindow,
   resolveOpenClawSince,
   selectOpenClarificationProposals
@@ -175,4 +176,19 @@ test("openClawTransactionWindow anchors transaction context to the poll date", (
     fromDate: "2026-01-13",
     toDate: "2026-05-13"
   });
+});
+
+test("missing agent proposal migrations are recognized as degradable for signals", () => {
+  assert.equal(
+    isMissingAgentProposalsTable(new FinanceDbError("List agent proposals", {
+      message: "Could not find the table 'public.agent_proposals' in the schema cache"
+    })),
+    true
+  );
+  assert.equal(
+    isMissingAgentProposalsTable(new FinanceDbError("List transactions", {
+      message: "Could not find the table 'public.enriched_transactions' in the schema cache"
+    })),
+    false
+  );
 });

@@ -59,6 +59,25 @@ Supported suggestion types:
 
 Tally approval code must re-read current rows for the signed-in user, show the exact proposed diff, require explicit confirmation, write audit events, and then update review/reimbursement state. This contract does not define an apply endpoint.
 
+## OpenClaw Outbox
+
+`GET /api/openclaw/outbox` is the OpenClaw-facing notification bridge. It uses the same `OPENCLAW_TOKEN` bearer authentication and server-owned `OPENCLAW_USER_ID` scope as `/api/openclaw/signals`.
+
+The outbox returns text-ready packets for:
+
+- `reimbursement_clarification`: a bounded question with a reply action pointing back to `/api/openclaw/replies`.
+- `budget_briefing`: a compact budget summary using weekly spending, upcoming bills, projected cash when available, open review count, and reimbursement outstanding amount.
+
+Outbox packets are delivery-neutral. They do not contain phone numbers, Twilio credentials, push tokens, provider payloads, Plaid ids, service-role keys, or direct write authority. OpenClaw can forward the `body` through its own notification channel, but finance mutations still require Tally-owned reply or approval endpoints.
+
+Optional query parameters:
+
+| Parameter | Purpose |
+| --- | --- |
+| `since` | ISO cursor forwarded to the signals loader. |
+| `limit` | Maximum outbox messages, from `0` to `25`; defaults to `5`. |
+| `include_budget` | `true`/`false` flag for adding the budget briefing; defaults to `true`. |
+
 ## Fixtures
 
 Example payloads live under `src/lib/agents/fixtures/`:
@@ -71,4 +90,4 @@ The fixture pair demonstrates a shared dinner, an incoming payment, and a propos
 ## Follow-Ups
 
 1. Tally should add a persistent feedback table or audit-backed event shape for accepted, rejected, corrected, and ignored assistant suggestions. That storage should keep the original proposal id/context id, the final user action, and sanitized rationale without storing raw provider payloads.
-2. OpenClaw should add a client and scheduled/cron workflow that can request bounded Tally context packets, call the reasoning layer, and return proposal JSON to a Tally-owned approval inbox or notification route without performing writes.
+2. OpenClaw should add a scheduled client that polls `/api/openclaw/outbox`, deduplicates message ids, and forwards the body through the configured notification channel. Replies should post only to `/api/openclaw/replies` with the proposal id from `replyAction`.

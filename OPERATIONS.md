@@ -352,6 +352,7 @@ Routes:
 
 ```text
 GET /api/openclaw/signals?since=<iso>
+GET /api/openclaw/outbox?since=<iso>&limit=<n>&include_budget=<true|false>
 POST /api/openclaw/replies
 GET|POST /api/openclaw/briefing/scheduled
 ```
@@ -362,11 +363,42 @@ Expected:
 - scheduled briefing requests must include `Authorization: Bearer <CRON_SECRET>`,
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
+- `/api/openclaw/outbox` returns delivery-neutral, text-ready messages for OpenClaw to forward through its configured channel,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
 - `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
 - OpenClaw never writes finance rows directly and Tally never sends iMessages,
 - signal payloads must pass the assistant forbidden-field guard before serialization.
+
+### OpenClaw outbox
+
+The preferred OpenClaw delivery contract is `GET /api/openclaw/outbox`. It wraps the same safe signal context into small message packets:
+
+- `budget_briefing`: weekly spend, movement versus the previous week, upcoming bills, projected cash when available, top category, open review count, and reimbursement outstanding amount.
+- `reimbursement_clarification`: one concise question plus a `replyAction` pointing back to `/api/openclaw/replies`.
+
+The outbox does not contain delivery addresses, phone numbers, iMessage metadata, Twilio credentials, Plaid ids, raw provider payloads, service-role keys, or write authority. OpenClaw owns delivery/dedupe state; Tally owns finance records and reply validation.
+
+Manual smoke check:
+
+```bash
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/outbox?limit=5"
+```
+
+Expected response:
+
+```json
+{
+  "object": "ledger.openclaw.outbox",
+  "messages": [
+    {
+      "kind": "budget_briefing",
+      "body": "Tally budget: week spend ..."
+    }
+  ]
+}
+```
 
 ### Live clarification loop
 
