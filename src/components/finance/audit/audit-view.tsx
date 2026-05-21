@@ -172,13 +172,13 @@ export function AuditView({
             ))}
           </select>
         </label>
-        <label className={styles.filterField}>
-          From
-          <input type="date" name="from" defaultValue={appliedFilters.fromDate ?? ""} />
+        <label className={styles.filterField} htmlFor="audit-from-date">
+          <span>From</span>
+          <input id="audit-from-date" type="date" name="from" defaultValue={appliedFilters.fromDate ?? ""} />
         </label>
-        <label className={styles.filterField}>
-          To
-          <input type="date" name="to" defaultValue={appliedFilters.toDate ?? ""} />
+        <label className={styles.filterField} htmlFor="audit-to-date">
+          <span>To</span>
+          <input id="audit-to-date" type="date" name="to" defaultValue={appliedFilters.toDate ?? ""} />
         </label>
         <label className={styles.filterField}>
           Search

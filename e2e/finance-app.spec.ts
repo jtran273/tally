@@ -935,10 +935,28 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
 
   await page.goto("/agent-inbox");
-  await page.getByRole("link", { name: "Open transaction" }).first().click();
+  await page.getByRole("link", { name: /Open transaction for/i }).first().click();
   await expect(page).toHaveURL(/\/transactions\/t\d+/);
   await expect(page.getByLabel("Read-only transaction details")).toBeVisible();
   await expectNoSensitiveFinanceText(page);
+});
+
+test("audit, settings, and agent inbox expose accessible names for controls", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+
+  await page.goto("/audit");
+  await expect(page.getByRole("heading", { exact: true, name: "Advanced audit" })).toBeVisible();
+  await expect(page.getByLabel("From")).toHaveAttribute("type", "date");
+  await expect(page.getByLabel("To")).toHaveAttribute("type", "date");
+
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { exact: true, name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Daily auto-sync is (on|off)/ })).toBeDisabled();
+
+  await page.goto("/agent-inbox");
+  await expect(page.getByRole("heading", { exact: true, name: "Agent inbox" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Open transaction for/i }).first()).toBeVisible();
 });
 
 test("recurring and accounts pages render focused recurring rows and active accounts", async ({ baseURL, context, page }) => {

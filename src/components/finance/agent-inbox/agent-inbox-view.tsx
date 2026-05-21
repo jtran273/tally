@@ -178,6 +178,7 @@ function ProposalCard({ proposal }: { proposal: AgentInboxProposal }) {
       <AgentInboxActions
         canApprove={acceptReady}
         reviewItemId={proposal.reviewItemId}
+        transactionLabel={proposal.merchant}
         transactionId={proposal.transactionId}
       />
 
