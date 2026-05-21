@@ -21,6 +21,7 @@ import styles from "./plaid-connection-panel.module.css";
 type PlaidEnvironment = "sandbox" | "production";
 
 interface PlaidConnectionSummary {
+  autoSyncEnabled: boolean;
   availableProducts: string[];
   billedProducts: string[];
   consentExpiresAt: string | null;
@@ -228,6 +229,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [syncAttempt, setSyncAttempt] = useState<SyncAttemptState | null>(null);
   const [now, setNow] = useState<number | null>(null);
+  const [autoSyncUpdating, setAutoSyncUpdating] = useState(false);
   const connectButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -265,6 +267,10 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
       : null;
   }, [connections]);
   const statusSummary = useMemo(() => buildPlaidConnectionsStatusSummary(connections), [connections]);
+  const autoSyncEnabled = useMemo(
+    () => connections.some((connection) => connection.status !== "revoked" && connection.autoSyncEnabled),
+    [connections]
+  );
 
   useEffect(() => {
     let ignore = false;
@@ -472,6 +478,32 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
     }
   };
 
+  const toggleAutoSync = async (nextValue: boolean) => {
+    if (isDemo) {
+      setSuccessMessage("Demo mode keeps auto-sync settings read-only.");
+      return;
+    }
+
+    setAutoSyncUpdating(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const data = await fetch(`/api/plaid/connections`, {
+        body: JSON.stringify({ autoSyncEnabled: nextValue }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH"
+      }).then((response) => readJson<{ autoSyncEnabled: boolean; connections: PlaidConnectionSummary[] }>(response));
+
+      setConnections(data.connections);
+      setSuccessMessage(`Daily auto-sync turned ${data.autoSyncEnabled ? "on" : "off"}.`);
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Unable to update auto-sync setting.");
+    } finally {
+      setAutoSyncUpdating(false);
+    }
+  };
+
   const disconnectConnection = async (connection: PlaidConnectionSummary) => {
     if (connection.status === "revoked") return;
     if (isDemo) {
@@ -558,6 +590,24 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
           {lastSyncAt ? formatRelativeTime(lastSyncAt, now) : "Never"}
         </strong>
       </div>
+
+      <label className="setting-toggle">
+        <span className="setting-toggle-copy">
+          <span className="settings-row-title">Daily auto-sync</span>
+          <span className="settings-row-sub">
+            Automatically refresh every bank connection once a day. Turn off to sync only when you click Sync.
+          </span>
+        </span>
+        <span className="switch" aria-hidden>
+          <input
+            checked={autoSyncEnabled}
+            disabled={isDemo || autoSyncUpdating || syncableConnectionCount === 0}
+            onChange={(event) => void toggleAutoSync(event.target.checked)}
+            type="checkbox"
+          />
+          <span />
+        </span>
+      </label>
 
       {syncAttempt ? (
         <div

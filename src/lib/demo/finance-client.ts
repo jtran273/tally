@@ -79,6 +79,7 @@ const institutions: InstitutionRow[] = [...new Set(ledgerData.accounts.map((acco
 
 const plaidItems: PlaidItemRow[] = institutions.map((institution) => ({
   access_token_ciphertext: "demo-token",
+  auto_sync_enabled: true,
   available_products: ["transactions"],
   billed_products: ["transactions"],
   consent_expires_at: null,
@@ -614,6 +615,7 @@ export function listDemoPlaidConnections() {
     });
 
     return {
+      autoSyncEnabled: item.auto_sync_enabled,
       availableProducts: item.available_products,
       billedProducts: item.billed_products,
       consentExpiresAt: item.consent_expires_at,

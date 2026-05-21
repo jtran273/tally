@@ -24,6 +24,7 @@ const aiOpenAi: AiProviderStatus = {
 };
 
 const connection: PlaidConnectionSummary = {
+  autoSyncEnabled: true,
   availableProducts: ["transactions"],
   billedProducts: ["transactions"],
   consentExpiresAt: null,

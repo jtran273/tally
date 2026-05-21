@@ -73,6 +73,7 @@ const PLAID_ITEM_COLUMNS = [
   "error_message",
   "consent_expires_at",
   "last_successful_sync_at",
+  "auto_sync_enabled",
   "created_at",
   "updated_at"
 ].join(",");
@@ -90,6 +91,7 @@ const PLAID_ITEM_SYNC_COLUMNS = [
   "consent_expires_at",
   "last_successful_sync_at",
   "transaction_cursor",
+  "auto_sync_enabled",
   "created_at",
   "updated_at"
 ].join(",");
@@ -251,6 +253,7 @@ type PlaidItemPublicRow = Omit<
 >;
 
 export interface PlaidConnectionSummary {
+  autoSyncEnabled: boolean;
   availableProducts: string[];
   billedProducts: string[];
   consentExpiresAt: string | null;
@@ -357,6 +360,7 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
   });
 
   return {
+    autoSyncEnabled: item.auto_sync_enabled,
     availableProducts: item.available_products,
     billedProducts: item.billed_products,
     consentExpiresAt: item.consent_expires_at,
@@ -2482,9 +2486,20 @@ async function listUsersWithSyncablePlaidItems(client: FinanceSupabaseClient) {
   const result = await client
     .from("plaid_items")
     .select("user_id")
+    .eq("auto_sync_enabled", true)
     .neq("status", "revoked");
   const rows = expectData(result, "List users with syncable Plaid items") as unknown as Array<{ user_id: string }>;
   return [...new Set(rows.map((row) => row.user_id))];
+}
+
+async function listPlaidItemsForScheduledSync(client: FinanceSupabaseClient, userId: string) {
+  const result = await client
+    .from("plaid_items")
+    .select(PLAID_ITEM_SYNC_COLUMNS)
+    .eq("user_id", userId)
+    .eq("auto_sync_enabled", true)
+    .neq("status", "revoked");
+  return expectData(result, "List Plaid items for scheduled sync") as unknown as PlaidItemRow[];
 }
 
 export async function syncScheduledPlaidConnections(client: FinanceSupabaseClient): Promise<PlaidScheduledSyncSummary> {
@@ -2496,7 +2511,9 @@ export async function syncScheduledPlaidConnections(client: FinanceSupabaseClien
 
   for (const userId of userIds) {
     try {
-      runs.push(await syncPlaidConnections(client, userId, "scheduled"));
+      const items = await listPlaidItemsForScheduledSync(client, userId);
+      if (items.length === 0) continue;
+      runs.push(await syncLoadedPlaidItems({ client, items, source: "scheduled", userId }));
     } catch (error) {
       failedUsers += 1;
       console.error("scheduled_plaid_sync_user_failed", getSafePlaidError(error));
@@ -2889,6 +2906,21 @@ async function updatePlaidItemRevoked(
     .single();
 
   return expectData(result, "Mark Plaid item revoked") as unknown as PlaidItemPublicRow;
+}
+
+export async function setPlaidAutoSyncForUser(
+  client: FinanceSupabaseClient,
+  userId: string,
+  autoSyncEnabled: boolean
+) {
+  const update: PlaidItemUpdate = { auto_sync_enabled: autoSyncEnabled };
+  const result = await client
+    .from("plaid_items")
+    .update(update)
+    .eq("user_id", userId)
+    .neq("status", "revoked");
+
+  if (result.error) throw new Error(`Update Plaid auto-sync preference: ${result.error.message}`);
 }
 
 type PlaidItemRemoveClient = Pick<ReturnType<typeof getPlaidClient>, "itemRemove">;

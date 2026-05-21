@@ -276,6 +276,7 @@ function fixtureInstitution(): InstitutionRow {
 function fixturePlaidItem(input: Partial<PlaidItemRow> = {}): PlaidItemRow {
   return {
     access_token_ciphertext: "ciphertext",
+    auto_sync_enabled: true,
     available_products: ["transactions"],
     billed_products: ["transactions"],
     consent_expires_at: null,

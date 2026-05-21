@@ -80,6 +80,7 @@ export interface PlaidItemRow {
   consent_expires_at: string | null;
   last_successful_sync_at: string | null;
   transaction_cursor: string | null;
+  auto_sync_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -89,6 +90,8 @@ export interface GoogleCalendarConnectionRow {
   user_id: string;
   google_calendar_id: string;
   calendar_summary: string | null;
+  calendar_list: Json;
+  selected_calendar_ids: string[];
   access_token_ciphertext: string;
   refresh_token_ciphertext: string;
   scope: string;
