@@ -36,7 +36,7 @@ export function setDemoCookie(response: NextResponse) {
     maxAge: DEMO_COOKIE_MAX_AGE_SECONDS,
     path: "/",
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production"
+    secure: isProductionRuntime()
   });
 }
 
@@ -46,6 +46,6 @@ export function clearDemoCookie(response: NextResponse) {
     maxAge: 0,
     path: "/",
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production"
+    secure: isProductionRuntime()
   });
 }
