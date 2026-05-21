@@ -1,4 +1,4 @@
-import { BASE_DATE, ledgerData, type LedgerTransaction } from "@/components/ledger/data";
+import { ledgerData, type LedgerTransaction } from "@/components/ledger/data";
 import type {
   AccountRow,
   AgentProposalRow,
@@ -33,7 +33,8 @@ type QueryError = { message: string };
 type QueryResult<Row> = { data: Row[] | Row | null; error: QueryError | null };
 
 const DAY_MS = 86_400_000;
-const NOW = BASE_DATE.toISOString();
+const DEMO_ANCHOR_DATE = new Date();
+const NOW = DEMO_ANCHOR_DATE.toISOString();
 const EMPTY_JSON: Json = {};
 const DEFAULT_CATEGORY_NAMES = ["Auto / Car Maintenance", "Education", "Entertainment"];
 
@@ -42,7 +43,7 @@ function slug(value: string) {
 }
 
 function isoDaysFromBase(daysFromBase: number) {
-  return new Date(BASE_DATE.getTime() + daysFromBase * DAY_MS).toISOString().slice(0, 10);
+  return new Date(DEMO_ANCHOR_DATE.getTime() + daysFromBase * DAY_MS).toISOString().slice(0, 10);
 }
 
 function institutionId(name: string) {
