@@ -82,6 +82,8 @@ Each initial, manual, or scheduled sync also writes a persisted run summary with
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
+A "Daily auto-sync" toggle in Settings → Bank connections controls whether the user's items participate in scheduled sync runs. Manual sync, repair, and disconnect still work regardless of the toggle.
+
 If Plaid account and balance data are available but Transactions Sync is not enabled or ready for an item, Tally can still import accounts, balances, and balance snapshots. The sync summary records skipped transaction rows and safe error metadata without advancing the transaction cursor.
 
 Disconnecting a Plaid item stops future syncs and keeps historical Tally rows visible. The revoked Plaid item row remains as a disconnected tombstone with a marker token and cleared cursor, while accounts, balances, transactions, reviews, recurring rows, and reimbursements are preserved. If old token encryption cannot be decrypted during disconnect, Tally can still mark the item revoked locally so it no longer syncs.

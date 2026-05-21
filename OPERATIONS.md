@@ -235,11 +235,13 @@ Scheduled sync uses a dedicated server-only route:
 GET or POST /api/plaid/sync/scheduled
 ```
 
-Recommended production wiring is a Vercel Cron or another trusted scheduler that sends:
+Production wiring uses any trusted scheduler (Vercel Cron, GitHub Actions, external cron) that sends:
 
 ```text
 Authorization: Bearer <CRON_SECRET>
 ```
+
+`vercel.json` does not register a cron entry by default — users opt into automatic daily sync per connection via the "Daily auto-sync" toggle in Settings → Bank connections (backed by `plaid_items.auto_sync_enabled`). Add a `crons` entry to `vercel.json` (or wire an external scheduler) only when you want a daily run; the scheduled route itself will still skip items with `auto_sync_enabled = false`.
 
 This route does not use browser same-origin auth. Keep scheduled jobs server-only: never expose Plaid access tokens, service-role keys, transaction cursors, auth headers, provider ids, or raw provider payloads to the browser or job logs.
 
@@ -276,7 +278,7 @@ Configure `CRON_SECRET` as a server-only environment variable before enabling a 
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The Plaid scheduled route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. The proactive scan route returns `status: "disabled"` unless `PROACTIVE_SCAN_ENABLED=true`; when enabled, it uses `PROACTIVE_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 45 days for candidate expenses, caps candidate transactions with `PROACTIVE_SCAN_MAX_TX`, uses OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`, and writes only advisory reimbursement proposals. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, provider kind/version, and sanitized metadata.
+The Plaid scheduled route uses the Supabase service-role client, finds users with at least one non-revoked Plaid item where `auto_sync_enabled = true`, syncs only those items, and writes the same persisted sync run summaries as manual sync. The proactive scan route returns `status: "disabled"` unless `PROACTIVE_SCAN_ENABLED=true`; when enabled, it uses `PROACTIVE_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 45 days for candidate expenses, caps candidate transactions with `PROACTIVE_SCAN_MAX_TX`, uses OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`, and writes only advisory reimbursement proposals. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, provider kind/version, and sanitized metadata.
 
 ## Supabase Troubleshooting
 

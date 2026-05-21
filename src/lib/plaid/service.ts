@@ -1595,26 +1595,30 @@ async function insertGeneratedReviewItems(
     expectData(result, "Insert generated Plaid review items");
   }
 
-  for (const update of aiUpdates) {
-    const item = update.item;
-    if (!item.enriched_transaction_id || !item.reason) continue;
-    const key = reviewItemKey(item);
-    if (key && autoAppliedKeys.has(key)) continue;
+  const refreshes = aiUpdates
+    .filter((update) => {
+      const item = update.item;
+      if (!item.enriched_transaction_id || !item.reason) return false;
+      const key = reviewItemKey(item);
+      return !(key && autoAppliedKeys.has(key));
+    })
+    .map(async (update) => {
+      const item = update.item;
+      const result = await client
+        .from("review_items")
+        .update({
+          ai_suggestion: item.ai_suggestion,
+          confidence: item.confidence ?? null
+        })
+        .eq("user_id", item.user_id)
+        .eq("enriched_transaction_id", item.enriched_transaction_id!)
+        .eq("reason", item.reason!)
+        .eq("status", "open")
+        .select("id");
+      expectData(result, "Refresh generated Plaid review AI suggestions");
+    });
 
-    const result = await client
-      .from("review_items")
-      .update({
-        ai_suggestion: item.ai_suggestion,
-        confidence: item.confidence ?? null
-      })
-      .eq("user_id", item.user_id)
-      .eq("enriched_transaction_id", item.enriched_transaction_id)
-      .eq("reason", item.reason)
-      .eq("status", "open")
-      .select("id");
-
-    expectData(result, "Refresh generated Plaid review AI suggestions");
-  }
+  await Promise.all(refreshes);
 }
 
 function reviewItemKey(item: Pick<ReviewItemInsert, "enriched_transaction_id" | "reason">) {
@@ -2254,8 +2258,10 @@ export async function syncPlaidItem({
     source,
     startedAt: run.started_at
   });
-  await persistPlaidSyncRunItem({ client, item, run, startedAt, summary, userId });
-  await finalizePlaidSyncRun(client, run, runSummary);
+  await Promise.all([
+    persistPlaidSyncRunItem({ client, item, run, startedAt, summary, userId }),
+    finalizePlaidSyncRun(client, run, runSummary)
+  ]);
 
   if (syncError && throwOnError) throw syncError;
   return summary;

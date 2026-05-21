@@ -118,6 +118,7 @@ const calendarEnv = {
 function calendarConnection(input: Partial<GoogleCalendarConnectionRow> = {}): GoogleCalendarConnectionRow {
   return {
     access_token_ciphertext: encryptGoogleCalendarToken("access-current"),
+    calendar_list: [],
     calendar_summary: "Primary calendar",
     created_at: "2026-05-13T11:00:00.000Z",
     error_code: null,
@@ -128,6 +129,7 @@ function calendarConnection(input: Partial<GoogleCalendarConnectionRow> = {}): G
     last_successful_sync_at: null,
     refresh_token_ciphertext: encryptGoogleCalendarToken("refresh-current"),
     scope: GOOGLE_CALENDAR_READONLY_SCOPE,
+    selected_calendar_ids: ["primary"],
     status: "active",
     token_type: "Bearer",
     updated_at: "2026-05-13T11:00:00.000Z",
