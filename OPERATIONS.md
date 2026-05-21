@@ -353,6 +353,11 @@ Routes:
 ```text
 GET /api/openclaw/signals?since=<iso>
 GET /api/openclaw/outbox?since=<iso>&limit=<n>&include_budget=<true|false>&min_priority=<normal|high>
+GET /api/openclaw/recent-transactions?limit=<n>
+GET /api/openclaw/review-items?limit=<n>
+GET /api/openclaw/reimbursements?limit=<n>
+GET /api/openclaw/safe-to-spend?amount=<number>
+POST /api/openclaw/query
 POST /api/openclaw/replies
 GET|POST /api/openclaw/briefing/scheduled
 ```
@@ -364,6 +369,11 @@ Expected:
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
 - `/api/openclaw/outbox` returns delivery-neutral, text-ready messages for OpenClaw to forward through its configured channel,
+- `/api/openclaw/recent-transactions` returns bounded safe transaction DTOs with date, merchant, amount, category, account nickname, status, and reimbursement state,
+- `/api/openclaw/review-items` returns a bounded open cleanup inbox,
+- `/api/openclaw/reimbursements` returns outstanding reimbursable transaction summaries,
+- `/api/openclaw/safe-to-spend` returns a green/yellow/red answer with upcoming bills, projected cash, review count, reimbursement outstanding, and weekly pace,
+- `/api/openclaw/query` accepts only structured intents: `recent_transactions`, `review_items`, `reimbursements`, or `safe_to_spend`,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
 - `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
@@ -375,7 +385,9 @@ Expected:
 The preferred OpenClaw delivery contract is `GET /api/openclaw/outbox`. It wraps the same safe signal context into small message packets:
 
 - `budget_briefing`: weekly spend, movement versus the previous week, upcoming bills, projected cash when available, top category, open review count, and reimbursement outstanding amount.
+- `reimbursement_alert`: high-priority summary when current-week reimbursement dollars are outstanding.
 - `reimbursement_clarification`: one concise question plus a `replyAction` pointing back to `/api/openclaw/replies`.
+- `review_queue_alert`: high-priority cleanup prompt when open review items exist.
 
 The outbox does not contain delivery addresses, phone numbers, iMessage metadata, Twilio credentials, Plaid ids, raw provider payloads, service-role keys, or write authority. OpenClaw owns delivery/dedupe state; Tally owns finance records and reply validation.
 
@@ -406,6 +418,38 @@ Expected response:
   ]
 }
 ```
+
+### OpenClaw read APIs
+
+These endpoints are read-only and share the same `OPENCLAW_TOKEN` bearer auth and server-owned `OPENCLAW_USER_ID` scope. They must not return raw Plaid payloads, Plaid transaction ids, account masks, service-role keys, notes, phone numbers, or direct write authority.
+
+Examples:
+
+```bash
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/recent-transactions?limit=5"
+
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/review-items?limit=5"
+
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/reimbursements?limit=5"
+
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/safe-to-spend?amount=80"
+```
+
+Structured query wrapper:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"intent":"safe_to_spend","amount":80}' \
+  "https://<tally-host>/api/openclaw/query"
+```
+
+`/api/openclaw/query` is intentionally not natural-language SQL. OpenClaw should map user phrasing to one of the allowlisted intents before calling Tally.
 
 ### Live clarification loop
 

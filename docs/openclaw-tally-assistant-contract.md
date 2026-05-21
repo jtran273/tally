@@ -66,6 +66,8 @@ Tally approval code must re-read current rows for the signed-in user, show the e
 The outbox returns text-ready packets for:
 
 - `reimbursement_clarification`: a bounded question with a reply action pointing back to `/api/openclaw/replies`.
+- `reimbursement_alert`: a high-priority outstanding reimbursement summary.
+- `review_queue_alert`: a high-priority cleanup prompt for open review items.
 - `budget_briefing`: a compact budget summary using weekly spending, upcoming bills, projected cash when available, open review count, and reimbursement outstanding amount.
 
 Outbox packets are delivery-neutral. They do not contain phone numbers, Twilio credentials, push tokens, provider payloads, Plaid ids, service-role keys, or direct write authority. OpenClaw can forward the `body` through its own notification channel, but finance mutations still require Tally-owned reply or approval endpoints.
@@ -82,10 +84,30 @@ Optional query parameters:
 Recommended polling modes:
 
 - `include_budget=false&limit=5`: ask only actionable clarification questions.
-- `min_priority=high&limit=5`: allow future high-priority budget warnings while suppressing normal status summaries.
+- `min_priority=high&limit=5`: allow reimbursement clarification, reimbursement alert, and review queue alert packets while suppressing normal status summaries.
 - `include_budget=true&limit=5`: manual status pull, useful when James explicitly asks for the current Tally picture.
 
 Because Plaid sync is usually manual, OpenClaw should not poll this endpoint every few minutes. A low-frequency schedule such as every 6 hours is enough for background checks, with an immediate on-demand `min_priority=high&limit=5` poll after manual Plaid sync.
+
+## OpenClaw Read APIs
+
+Dedicated read APIs let OpenClaw answer common finance questions without direct database access:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/openclaw/recent-transactions?limit=5` | Recent safe transaction DTOs. |
+| `GET /api/openclaw/review-items?limit=5` | Open cleanup inbox items. |
+| `GET /api/openclaw/reimbursements?limit=5` | Outstanding reimbursable transaction summaries. |
+| `GET /api/openclaw/safe-to-spend?amount=80` | Green/yellow/red spend answer with one-sentence rationale. |
+| `POST /api/openclaw/query` | Structured wrapper for allowlisted intents. |
+
+The query endpoint accepts JSON only and intentionally does not accept raw natural-language SQL:
+
+```json
+{ "intent": "safe_to_spend", "amount": 80 }
+```
+
+Supported intents are `recent_transactions`, `review_items`, `reimbursements`, and `safe_to_spend`. All read API responses include a safety block and exclude raw provider payloads, Plaid ids, account numbers/masks, phone numbers, notes, service-role keys, and write authority.
 
 ## Fixtures
 

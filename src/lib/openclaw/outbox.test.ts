@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assertAssistantContextSafe } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
+import type { OpenClawSignalsResponse } from "./types";
 import { buildOpenClawOutboxResponse } from "./outbox";
 
 test("OpenClaw outbox creates text-ready reimbursement and budget messages", () => {
@@ -51,4 +52,38 @@ test("OpenClaw outbox applies priority filtering before message limits", () => {
 
   assert.equal(outbox.messages.length, 1);
   assert.equal(outbox.messages[0]?.kind, "reimbursement_clarification");
+});
+
+test("OpenClaw outbox creates specific high-priority review and reimbursement alerts", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.weeklyPlanningContext.spending.currentWeek.reimbursementOutstanding = 125;
+  signals.weeklyPlanningContext.review = {
+    action: "read.review_queue_summary",
+    examples: [{
+      amount: -72,
+      category: "Food",
+      confidence: 0.42,
+      date: "2026-05-13",
+      intent: "personal",
+      merchant: "Dinner",
+      reason: "low-confidence",
+      reviewItemId: "review-1",
+      transactionId: "tx-1"
+    }],
+    generatedAt: signals.generatedAt,
+    openCount: 2,
+    reasonCounts: { "low-confidence": 2 },
+    totalAbsoluteAmount: 144
+  };
+
+  const outbox = buildOpenClawOutboxResponse(signals, { minPriority: "high" });
+
+  assert.deepEqual(
+    outbox.messages.map((message) => message.kind),
+    ["reimbursement_alert", "review_queue_alert"]
+  );
+  assert.match(outbox.messages[0]?.body ?? "", /\$125/);
+  assert.match(outbox.messages[1]?.body ?? "", /2 open items/);
+  assertAssistantContextSafe(outbox);
 });

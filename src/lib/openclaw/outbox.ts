@@ -1,7 +1,11 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
 import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
 
-export type OpenClawOutboxMessageKind = "budget_briefing" | "reimbursement_clarification";
+export type OpenClawOutboxMessageKind =
+  | "budget_briefing"
+  | "reimbursement_alert"
+  | "reimbursement_clarification"
+  | "review_queue_alert";
 export type OpenClawOutboxMessagePriority = "normal" | "high";
 export type OpenClawOutboxMinimumPriority = OpenClawOutboxMessagePriority;
 
@@ -116,18 +120,46 @@ function budgetBriefingBody(signals: OpenClawSignalsResponse) {
 }
 
 function budgetBriefingMessage(signals: OpenClawSignalsResponse): OpenClawOutboxMessage {
-  const current = signals.weeklyPlanningContext.spending.currentWeek;
-  const priority: OpenClawOutboxMessagePriority =
-    current.reimbursementOutstanding > 0 || signals.weeklyPlanningContext.review.openCount > 0
-      ? "high"
-      : "normal";
-
   return {
     id: `openclaw-outbox:budget:${signals.weeklyPlanningContext.asOfDate}`,
     body: budgetBriefingBody(signals),
     createdAt: signals.generatedAt,
     kind: "budget_briefing",
-    priority,
+    priority: "normal",
+    replyAction: null,
+    target: "openclaw"
+  };
+}
+
+function reviewQueueAlert(signals: OpenClawSignalsResponse): OpenClawOutboxMessage | null {
+  const review = signals.weeklyPlanningContext.review;
+  if (review.openCount <= 0) return null;
+
+  const top = review.examples[0];
+  const topText = top
+    ? ` top ${top.merchant} ${money(top.amount)} (${top.reason})`
+    : "";
+  return {
+    id: `openclaw-outbox:review:${signals.weeklyPlanningContext.asOfDate}`,
+    body: compact(`Tally review: ${review.openCount} open item${review.openCount === 1 ? "" : "s"} totaling ${money(review.totalAbsoluteAmount)}.${topText ? `${topText}.` : ""}`, MAX_MESSAGE_LENGTH),
+    createdAt: signals.generatedAt,
+    kind: "review_queue_alert",
+    priority: "high",
+    replyAction: null,
+    target: "openclaw"
+  };
+}
+
+function reimbursementAlert(signals: OpenClawSignalsResponse): OpenClawOutboxMessage | null {
+  const outstanding = signals.weeklyPlanningContext.spending.currentWeek.reimbursementOutstanding;
+  if (outstanding <= 0) return null;
+
+  return {
+    id: `openclaw-outbox:reimbursement-summary:${signals.weeklyPlanningContext.asOfDate}`,
+    body: compact(`Tally reimbursement: ${money(outstanding)} still outstanding this week. Ask Tally for reimbursements to see the items.`, MAX_MESSAGE_LENGTH),
+    createdAt: signals.generatedAt,
+    kind: "reimbursement_alert",
+    priority: "high",
     replyAction: null,
     target: "openclaw"
   };
@@ -146,8 +178,11 @@ export function buildOpenClawOutboxResponse(
   const minPriority = options.minPriority ?? "normal";
   const messages = [
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
+    reimbursementAlert(signals),
+    reviewQueueAlert(signals),
     ...(includeBudgetBriefing ? [budgetBriefingMessage(signals)] : [])
-  ].filter((message) => PRIORITY_RANK[message.priority] >= PRIORITY_RANK[minPriority])
+  ].filter((message): message is OpenClawOutboxMessage => message !== null)
+    .filter((message) => PRIORITY_RANK[message.priority] >= PRIORITY_RANK[minPriority])
     .slice(0, messageLimit);
 
   const response: OpenClawOutboxResponse = {

@@ -143,7 +143,7 @@ OpenClaw handoff payloads should use this envelope:
 }
 ```
 
-OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. Persisted suggestions and clarification questions belong in `agent_proposals`, a user-owned store with minimized evidence and proposed-patch JSON that must pass the same forbidden-field checks before insert. If a future integration adds an apply endpoint, it must call Tally-owned acceptance helpers, re-read the target row, remain user scoped, and write audit events.
+OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. For read-only questions, OpenClaw should call the dedicated `/api/openclaw/*` read APIs or the structured `/api/openclaw/query` allowlist instead of querying Supabase directly. Persisted suggestions and clarification questions belong in `agent_proposals`, a user-owned store with minimized evidence and proposed-patch JSON that must pass the same forbidden-field checks before insert. If a future integration adds an apply endpoint, it must call Tally-owned acceptance helpers, re-read the target row, remain user scoped, and write audit events.
 
 The proactive reimbursement candidate detector produces `reimbursement_candidate` proposals from safe enriched transaction summaries, nearby positive inflows, and user-history hints. Its AI request shape contains app-owned ids, dates, merchant/category labels, amounts, current intent, heuristic reasons, and candidate inflow ids only. It does not include raw Plaid payloads, provider ids, access tokens, account masks, auth headers, service-role keys, or transaction cursors.
 
