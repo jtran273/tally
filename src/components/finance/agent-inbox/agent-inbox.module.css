@@ -392,6 +392,12 @@
   margin-top: 14px;
 }
 
+.demoActionNote {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
 .primaryButton,
 .secondaryButton,
 .iconLink {

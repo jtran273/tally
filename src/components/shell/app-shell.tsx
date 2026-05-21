@@ -114,7 +114,7 @@ function currentRoute(pathname: string): RouteKey {
   return match ?? "dashboard";
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, isDemo = false }: { children: ReactNode; isDemo?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -128,6 +128,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const shouldRefocusSearchRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [bankDataCheckStatus, setBankDataCheckStatus] = useState<"checking" | "updated" | null>("checking");
+  const userInitial = isDemo ? "D" : "J";
+  const workspaceName = isDemo ? "Demo" : "James";
+  const workspaceStatus = isDemo ? "Seeded demo workspace" : "Real data workspace";
 
   const focusSearchInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -301,10 +304,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="sidebar-foot">
           <Link className="user-row" href={routeHref.settings}>
-            <div className="avatar">J</div>
+            <div className="avatar">{userInitial}</div>
             <div className="user-meta">
-              <div className="user-name">James</div>
-              <div className="user-sub">Real data workspace</div>
+              <div className="user-name">{workspaceName}</div>
+              <div className="user-sub">{workspaceStatus}</div>
             </div>
             <Settings size={15} aria-hidden />
           </Link>

@@ -271,7 +271,9 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tally dashboard" })).toBeVisible();
-  await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Seeded demo workspace")).toBeVisible();
+  await expect(page.getByText("Real data workspace")).toHaveCount(0);
+  await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await expectNoVisibleLegacyBrand(page);
 });
 
@@ -928,6 +930,9 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expect(page.getByLabel("Agent inbox safety")).toContainText("sanitized");
   await expect(page.locator("article").first()).toBeVisible();
   await expect(page.locator("article").first()).toContainText(/Accept ready|Needs review/);
+  await expect(page.getByText("Demo proposals are preview-only")).toBeVisible();
+  const readOnlyProposalButtons = page.getByRole("button", { name: "Read-only demo" });
+  await expect(readOnlyProposalButtons.first()).toBeDisabled();
   await expectNoSensitiveFinanceText(page);
 
   await page.locator("article").first().getByRole("link", { exact: true, name: "Review" }).click();

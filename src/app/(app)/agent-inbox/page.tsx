@@ -16,12 +16,14 @@ function errorMessage(error: unknown) {
 export default async function AgentInboxPage() {
   let dataError: string | undefined;
   let isConfigured = false;
+  let isDemo = false;
   let isSignedIn = false;
   let reviewItems: ReviewQueueItem[] = [];
   let proposals: AgentInboxProposal[] = [];
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
@@ -38,6 +40,7 @@ export default async function AgentInboxPage() {
     <AgentInboxView
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
       proposals={proposals}
       summary={summarizeAgentInbox(proposals)}
