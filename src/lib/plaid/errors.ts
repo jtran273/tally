@@ -12,6 +12,7 @@ interface SafePlaidError {
   code: string;
   requestId?: string;
   status?: number;
+  transportCode?: string;
   type?: string;
 }
 
@@ -21,6 +22,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function safeTransportCode(value: unknown) {
+  const code = asString(value);
+  if (!code) return undefined;
+
+  return /^[A-Z0-9_]+$/.test(code) ? code : undefined;
 }
 
 export function getSafePlaidError(error: unknown): SafePlaidError {
@@ -43,6 +51,7 @@ export function getSafePlaidError(error: unknown): SafePlaidError {
     code: asString(data?.error_code) ?? "PLAID_REQUEST_FAILED",
     requestId: asString(data?.request_id),
     status: typeof response?.status === "number" ? response.status : undefined,
+    transportCode: isRecord(error) ? safeTransportCode(error.code) : undefined,
     type: asString(data?.error_type)
   };
 }

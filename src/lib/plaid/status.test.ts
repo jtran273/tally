@@ -63,6 +63,17 @@ test("generic Plaid request failures use retryable copy instead of a raw fallbac
   );
 });
 
+test("internal sync failures use save-failure copy instead of a Plaid request label", () => {
+  assert.deepEqual(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_SYNC_INTERNAL_ERROR", status: "error" })),
+    {
+      action: "retry",
+      detail: "Plaid returned data, but Tally could not finish saving the imported sync result. Check safe server logs for the failing sync step.",
+      title: "Sync save failed"
+    }
+  );
+});
+
 test("Plaid token decryption errors ask for reconnect while preserving balance context", () => {
   assert.deepEqual(
     getPlaidConnectionIssue(connection({
@@ -209,6 +220,36 @@ test("Plaid sync result messages explain generic request failures without provid
   assert.equal(
     formatPlaidSyncResultMessage(sync),
     "Sync incomplete: 7 accounts, 2 raw transactions, 2 enriched transactions, 1 failures. PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs."
+  );
+});
+
+test("Plaid sync result messages surface concrete safe backend reasons", () => {
+  assert.equal(
+    getPlaidSyncResultErrorDetails({
+      failed: 1,
+      items: [
+        {
+          errorCode: "PLAID_REQUEST_FAILED",
+          errorMessage: "Plaid request failed with HTTP status 502, Plaid error type API_ERROR."
+        }
+      ],
+      status: "partial"
+    }),
+    "PLAID_REQUEST_FAILED: Plaid request failed with HTTP status 502, Plaid error type API_ERROR."
+  );
+
+  assert.equal(
+    getPlaidSyncResultErrorDetails({
+      failed: 1,
+      items: [
+        {
+          errorCode: "PLAID_SYNC_INTERNAL_ERROR",
+          errorMessage: "Tally sync failed while saving imported Plaid data during Upsert raw Plaid transactions."
+        }
+      ],
+      status: "partial"
+    }),
+    "PLAID_SYNC_INTERNAL_ERROR: Tally sync failed while saving imported Plaid data during Upsert raw Plaid transactions."
   );
 });
 

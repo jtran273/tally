@@ -179,6 +179,10 @@ Check:
 
 If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` from Transactions Sync, Tally should still import accounts, balances, and balance snapshots for that item. Treat a zero-transaction sync as a Transactions product availability issue only after confirming account rows and balance snapshots are updating.
 
+If sync reports `PLAID_REQUEST_FAILED`, inspect the safe message for HTTP status, Plaid error type, or transport code. Plaid did not return a specific item error code for that request, so use safe server logs to correlate the failing endpoint and request metadata without printing tokens or raw payloads.
+
+If sync reports `PLAID_SYNC_INTERNAL_ERROR`, Plaid returned far enough for Tally to enter the import pipeline, but the app failed while saving or post-processing the imported data. Inspect the safe failing step in the sync message and server logs, then check the related Supabase table, constraint, or import helper.
+
 ### Sync fails with PLAID_CONFIGURATION_ERROR for every item
 
 Check:

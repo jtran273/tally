@@ -79,6 +79,7 @@ Initial, manual, and scheduled sync can import:
 
 Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
 Each initial, manual, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids.
+When Plaid fails without an item error code, sync metadata keeps safe HTTP or transport details when available. If Plaid data returns but Tally cannot finish saving it, the item records `PLAID_SYNC_INTERNAL_ERROR` with the safe failing import step instead of mislabeling it as a Plaid item error.
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 

@@ -12,6 +12,7 @@ import {
   isSkippablePlaidTransactionsError,
   listPlaidConnections,
   mergePlaidAccountSourcesForSync,
+  persistedSyncError,
   planPendingRawTransactionReplacements,
   revokePlaidConnection,
   shouldRefreshImportedEnrichment,
@@ -300,6 +301,40 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
   assert.equal(summary.rawTransactionsUpserted, 4);
   assert.equal("plaidItemId" in summary.items[0], false);
   assert.equal("transactionCursor" in summary.items[0], false);
+});
+
+test("persisted sync errors distinguish Plaid request failures from internal save failures", () => {
+  assert.deepEqual(
+    persistedSyncError({
+      response: {
+        data: {
+          error_type: "API_ERROR",
+          request_id: "request-safe"
+        },
+        status: 502
+      }
+    }),
+    {
+      error_code: "PLAID_REQUEST_FAILED",
+      error_message: "Plaid request failed with HTTP status 502, Plaid error type API_ERROR."
+    }
+  );
+
+  assert.deepEqual(
+    persistedSyncError(Object.assign(new Error("timeout"), { code: "ECONNABORTED" })),
+    {
+      error_code: "PLAID_REQUEST_FAILED",
+      error_message: "Plaid request failed with transport code ECONNABORTED."
+    }
+  );
+
+  assert.deepEqual(
+    persistedSyncError(new Error("Upsert raw Plaid transactions: duplicate key value violates unique constraint")),
+    {
+      error_code: "PLAID_SYNC_INTERNAL_ERROR",
+      error_message: "Tally sync failed while saving imported Plaid data during Upsert raw Plaid transactions."
+    }
+  );
 });
 
 test("Plaid connection summaries do not treat server config failures as item attention", async () => {
