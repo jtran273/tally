@@ -48,6 +48,20 @@ test("getSafePlaidError defaults to PLAID_REQUEST_FAILED for plain Error instanc
   assert.equal(safe.type, undefined);
 });
 
+test("getSafePlaidError preserves safe Plaid transport codes without leaking messages", () => {
+  const safe = getSafePlaidError(Object.assign(new Error("access-token-leaky"), { code: "ECONNABORTED" }));
+
+  assert.equal(safe.code, "PLAID_REQUEST_FAILED");
+  assert.equal(safe.transportCode, "ECONNABORTED");
+  assert.equal(Object.values(safe).some((value) => value === "access-token-leaky"), false);
+});
+
+test("getSafePlaidError ignores unsafe transport code strings", () => {
+  const safe = getSafePlaidError(Object.assign(new Error("boom"), { code: "bad token value" }));
+
+  assert.equal(safe.transportCode, undefined);
+});
+
 test("getSafePlaidError ignores empty-string request_id and error_code without throwing", () => {
   const safe = getSafePlaidError({
     response: {

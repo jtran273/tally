@@ -121,6 +121,7 @@ Sensitive raw/provider columns are additionally hidden from direct authenticated
 The core sync service can run either all syncable items or a single item by database item id. Route handlers use that single-item path after Plaid Link update mode so repair and relink flows do not depend on browser-side transaction logic.
 
 Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
+Plaid API failures retain safe item codes when Plaid returns them, and otherwise keep safe HTTP status, error type, or transport code details when available. Non-Plaid exceptions during import persistence are stored as `PLAID_SYNC_INTERNAL_ERROR` with a safe sync step so Tally does not misreport local save failures as generic Plaid request failures.
 
 When Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` for Transactions Sync, Tally treats transactions as skipped for that item while still importing accounts, balances, and balance snapshots where available. The sync run records skipped transaction counts and safe warning metadata, and it does not advance the item's transaction cursor on a skipped transaction pass.
 

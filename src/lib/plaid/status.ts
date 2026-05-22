@@ -70,6 +70,7 @@ const SERVER_CONFIGURATION_ERROR_CODES = new Set([
 
 const TOKEN_DECRYPTION_ERROR_CODE = "PLAID_TOKEN_DECRYPTION_ERROR";
 const GENERIC_PLAID_REQUEST_ERROR_CODE = "PLAID_REQUEST_FAILED";
+const INTERNAL_SYNC_ERROR_CODE = "PLAID_SYNC_INTERNAL_ERROR";
 
 function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
@@ -92,6 +93,21 @@ function safeCount(value: number | null | undefined) {
 
 function safeSyncItems(sync: PlaidSyncResultInput) {
   return Array.isArray(sync.items) ? sync.items : [];
+}
+
+function stripProviderRequestIds(message: string) {
+  return message
+    .replace(/\s*Request ID:\s*[A-Za-z0-9_-]+\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function safeItemMessage(item: PlaidSyncResultItemInput) {
+  const message = item.errorMessage ?? item.warningMessage;
+  if (!message) return null;
+
+  const sanitized = stripProviderRequestIds(message);
+  return sanitized && sanitized !== "Plaid sync failed." ? sanitized : null;
 }
 
 export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): PlaidConnectionIssue | null {
@@ -143,6 +159,14 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
       action: "retry",
       detail: "Plaid server configuration needs attention before sync can run. Check production environment variables and retry sync.",
       title: "Server configuration issue"
+    };
+  }
+
+  if (code === INTERNAL_SYNC_ERROR_CODE) {
+    return {
+      action: "retry",
+      detail: "Plaid returned data, but Tally could not finish saving the imported sync result. Check safe server logs for the failing sync step.",
+      title: "Sync save failed"
     };
   }
 
@@ -222,12 +246,22 @@ export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): stri
       }
 
       if (normalizedCode(item.errorCode ?? null) === GENERIC_PLAID_REQUEST_ERROR_CODE) {
-        return "PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs.";
+        const message = safeItemMessage(item);
+        return message
+          ? `PLAID_REQUEST_FAILED: ${message}`
+          : "PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs.";
+      }
+
+      if (normalizedCode(item.errorCode ?? null) === INTERNAL_SYNC_ERROR_CODE) {
+        const message = safeItemMessage(item);
+        return message
+          ? `PLAID_SYNC_INTERNAL_ERROR: ${message}`
+          : "PLAID_SYNC_INTERNAL_ERROR: Tally sync failed while saving imported Plaid data.";
       }
 
       return [
         item.errorCode ?? item.warningCode,
-        item.errorMessage ?? item.warningMessage
+        safeItemMessage(item)
       ].filter(Boolean).join(": ");
     });
 

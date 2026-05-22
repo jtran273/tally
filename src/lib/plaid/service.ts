@@ -713,14 +713,69 @@ export function mergePlaidAccountSourcesForSync({
   ]);
 }
 
-function persistedSyncError(error: unknown) {
+function safeInternalSyncStep(error: unknown) {
+  if (!(error instanceof Error)) return null;
+
+  const step = error.message.split(":")[0]?.trim();
+  if (!step || step.length > 80) return null;
+  if (!/^[A-Za-z0-9 /()._-]+$/.test(step)) return null;
+
+  return step;
+}
+
+function isPlaidRequestFailure(error: unknown) {
   const safe = getSafePlaidError(error);
-  const request = safe.requestId ? ` Request ID: ${safe.requestId}.` : "";
+  if (safe.status || safe.type || safe.requestId || safe.transportCode) return true;
+
+  return isPlaidServerConfigurationErrorCode(safe.code)
+    || safe.code === "PLAID_TOKEN_DECRYPTION_ERROR"
+    || safe.code !== "PLAID_REQUEST_FAILED";
+}
+
+function plaidRequestFailureMessage(error: unknown) {
+  const safe = getSafePlaidError(error);
+  const details = [
+    safe.status ? `HTTP status ${safe.status}` : null,
+    safe.type ? `Plaid error type ${safe.type}` : null,
+    safe.transportCode ? `transport code ${safe.transportCode}` : null
+  ].filter(Boolean);
+
+  return details.length > 0
+    ? `Plaid request failed with ${details.join(", ")}.`
+    : "Plaid request failed without a specific item error.";
+}
+
+export function persistedSyncError(error: unknown) {
+  const safe = getSafePlaidError(error);
+
+  if (!isPlaidRequestFailure(error)) {
+    const step = safeInternalSyncStep(error);
+    return {
+      error_code: "PLAID_SYNC_INTERNAL_ERROR",
+      error_message: step
+        ? `Tally sync failed while saving imported Plaid data during ${step}.`
+        : "Tally sync failed while saving imported Plaid data."
+    };
+  }
 
   return {
     error_code: safe.code,
-    error_message: `Plaid sync failed.${request}`
+    error_message: plaidRequestFailureMessage(error)
   };
+}
+
+function logPlaidItemSyncFailure(error: unknown) {
+  const syncError = persistedSyncError(error);
+  const safe = getSafePlaidError(error);
+
+  console.error("plaid_item_sync_failed", {
+    code: syncError.error_code,
+    message: syncError.error_message,
+    plaidRequestId: safe.requestId,
+    plaidStatus: safe.status,
+    plaidTransportCode: safe.transportCode,
+    plaidType: safe.type
+  });
 }
 
 async function findExistingInstitution(
@@ -2236,6 +2291,7 @@ export async function syncPlaidItem({
     summary = await syncLoadedPlaidItem(client, userId, item);
   } catch (error) {
     syncError = error;
+    logPlaidItemSyncFailure(error);
     await updatePlaidItemSyncError(client, userId, item.id, error);
     const persistedError = persistedSyncError(error);
     summary = {
@@ -2338,6 +2394,7 @@ async function syncLoadedPlaidItems({
     try {
       summary = await syncLoadedPlaidItem(client, userId, item);
     } catch (error) {
+      logPlaidItemSyncFailure(error);
       await updatePlaidItemSyncError(client, userId, item.id, error);
       const safeError = persistedSyncError(error);
       summary = {
