@@ -83,6 +83,7 @@ const plaidItems: PlaidItemRow[] = institutions.map((institution) => ({
   auto_sync_enabled: true,
   available_products: ["transactions"],
   billed_products: ["transactions"],
+  connection_source: "plaid",
   consent_expires_at: null,
   created_at: NOW,
   error_code: null,

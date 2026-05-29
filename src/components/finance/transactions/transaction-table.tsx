@@ -85,14 +85,14 @@ function confidenceLabel(confidence: number) {
   return `${Math.round(confidence * 100)}%`;
 }
 
-function confidenceCopy(transaction: TransactionRecord) {
+function confidenceCopy(transaction: TransactionRecord, needsReview: boolean) {
   if (transaction.confidence >= 0.95 || transaction.reviewedAt) {
     return "Reviewed";
   }
-  if (transaction.confidence < 0.75) {
+  if (needsReview) {
     return `${confidenceLabel(transaction.confidence)} confidence — review`;
   }
-  return `${confidenceLabel(transaction.confidence)} confidence`;
+  return `${confidenceLabel(transaction.confidence)} Plaid confidence`;
 }
 
 function needsCategory(transaction: TransactionRecord) {
@@ -279,7 +279,10 @@ export function TransactionTable({
               const transferTagged = transaction.intent === "transfer" || isTransferCategoryName(transaction.category);
               const isUncategorized = needsCategory(transaction);
               const suggestedCategory = isUncategorized ? suggestedCategoryName(transaction) : null;
-              const confidenceNeedsReview = transaction.confidence < 0.75 && !transaction.reviewedAt;
+              const confidenceNeedsReview = Boolean(
+                actionableReview &&
+                ["low-confidence", "missing-category"].includes(actionableReview.reason)
+              );
               const showConfidenceContext = confidenceNeedsReview || Boolean(transaction.reviewedAt);
 
               return (
@@ -344,9 +347,9 @@ export function TransactionTable({
                       {showConfidenceContext ? (
                         <span
                           className={`${styles.categoryMeta} ${confidenceNeedsReview ? styles.categoryWarning : styles.categoryHint}`}
-                          title={confidenceCopy(transaction)}
+                          title={confidenceCopy(transaction, confidenceNeedsReview)}
                         >
-                          {confidenceCopy(transaction)}
+                          {confidenceCopy(transaction, confidenceNeedsReview)}
                         </span>
                       ) : null}
                       {suggestedCategory ? (

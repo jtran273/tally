@@ -37,11 +37,11 @@ import { displayCategoryName } from "../finance/classification";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
-import { getPlaidLinkTokenConfig } from "./config";
+import { getPlaidLinkTokenConfig, PlaidConfigurationError } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
 import { getPlaidConnectionIssue, isPlaidServerConfigurationErrorCode, type PlaidConnectionIssue } from "./status";
-import { decryptPlaidAccessToken, encryptPlaidAccessToken, PlaidTokenDecryptionError } from "./token-vault";
+import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
 import { recordManualInvestmentSnapshots } from "@/lib/investments/manual-valuations";
 
 type InstitutionInsert = Database["public"]["Tables"]["institutions"]["Insert"];
@@ -69,6 +69,7 @@ const PLAID_ITEM_COLUMNS = [
   "status",
   "available_products",
   "billed_products",
+  "connection_source",
   "error_code",
   "error_message",
   "consent_expires_at",
@@ -86,6 +87,7 @@ const PLAID_ITEM_SYNC_COLUMNS = [
   "status",
   "available_products",
   "billed_products",
+  "connection_source",
   "error_code",
   "error_message",
   "consent_expires_at",
@@ -187,7 +189,6 @@ const RAW_TRANSACTION_COLUMNS = [
 
 const SYNC_PAGE_SIZE = 500;
 const UPSERT_CHUNK_SIZE = 100;
-const OPPORTUNISTIC_SYNC_THROTTLE_MS = 24 * 60 * 60 * 1000;
 const OPPORTUNISTIC_SYNC_RUNNING_STALE_MS = 30 * 60 * 1000;
 const TERMINAL_ITEM_REMOVE_ERROR_CODES = new Set(["INVALID_ACCESS_TOKEN", "ITEM_NOT_FOUND"]);
 const RETIREMENT_SUBTYPES = new Set([
@@ -240,6 +241,8 @@ const PFC_CONFIDENCE: Record<string, number> = {
   UNKNOWN: 0.25,
   VERY_HIGH: 0.98
 };
+const CLEAR_LOW_PFC_CONFIDENCE = 0.78;
+const PEER_TO_PEER_MERCHANT_PATTERN = /\b(apple cash|cash app|cashapp|venmo|zelle)\b/i;
 
 export interface PlaidInstitutionInput {
   institutionId?: string | null;
@@ -338,7 +341,7 @@ export interface PlaidScheduledSyncSummary {
 
 export interface PlaidOpportunisticSyncSummary {
   checkedAt: string;
-  reason: "in_progress" | "no_items" | "recently_synced" | "synced";
+  reason: "in_progress" | "no_items" | "synced";
   sync: PlaidSyncRunSummary | null;
 }
 
@@ -377,17 +380,12 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
   };
 }
 
-export function isPlaidItemDueForOpportunisticSync(
-  item: Pick<PlaidItemRow, "last_successful_sync_at" | "status">,
-  now = new Date()
-) {
-  if (item.status === "revoked") return false;
-  if (!item.last_successful_sync_at) return true;
-
-  const lastSuccessfulSyncAt = Date.parse(item.last_successful_sync_at);
-  if (Number.isNaN(lastSuccessfulSyncAt)) return true;
-
-  return now.getTime() - lastSuccessfulSyncAt >= OPPORTUNISTIC_SYNC_THROTTLE_MS;
+export function isPlaidRealtimeBalanceAuthorized(item: Pick<PlaidItemRow, "available_products" | "billed_products">) {
+  const products = new Set([
+    ...item.available_products,
+    ...item.billed_products
+  ].map((product) => product.toLowerCase()));
+  return products.has(Products.Balance);
 }
 
 export function isRecentRunningPlaidSync(
@@ -597,9 +595,42 @@ function getDefaultIntent(transaction: Transaction): TransactionIntent {
     : "personal";
 }
 
+function hasSpecificPlaidMerchant(transaction: Transaction) {
+  return Boolean(transaction.merchant_name?.trim());
+}
+
+function hasReviewSensitiveMerchant(transaction: Transaction) {
+  return PEER_TO_PEER_MERCHANT_PATTERN.test([
+    transaction.merchant_name,
+    transaction.name
+  ].filter(Boolean).join(" "));
+}
+
+function hasMappedOrdinaryCategory(transaction: Transaction) {
+  const pfc = transaction.personal_finance_category;
+  if (!pfc?.primary || !pfc.detailed) return false;
+
+  const categoryName = mapPlaidPersonalFinanceCategory(pfc.primary, pfc.detailed);
+  return Boolean(categoryName && categoryName !== "Income" && categoryName !== "Transfer");
+}
+
+function hasClearOrdinaryLowConfidenceSignals(transaction: Transaction) {
+  return transaction.amount > 0 &&
+    getDefaultIntent(transaction) !== "transfer" &&
+    hasSpecificPlaidMerchant(transaction) &&
+    !hasReviewSensitiveMerchant(transaction) &&
+    hasMappedOrdinaryCategory(transaction);
+}
+
 export function getDefaultConfidence(transaction: Transaction) {
   const confidence = transaction.personal_finance_category?.confidence_level;
-  if (confidence) return PFC_CONFIDENCE[confidence] ?? 0.75;
+  if (confidence) {
+    if (confidence === "LOW" && hasClearOrdinaryLowConfidenceSignals(transaction)) {
+      return CLEAR_LOW_PFC_CONFIDENCE;
+    }
+
+    return PFC_CONFIDENCE[confidence] ?? 0.75;
+  }
 
   if (!transaction.category?.length) return 0.25;
 
@@ -909,6 +940,7 @@ async function upsertPlaidItem({
     available_products: item.available_products,
     billed_products: item.billed_products,
     consent_expires_at: item.consent_expiration_time,
+    connection_source: "plaid",
     error_code: item.error?.error_code ?? null,
     error_message: item.error?.error_message ?? null,
     institution_id: institutionId,
@@ -1890,6 +1922,7 @@ async function loadPlaidItemForSync(
     .select(PLAID_ITEM_SYNC_COLUMNS)
     .eq("user_id", userId)
     .eq("id", itemId)
+    .eq("connection_source", "plaid")
     .maybeSingle();
 
   if (result.error) throw new Error(`Load Plaid item for sync: ${result.error.message}`);
@@ -1908,6 +1941,7 @@ async function listPlaidItemsForSync(client: FinanceSupabaseClient, userId: stri
     .from("plaid_items")
     .select(PLAID_ITEM_SYNC_COLUMNS)
     .eq("user_id", userId)
+    .eq("connection_source", "plaid")
     .neq("status", "revoked");
 
   return expectData(result, "List Plaid items for sync") as unknown as PlaidItemRow[];
@@ -2112,7 +2146,7 @@ async function syncLoadedPlaidItem(
   const [transactionUpdates, itemAccounts, balanceAccounts] = await Promise.all([
     fetchTransactionSyncUpdatesForImport(accessToken, item.transaction_cursor),
     fetchItemAccounts(accessToken),
-    fetchBalanceAccounts(accessToken)
+    isPlaidRealtimeBalanceAuthorized(item) ? fetchBalanceAccounts(accessToken) : Promise.resolve([])
   ]);
   const accounts = mergePlaidAccountSourcesForSync({
     accountsGetAccounts: itemAccounts,
@@ -2440,7 +2474,7 @@ export async function syncOpportunisticPlaidConnections(
     };
   }
 
-  const items = await listPlaidItemsForSync(client, userId);
+  const items = await listPlaidItemsForAutoSync(client, userId);
   if (items.length === 0) {
     return {
       checkedAt,
@@ -2449,18 +2483,9 @@ export async function syncOpportunisticPlaidConnections(
     };
   }
 
-  const dueItems = items.filter((item) => isPlaidItemDueForOpportunisticSync(item, now));
-  if (dueItems.length === 0) {
-    return {
-      checkedAt,
-      reason: "recently_synced",
-      sync: null
-    };
-  }
-
   const sync = await syncLoadedPlaidItems({
     client,
-    items: dueItems,
+    items,
     source: "opportunistic",
     userId
   });
@@ -2523,19 +2548,21 @@ async function listUsersWithSyncablePlaidItems(client: FinanceSupabaseClient) {
     .from("plaid_items")
     .select("user_id")
     .eq("auto_sync_enabled", true)
+    .eq("connection_source", "plaid")
     .neq("status", "revoked");
   const rows = expectData(result, "List users with syncable Plaid items") as unknown as Array<{ user_id: string }>;
   return [...new Set(rows.map((row) => row.user_id))];
 }
 
-async function listPlaidItemsForScheduledSync(client: FinanceSupabaseClient, userId: string) {
+async function listPlaidItemsForAutoSync(client: FinanceSupabaseClient, userId: string) {
   const result = await client
     .from("plaid_items")
     .select(PLAID_ITEM_SYNC_COLUMNS)
     .eq("user_id", userId)
     .eq("auto_sync_enabled", true)
+    .eq("connection_source", "plaid")
     .neq("status", "revoked");
-  return expectData(result, "List Plaid items for scheduled sync") as unknown as PlaidItemRow[];
+  return expectData(result, "List Plaid items for auto sync") as unknown as PlaidItemRow[];
 }
 
 export async function syncScheduledPlaidConnections(client: FinanceSupabaseClient): Promise<PlaidScheduledSyncSummary> {
@@ -2547,7 +2574,7 @@ export async function syncScheduledPlaidConnections(client: FinanceSupabaseClien
 
   for (const userId of userIds) {
     try {
-      const items = await listPlaidItemsForScheduledSync(client, userId);
+      const items = await listPlaidItemsForAutoSync(client, userId);
       if (items.length === 0) continue;
       runs.push(await syncLoadedPlaidItems({ client, items, source: "scheduled", userId }));
     } catch (error) {
@@ -2580,6 +2607,7 @@ async function loadPlaidItemForRevoke(
     .select(PLAID_ITEM_SYNC_COLUMNS)
     .eq("user_id", userId)
     .eq("id", itemId)
+    .eq("connection_source", "plaid")
     .maybeSingle();
 
   if (result.error) throw new Error(`Load Plaid item for disconnect: ${result.error.message}`);
@@ -2926,8 +2954,9 @@ async function updatePlaidItemRevoked(
   userId: string,
   itemId: string
 ) {
+  const revokedMarker = `revoked:${new Date().toISOString()}`;
   const update: PlaidItemUpdate = {
-    access_token_ciphertext: encryptPlaidAccessToken(`revoked:${new Date().toISOString()}`),
+    access_token_ciphertext: encryptPlaidRevokedMarker(revokedMarker),
     error_code: null,
     error_message: null,
     status: "revoked",
@@ -2944,6 +2973,15 @@ async function updatePlaidItemRevoked(
   return expectData(result, "Mark Plaid item revoked") as unknown as PlaidItemPublicRow;
 }
 
+function encryptPlaidRevokedMarker(marker: string) {
+  try {
+    return encryptPlaidAccessToken(marker);
+  } catch (error) {
+    if (error instanceof PlaidConfigurationError) return marker;
+    throw error;
+  }
+}
+
 export async function setPlaidAutoSyncForUser(
   client: FinanceSupabaseClient,
   userId: string,
@@ -2954,6 +2992,7 @@ export async function setPlaidAutoSyncForUser(
     .from("plaid_items")
     .update(update)
     .eq("user_id", userId)
+    .eq("connection_source", "plaid")
     .neq("status", "revoked");
 
   if (result.error) throw new Error(`Update Plaid auto-sync preference: ${result.error.message}`);
@@ -2972,12 +3011,10 @@ async function removePlaidItemAtProvider(item: PlaidItemRow, plaid: PlaidItemRem
     });
   } catch (error) {
     const safe = getSafePlaidError(error);
-    if (TERMINAL_ITEM_REMOVE_ERROR_CODES.has(safe.code)) {
-      console.warn("plaid_connection_item_remove_already_unavailable", safe);
-      return;
-    }
-
-    throw error;
+    const context = TERMINAL_ITEM_REMOVE_ERROR_CODES.has(safe.code)
+      ? "plaid_connection_item_remove_already_unavailable"
+      : "plaid_connection_item_remove_unavailable";
+    console.warn(context, safe);
   }
 }
 
@@ -3015,11 +3052,12 @@ export async function revokePlaidConnection({
     try {
       await removePlaidItemAtProvider(item, plaidClient ?? getPlaidClient());
     } catch (error) {
-      if (!(error instanceof PlaidTokenDecryptionError)) {
+      const safe = getSafePlaidError(error);
+      if (!["PLAID_CONFIGURATION_ERROR", "PLAID_TOKEN_DECRYPTION_ERROR"].includes(safe.code)) {
         throw error;
       }
 
-      console.warn("plaid_connection_marked_revoked_without_provider_remove", getSafePlaidError(error));
+      console.warn("plaid_connection_marked_revoked_without_provider_remove", safe);
     }
   }
 
@@ -3034,6 +3072,7 @@ export async function listPlaidConnections(client: FinanceSupabaseClient, userId
     .from("plaid_items")
     .select(PLAID_ITEM_COLUMNS)
     .eq("user_id", userId)
+    .eq("connection_source", "plaid")
     .order("created_at", { ascending: false });
 
   if (itemResult.error || !itemResult.data) {

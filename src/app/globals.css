@@ -2416,6 +2416,20 @@ kbd {
   }
 }
 
+@media (min-width: 901px) and (max-width: 1180px) {
+  .topbar {
+    gap: 16px;
+  }
+
+  .topbar-actions {
+    flex-basis: 320px;
+  }
+
+  .search {
+    min-width: min(280px, 100%);
+  }
+}
+
 @media (max-width: 900px) {
   input,
   select,

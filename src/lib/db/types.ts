@@ -7,6 +7,7 @@ export type Json =
   | Json[];
 
 export type AccountType = "depository" | "credit" | "investment" | "retirement";
+export type PlaidConnectionSource = "plaid" | "manual";
 export type PlaidItemStatus = "active" | "error" | "revoked";
 export type GoogleCalendarConnectionStatus = "active" | "error" | "revoked";
 export type PlaidSyncRunSource = "initial" | "manual" | "opportunistic" | "scheduled";
@@ -75,6 +76,7 @@ export interface PlaidItemRow {
   status: PlaidItemStatus;
   available_products: string[];
   billed_products: string[];
+  connection_source: PlaidConnectionSource;
   error_code: string | null;
   error_message: string | null;
   consent_expires_at: string | null;

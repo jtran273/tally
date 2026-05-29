@@ -310,6 +310,10 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
     () => connections.some((connection) => connection.status !== "revoked" && connection.autoSyncEnabled),
     [connections]
   );
+  const visibleConnections = useMemo(
+    () => connections.filter((connection) => connection.status !== "revoked"),
+    [connections]
+  );
 
   useEffect(() => {
     let ignore = false;
@@ -545,7 +549,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
       }).then((response) => readJson<{ autoSyncEnabled: boolean; connections: PlaidConnectionSummary[] }>(response));
 
       setConnections(asConnectionList(data.connections));
-      setSuccessMessage(`Daily auto-sync turned ${data.autoSyncEnabled ? "on" : "off"}.`);
+      setSuccessMessage(`App-open sync turned ${data.autoSyncEnabled ? "on" : "off"}.`);
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : "Unable to update auto-sync setting.");
     } finally {
@@ -642,14 +646,14 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
 
       <label className="setting-toggle">
         <span className="setting-toggle-copy">
-          <span className="settings-row-title">Daily auto-sync</span>
+          <span className="settings-row-title">Sync on app open</span>
           <span className="settings-row-sub">
-            Automatically refresh every bank connection once a day. Turn off to sync only when you click Sync.
+            Refresh bank connections when Tally opens. Turn off to sync only when you click Sync.
           </span>
         </span>
         <span className="switch">
           <input
-            aria-label={`Daily auto-sync is ${autoSyncEnabled ? "on" : "off"}`}
+            aria-label={`Sync on app open is ${autoSyncEnabled ? "on" : "off"}`}
             checked={autoSyncEnabled}
             disabled={isDemo || autoSyncUpdating || syncableConnectionCount === 0}
             onChange={(event) => void toggleAutoSync(event.target.checked)}
@@ -726,10 +730,10 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
       ) : null}
 
       <div className="plaid-connection-list">
-        {requestState === "loading" && connections.length === 0 ? (
+        {requestState === "loading" && visibleConnections.length === 0 ? (
           <div className="plaid-empty" aria-busy="true">Loading institutions...</div>
         ) : null}
-        {requestState !== "loading" && connections.length === 0 ? (
+        {requestState !== "loading" && visibleConnections.length === 0 ? (
           <div className={styles.emptyState}>
             <Landmark aria-hidden="true" size={28} />
             <strong>Connect your first bank</strong>
@@ -746,7 +750,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
             </button>
           </div>
         ) : null}
-        {connections.map((connection) => {
+        {visibleConnections.map((connection) => {
           const statusLabel =
             connection.status === "active"
               ? "Healthy"
@@ -796,18 +800,6 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
                 >
                   <Wrench aria-hidden="true" className={isRepairing ? styles.spin : undefined} size={14} />
                   {isRepairing ? "Opening" : "Repair"}
-                </button>
-              ) : null}
-              {connection.issue?.action === "reconnect" ? (
-                <button
-                  aria-busy={requestState === "exchanging" || openRequested}
-                  className={`btn btn-primary plaid-repair ${styles.repairPrimary}`}
-                  disabled={isDemo || isBusy || isSyncing}
-                  onClick={() => void startPlaidLink()}
-                  type="button"
-                >
-                  <Plus aria-hidden="true" size={14} />
-                  Reconnect
                 </button>
               ) : null}
               {connection.status !== "revoked" ? (

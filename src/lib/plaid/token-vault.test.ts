@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlaidConfigurationError } from "./config";
-import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
+import { decryptPlaidAccessToken, encryptPlaidAccessToken, PlaidTokenDecryptionError } from "./token-vault";
 
 const ENV_KEYS = [
   "NEXT_PUBLIC_APP_URL",
@@ -135,6 +135,34 @@ test("Plaid token decryption can read legacy ciphertext in production after expl
   });
 });
 
+test("Plaid token decryption can read legacy ciphertext made with generic Plaid secret after scoped secret is added", () => {
+  let ciphertext = "";
+
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "development",
+    PLAID_ENV: "sandbox",
+    PLAID_PRODUCTION_SECRET: undefined,
+    PLAID_SANDBOX_SECRET: undefined,
+    PLAID_SECRET: "legacy-generic-production-secret",
+    PLAID_TOKEN_ENCRYPTION_KEY: undefined,
+    VERCEL_ENV: undefined
+  }, () => {
+    ciphertext = encryptPlaidAccessToken("access-production-legacy-generic");
+  });
+
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "production",
+    PLAID_PRODUCTION_SECRET: "new-scoped-production-secret",
+    PLAID_SECRET: "legacy-generic-production-secret",
+    PLAID_TOKEN_ENCRYPTION_KEY: "stable-token-key",
+    VERCEL_ENV: "production"
+  }, () => {
+    assert.equal(decryptPlaidAccessToken(ciphertext), "access-production-legacy-generic");
+  });
+});
+
 test("Plaid token decryption tolerates missing Plaid credentials when an explicit key is set", () => {
   let ciphertext = "";
 
@@ -183,6 +211,8 @@ test("Plaid token encryption requires explicit key material when Plaid environme
   withTokenVaultEnv({
     ...baseEnv,
     NODE_ENV: "development",
+    PLAID_PRODUCTION_SECRET: undefined,
+    PLAID_SECRET: "sandbox-secret",
     PLAID_TOKEN_ENCRYPTION_KEY: undefined,
     VERCEL_ENV: undefined
   }, () => {
@@ -194,7 +224,7 @@ test("Plaid token encryption requires explicit key material when Plaid environme
   });
 });
 
-test("Plaid token decryption requires explicit key material when Plaid environment is production", () => {
+test("Plaid token decryption can read legacy production ciphertext locally without explicit key material", () => {
   let ciphertext = "";
 
   withTokenVaultEnv({
@@ -212,13 +242,54 @@ test("Plaid token decryption requires explicit key material when Plaid environme
   withTokenVaultEnv({
     ...baseEnv,
     NODE_ENV: "development",
+    PLAID_PRODUCTION_SECRET: undefined,
+    PLAID_SECRET: "sandbox-secret",
     PLAID_TOKEN_ENCRYPTION_KEY: undefined,
     VERCEL_ENV: undefined
+  }, () => {
+    assert.equal(decryptPlaidAccessToken(ciphertext), "access-legacy-123");
+  });
+});
+
+test("Plaid token decryption requires explicit key material in production runtime", () => {
+  let ciphertext = "";
+
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "development",
+    PLAID_ENV: "sandbox",
+    PLAID_PRODUCTION_SECRET: undefined,
+    PLAID_SANDBOX_SECRET: "sandbox-secret",
+    PLAID_TOKEN_ENCRYPTION_KEY: undefined,
+    VERCEL_ENV: undefined
+  }, () => {
+    ciphertext = encryptPlaidAccessToken("access-legacy-123");
+  });
+
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "production",
+    PLAID_TOKEN_ENCRYPTION_KEY: undefined,
+    VERCEL_ENV: "production"
   }, () => {
     assert.throws(
       () => decryptPlaidAccessToken(ciphertext),
       (error) => error instanceof PlaidConfigurationError
         && error.message.includes("PLAID_TOKEN_ENCRYPTION_KEY is required when PLAID_ENV=production")
+    );
+  });
+});
+
+test("unsupported Plaid token ciphertext is treated as a token decryption failure", () => {
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "production",
+    PLAID_TOKEN_ENCRYPTION_KEY: "stable-token-key",
+    VERCEL_ENV: "production"
+  }, () => {
+    assert.throws(
+      () => decryptPlaidAccessToken("revoked"),
+      PlaidTokenDecryptionError
     );
   });
 });

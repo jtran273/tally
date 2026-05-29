@@ -209,6 +209,8 @@ Use `/settings`:
 
 If repair fails with `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`, or `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Disconnect the stale item to stop future syncs while preserving Tally history; use the cleanup CLI only if you intentionally want to purge historical rows for a revoked item.
 
+Manual investment placeholders should have `plaid_items.connection_source = 'manual'`, `auto_sync_enabled = false`, and no active Plaid error. They keep manual accounts visible through existing account foreign keys but must stay out of Plaid sync, Settings connection repair, and disconnect flows.
+
 ## Google Calendar Check
 
 Google Calendar is optional and read-only.
@@ -245,7 +247,7 @@ Production wiring uses any trusted scheduler (Vercel Cron, GitHub Actions, exter
 Authorization: Bearer <CRON_SECRET>
 ```
 
-`vercel.json` does not register a cron entry by default — users opt into automatic daily sync per connection via the "Daily auto-sync" toggle in Settings → Bank connections (backed by `plaid_items.auto_sync_enabled`). Add a `crons` entry to `vercel.json` (or wire an external scheduler) only when you want a daily run; the scheduled route itself will still skip items with `auto_sync_enabled = false`.
+`vercel.json` does not register a cron entry by default. Users opt into app-open refresh per connection via the "Sync on app open" toggle in Settings → Bank connections (backed by `plaid_items.auto_sync_enabled`). The scheduled route is still available for an explicit server-side job and skips items with `auto_sync_enabled = false`; manual Sync still runs when the user clicks it.
 
 This route does not use browser same-origin auth. Keep scheduled jobs server-only: never expose Plaid access tokens, service-role keys, transaction cursors, auth headers, provider ids, or raw provider payloads to the browser or job logs.
 

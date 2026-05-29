@@ -83,7 +83,9 @@ When Plaid fails without an item error code, sync metadata keeps safe HTTP or tr
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 
-A "Daily auto-sync" toggle in Settings → Bank connections controls whether the user's items participate in scheduled sync runs. Manual sync, repair, and disconnect still work regardless of the toggle.
+Manual investment placeholders use `plaid_items.connection_source = 'manual'` so account rows can keep their existing foreign keys without being shown as Plaid connections or included in Plaid sync, repair, auto-sync, or disconnect flows.
+
+A "Sync on app open" toggle in Settings → Bank connections controls whether the user's items refresh when Tally opens. Manual sync, repair, and disconnect still work regardless of the toggle.
 
 If Plaid account and balance data are available but Transactions Sync is not enabled or ready for an item, Tally can still import accounts, balances, and balance snapshots. The sync summary records skipped transaction rows and safe error metadata without advancing the transaction cursor.
 

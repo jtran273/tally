@@ -59,7 +59,6 @@ interface DashboardViewProps {
   asOfDate: string;
   balanceTransactions: DashboardBalanceTransaction[];
   balanceTrends: Record<BalanceTrendScope, BalanceTrendPoint[]>;
-  categoryBreakdowns: CategoryBreakdownSummary[];
   dataError?: string;
   isConfigured: boolean;
   isDemo: boolean;
@@ -1041,6 +1040,92 @@ function buildIncomeBreakdownsByMonth(
   return results;
 }
 
+function buildDashboardCategoryBreakdownForRange(
+  transactions: readonly DashboardBalanceTransaction[],
+  fromDate: string,
+  toDate: string,
+  previousFrom: string,
+  previousTo: string
+): CategoryBreakdownSummary {
+  const currentRows = new Map<string, {
+    amount: number;
+    categoryIds: Set<string>;
+    count: number;
+    label: string;
+    openReviewCount: number;
+  }>();
+  const previousAmounts = new Map<string, number>();
+  let totalAmount = 0;
+
+  transactions.forEach((transaction) => {
+    if (transaction.date < previousFrom || transaction.date > toDate) return;
+
+    const amount = dashboardTransactionSpendingAmount(transaction);
+    if (amount <= 0) return;
+
+    const label = displayCategoryName(transaction.category);
+    const key = label;
+
+    if (transaction.date >= fromDate) {
+      const current = currentRows.get(key) ?? {
+        amount: 0,
+        categoryIds: new Set<string>(),
+        count: 0,
+        label,
+        openReviewCount: 0
+      };
+      current.amount = roundMoney(current.amount + amount);
+      current.count += 1;
+      if (hasOpenReview(transaction)) current.openReviewCount += 1;
+      if (transaction.categoryId) current.categoryIds.add(transaction.categoryId);
+      currentRows.set(key, current);
+      totalAmount = roundMoney(totalAmount + amount);
+    } else if (transaction.date >= previousFrom && transaction.date <= previousTo) {
+      previousAmounts.set(key, roundMoney((previousAmounts.get(key) ?? 0) + amount));
+    }
+  });
+
+  const rows = [...currentRows.values()].map((row) => {
+    const previousAmount = previousAmounts.get(row.label) ?? 0;
+    const deltaAmount = roundMoney(row.amount - previousAmount);
+
+    return {
+      amount: row.amount,
+      count: row.count,
+      deltaAmount,
+      deltaPercent: percentDelta(row.amount, previousAmount),
+      id: categoryIdsValue(row.categoryIds),
+      label: row.label,
+      openReviewCount: row.openReviewCount,
+      percent: totalAmount > 0 ? Math.round((row.amount / totalAmount) * 1000) / 10 : 0,
+      previousAmount
+    };
+  }).sort((left, right) => right.amount - left.amount || left.label.localeCompare(right.label));
+
+  return { fromDate, rows, toDate, totalAmount };
+}
+
+function buildDashboardCategoryBreakdownsByMonth(
+  transactions: readonly DashboardBalanceTransaction[],
+  asOfDate: string,
+  monthCount = 6
+) {
+  const results: CategoryBreakdownSummary[] = [];
+
+  for (let offset = 0; offset < monthCount; offset += 1) {
+    const bounds = monthBoundsForOffset(asOfDate, offset);
+    results.push(buildDashboardCategoryBreakdownForRange(
+      transactions,
+      bounds.fromDate,
+      offset === 0 ? asOfDate : bounds.toDate,
+      bounds.previousFrom,
+      bounds.previousTo
+    ));
+  }
+
+  return results;
+}
+
 function categoryRangeBounds(
   transactions: readonly DashboardBalanceTransaction[],
   rangeKey: TrendRangeKey,
@@ -1280,19 +1365,21 @@ function IncomeByCategoryPanel({
 
 function CategorySpendingPanel({
   asOfDate,
-  breakdowns,
   rangeKey,
   setRangeKey,
   transactions
 }: {
   asOfDate: string;
-  breakdowns: CategoryBreakdownSummary[];
   rangeKey: TrendRangeKey;
   setRangeKey: (key: TrendRangeKey) => void;
   transactions: DashboardBalanceTransaction[];
 }) {
   const [viewMode, setViewMode] = useState<CategoryViewMode>("trend");
   const [monthIndex, setMonthIndex] = useState(0);
+  const breakdowns = useMemo(
+    () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate),
+    [asOfDate, transactions]
+  );
   const { fromDate, toDate } = useMemo(
     () => categoryRangeBounds(transactions, rangeKey, asOfDate),
     [asOfDate, rangeKey, transactions]
@@ -2005,7 +2092,6 @@ export function DashboardView({
   asOfDate,
   balanceTransactions,
   balanceTrends,
-  categoryBreakdowns,
   dataError,
   isConfigured,
   isDemo,
@@ -2228,7 +2314,6 @@ export function DashboardView({
               <DebtSummaryPanel accounts={accounts} />
               <CategorySpendingPanel
                 asOfDate={asOfDate}
-                breakdowns={categoryBreakdowns}
                 rangeKey={trendRangeKey}
                 setRangeKey={setTrendRangeKey}
                 transactions={scopedTransactions}
@@ -2239,11 +2324,19 @@ export function DashboardView({
         }
 
         return (
-          <SpendableComparisonPanel
-            accounts={accounts}
-            liabilitiesDue={liabilitiesDue}
-            totals={totals}
-          />
+          <>
+            <SpendableComparisonPanel
+              accounts={accounts}
+              liabilitiesDue={liabilitiesDue}
+              totals={totals}
+            />
+            <CategorySpendingPanel
+              asOfDate={asOfDate}
+              rangeKey={trendRangeKey}
+              setRangeKey={setTrendRangeKey}
+              transactions={scopedTransactions}
+            />
+          </>
         );
       })() : null}
     </div>

@@ -280,6 +280,7 @@ function fixturePlaidItem(input: Partial<PlaidItemRow> = {}): PlaidItemRow {
     auto_sync_enabled: true,
     available_products: ["transactions"],
     billed_products: ["transactions"],
+    connection_source: "plaid",
     consent_expires_at: null,
     created_at: "2026-05-01T08:00:00.000Z",
     error_code: null,

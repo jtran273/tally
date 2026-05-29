@@ -7,7 +7,7 @@ import {
   deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
-  isPlaidItemDueForOpportunisticSync,
+  isPlaidRealtimeBalanceAuthorized,
   isRecentRunningPlaidSync,
   isSkippablePlaidTransactionsError,
   listPlaidConnections,
@@ -17,6 +17,7 @@ import {
   revokePlaidConnection,
   shouldRefreshImportedEnrichment,
   shouldRefreshPlaidEnrichment,
+  syncOpportunisticPlaidConnections,
   summarizeSyncRun
 } from "./service";
 import { encryptPlaidAccessToken } from "./token-vault";
@@ -239,6 +240,8 @@ test("Plaid fallback category confidence stays reviewable when provider confiden
   const baseTransaction = {
     amount: 12.34,
     category: null,
+    merchant_name: null,
+    name: "Plaid transaction",
     personal_finance_category: null
   } as Transaction;
 
@@ -255,6 +258,54 @@ test("Plaid fallback category confidence stays reviewable when provider confiden
       primary: "FOOD_AND_DRINK"
     }
   }), 0.98);
+});
+
+test("low Plaid category confidence is raised only for clear ordinary merchant-category signals", () => {
+  const clearFoodTransaction = {
+    amount: 12.34,
+    category: null,
+    merchant_name: "Sweetgreen",
+    name: "SWEETGREEN 123",
+    personal_finance_category: {
+      confidence_level: "LOW",
+      detailed: "FOOD_AND_DRINK_RESTAURANT",
+      primary: "FOOD_AND_DRINK"
+    }
+  } as Transaction;
+
+  assert.equal(getDefaultConfidence(clearFoodTransaction), 0.78);
+  assert.equal(getDefaultConfidence({
+    ...clearFoodTransaction,
+    merchant_name: null
+  }), 0.5);
+  assert.equal(getDefaultConfidence({
+    ...clearFoodTransaction,
+    merchant_name: "Venmo Rachel"
+  }), 0.5);
+  assert.equal(getDefaultConfidence({
+    ...clearFoodTransaction,
+    personal_finance_category: {
+      confidence_level: "LOW",
+      detailed: "TRANSFER_OUT_ACCOUNT_TRANSFER",
+      primary: "TRANSFER_OUT"
+    }
+  }), 0.5);
+  assert.equal(getDefaultConfidence({
+    ...clearFoodTransaction,
+    personal_finance_category: {
+      confidence_level: "LOW",
+      detailed: "GENERAL_MERCHANDISE_OTHER_GENERAL_MERCHANDISE",
+      primary: "GENERAL_MERCHANDISE_OTHER"
+    }
+  }), 0.5);
+  assert.equal(getDefaultConfidence({
+    ...clearFoodTransaction,
+    personal_finance_category: {
+      confidence_level: "UNKNOWN",
+      detailed: "FOOD_AND_DRINK_RESTAURANT",
+      primary: "FOOD_AND_DRINK"
+    }
+  }), 0.25);
 });
 
 test("sync run summary marks partial failures and excludes provider ids", () => {
@@ -358,6 +409,36 @@ test("Plaid connection summaries do not treat server config failures as item att
   assert.equal(connections[0]?.status, "active");
   assert.equal(connections[0]?.errorCode, null);
   assert.equal(connections[0]?.issue, null);
+});
+
+test("manual connection placeholders are hidden from Plaid connection summaries", async () => {
+  const client = new PurgeFinanceClient({
+    institutions: [
+      institutionRow(),
+      {
+        ...institutionRow(),
+        id: "institution-manual",
+        name: "Fidelity (manual)",
+        plaid_institution_id: null
+      }
+    ],
+    plaid_items: [
+      plaidItemRow("ciphertext"),
+      {
+        ...plaidItemRow("manual-no-provider:placeholder"),
+        connection_source: "manual",
+        error_code: "PLAID_TOKEN_DECRYPTION_ERROR",
+        id: "item-manual",
+        institution_id: "institution-manual",
+        plaid_item_id: "manual-fidelity",
+        status: "error"
+      }
+    ]
+  });
+
+  const connections = await listPlaidConnections(client.asClient(), userId);
+
+  assert.deepEqual(connections.map((connection) => connection.institutionName), ["Old Bank"]);
 });
 
 test("Plaid item ledger purge removes item-scoped finance rows and leaves other items intact", async () => {
@@ -541,7 +622,7 @@ test("Plaid item ledger purge skips optional tables missing from local schema", 
   assert.deepEqual(client.ids("plaid_items"), ["item-old"]);
 });
 
-test("revokePlaidConnection stops before local purge when Plaid removal is retryable", async () => {
+test("revokePlaidConnection preserves history and revokes locally when Plaid removal API fails", async () => {
   await withPlaidTokenEnv(async () => {
     const ciphertext = encryptPlaidAccessToken("access-token-old");
     const client = new PurgeFinanceClient(revokeTables(ciphertext));
@@ -551,25 +632,46 @@ test("revokePlaidConnection stops before local purge when Plaid removal is retry
       }
     };
 
-    await assert.rejects(
-      () => revokePlaidConnection({
-        client: client.asClient(),
-        itemId: "item-old",
-        plaidClient,
-        userId
-      }),
-      (error) => {
-        const safe = error as ReturnType<typeof plaidApiError>;
-        return safe.response.data.error_code === "API_ERROR";
-      }
-    );
+    const connection = await revokePlaidConnection({
+      client: client.asClient(),
+      itemId: "item-old",
+      plaidClient,
+      userId
+    });
 
+    assert.equal(connection.status, "revoked");
     assert.deepEqual(client.ids("accounts"), ["account-old"]);
     assert.deepEqual(client.ids("raw_transactions"), ["raw-old"]);
     assert.deepEqual(client.ids("plaid_items"), ["item-old"]);
-    assert.equal(client.row("plaid_items", "item-old")?.status, "active");
-    assert.equal(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
-    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, "cursor-old");
+    assert.equal(client.row("plaid_items", "item-old")?.status, "revoked");
+    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, null);
+    assert.notEqual(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
+  });
+});
+
+test("revokePlaidConnection preserves history and revokes locally when Plaid removal has no provider response", async () => {
+  await withPlaidTokenEnv(async () => {
+    const ciphertext = encryptPlaidAccessToken("access-token-old");
+    const client = new PurgeFinanceClient(revokeTables(ciphertext));
+    const plaidClient = {
+      itemRemove: async () => {
+        throw new Error("network unavailable");
+      }
+    };
+
+    const connection = await revokePlaidConnection({
+      client: client.asClient(),
+      itemId: "item-old",
+      plaidClient,
+      userId
+    });
+
+    assert.equal(connection.status, "revoked");
+    assert.deepEqual(client.ids("accounts"), ["account-old"]);
+    assert.deepEqual(client.ids("raw_transactions"), ["raw-old"]);
+    assert.equal(client.row("plaid_items", "item-old")?.status, "revoked");
+    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, null);
+    assert.notEqual(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
   });
 });
 
@@ -600,19 +702,39 @@ test("revokePlaidConnection preserves history for terminal Plaid removal errors 
   });
 });
 
-test("opportunistic Plaid sync due helper skips recent successful syncs", () => {
-  const now = new Date("2026-05-16T12:00:00.000Z");
+test("revokePlaidConnection can revoke locally when stored token ciphertext is unsupported", async () => {
+  await withPlaidTokenEnv(async () => {
+    const ciphertext = "unsupported-ciphertext";
+    const client = new PurgeFinanceClient(revokeTables(ciphertext));
 
-  assert.equal(isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: null, status: "active" }, now), true);
-  assert.equal(
-    isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: "2026-05-16T00:30:00.000Z", status: "active" }, now),
-    false
-  );
-  assert.equal(
-    isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: "2026-05-15T11:59:00.000Z", status: "active" }, now),
-    true
-  );
-  assert.equal(isPlaidItemDueForOpportunisticSync({ last_successful_sync_at: null, status: "revoked" }, now), false);
+    const connection = await revokePlaidConnection({
+      client: client.asClient(),
+      itemId: "item-old",
+      userId
+    });
+
+    assert.equal(connection.status, "revoked");
+    assert.deepEqual(client.ids("accounts"), ["account-old"]);
+    assert.deepEqual(client.ids("raw_transactions"), ["raw-old"]);
+    assert.equal(client.row("plaid_items", "item-old")?.status, "revoked");
+    assert.equal(client.row("plaid_items", "item-old")?.transaction_cursor, null);
+    assert.notEqual(client.row("plaid_items", "item-old")?.access_token_ciphertext, ciphertext);
+  });
+});
+
+test("realtime balance fetch only runs for items with the Balance product", () => {
+  assert.equal(isPlaidRealtimeBalanceAuthorized({
+    available_products: ["transactions"],
+    billed_products: ["transactions"]
+  }), false);
+  assert.equal(isPlaidRealtimeBalanceAuthorized({
+    available_products: ["balance"],
+    billed_products: ["transactions"]
+  }), true);
+  assert.equal(isPlaidRealtimeBalanceAuthorized({
+    available_products: ["transactions"],
+    billed_products: [Products.Balance]
+  }), true);
 });
 
 test("opportunistic Plaid sync running helper ignores stale runs", () => {
@@ -623,6 +745,57 @@ test("opportunistic Plaid sync running helper ignores stale runs", () => {
   assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:00:00.000Z", status: "running" }, now), false);
   assert.equal(isRecentRunningPlaidSync({ started_at: "not-a-date", status: "running" }, now), true);
   assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:45:00.000Z", status: "succeeded" }, now), false);
+});
+
+test("opportunistic Plaid sync skips when app-open sync is disabled", async () => {
+  const client = new PurgeFinanceClient({
+    plaid_items: [
+      {
+        ...plaidItemRow("unsupported-ciphertext"),
+        auto_sync_enabled: false,
+        last_successful_sync_at: "2026-05-15T08:00:00.000Z"
+      }
+    ],
+    plaid_sync_runs: []
+  });
+
+  const result = await syncOpportunisticPlaidConnections(
+    client.asClient(),
+    userId,
+    new Date("2026-05-17T12:00:00.000Z")
+  );
+
+  assert.equal(result.reason, "no_items");
+  assert.equal(result.sync, null);
+  assert.deepEqual(client.ids("plaid_sync_runs"), []);
+});
+
+test("opportunistic Plaid sync skips manual placeholders even when app-open sync is enabled", async () => {
+  const client = new PurgeFinanceClient({
+    plaid_items: [
+      {
+        ...plaidItemRow("manual-no-provider:placeholder"),
+        auto_sync_enabled: true,
+        connection_source: "manual",
+        error_code: "PLAID_TOKEN_DECRYPTION_ERROR",
+        last_successful_sync_at: null,
+        status: "error"
+      }
+    ],
+    plaid_sync_runs: []
+  });
+
+  const result = await syncOpportunisticPlaidConnections(
+    client.asClient(),
+    userId,
+    new Date("2026-05-17T12:00:00.000Z")
+  );
+
+  assert.equal(result.reason, "no_items");
+  assert.equal(result.sync, null);
+  assert.deepEqual(client.ids("plaid_sync_runs"), []);
+  assert.equal(client.row("plaid_items", "item-old")?.status, "error");
+  assert.equal(client.row("plaid_items", "item-old")?.error_code, "PLAID_TOKEN_DECRYPTION_ERROR");
 });
 
 function row(id: string, fields: Record<string, unknown> = {}) {
@@ -673,6 +846,7 @@ function plaidItemRow(ciphertext: string) {
     access_token_ciphertext: ciphertext,
     available_products: ["transactions"],
     billed_products: ["transactions"],
+    connection_source: "plaid",
     consent_expires_at: null,
     created_at: "2026-05-01T08:00:00.000Z",
     error_code: null,
@@ -683,6 +857,7 @@ function plaidItemRow(ciphertext: string) {
     plaid_item_id: "provider-item-old",
     status: "active",
     transaction_cursor: "cursor-old",
+    auto_sync_enabled: true,
     updated_at: "2026-05-01T08:00:00.000Z",
     user_id: userId
   };
@@ -733,7 +908,16 @@ class PurgeQueryBuilder {
     return this;
   }
 
+  neq(column: string, value: unknown) {
+    this.filters.push((row) => row[column] !== value);
+    return this;
+  }
+
   order() {
+    return this;
+  }
+
+  limit() {
     return this;
   }
 

@@ -1,4 +1,5 @@
 .shell {
+  container-type: inline-size;
   display: flex;
   width: min(100%, var(--content-max));
   min-width: 0;
@@ -107,7 +108,7 @@
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
   align-items: end;
   gap: 10px;
   border: 1px solid var(--line);
@@ -277,6 +278,11 @@
   display: none;
 }
 
+.cleanupCollapsed .secondaryButton {
+  flex: 0 0 auto;
+  width: fit-content;
+}
+
 .cleanupForm {
   display: grid;
   grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(130px, 0.7fr) auto auto;
@@ -369,6 +375,7 @@
 
 .tableShell {
   container-type: inline-size;
+  width: 100%;
   max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -384,7 +391,7 @@
 
 .table {
   width: 100%;
-  min-width: 860px;
+  min-width: 740px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -405,31 +412,31 @@
 }
 
 .table th:nth-child(1) {
-  width: 92px;
+  width: 8%;
 }
 
 .table th:nth-child(2) {
-  width: 300px;
+  width: 30%;
 }
 
 .table th:nth-child(3) {
-  width: 156px;
+  width: 18%;
 }
 
 .table th:nth-child(4) {
-  width: 184px;
+  width: 22%;
 }
 
 .table th:nth-child(5) {
-  width: 116px;
+  width: 13%;
 }
 
 .table th:nth-child(6) {
-  width: 88px;
+  width: 9%;
 }
 
 .amountHead {
-  width: 116px;
+  width: 13%;
 }
 
 .table th.amountHead {
@@ -438,7 +445,7 @@
 
 .table td {
   border-bottom: 1px solid var(--line-2);
-  padding: 10px 12px;
+  padding: 10px;
   vertical-align: middle;
 }
 
@@ -920,6 +927,10 @@
   white-space: nowrap;
 }
 
+.iconLink svg {
+  flex: 0 0 auto;
+}
+
 .iconLink:hover {
   border-color: var(--ink-2);
   background: var(--surface-2);
@@ -1180,10 +1191,33 @@
   }
 }
 
+@container (max-width: 760px) {
+  .headerPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryMetrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .summaryCard {
+    min-height: 78px;
+  }
+}
+
+@media (max-width: 900px) {
+  .headerPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryCard {
+    min-height: 78px;
+  }
+}
+
 @media (max-width: 760px) {
   .headerPanel,
   .summaryGrid,
-  .filters,
   .cleanupForm,
   .reimbursementLinkForm,
   .editGrid,
@@ -1467,7 +1501,60 @@
   }
 }
 
-@container (max-width: 1080px) {
+@container (min-width: 641px) and (max-width: 760px) {
+  .table {
+    min-width: 640px;
+  }
+
+  .table th {
+    padding: 8px 9px;
+  }
+
+  .table td {
+    padding: 9px;
+  }
+
+  .table th:nth-child(1) {
+    width: 78px;
+  }
+
+  .table th:nth-child(2) {
+    width: auto;
+  }
+
+  .table th:nth-child(3) {
+    width: 148px;
+  }
+
+  .table th:nth-child(4) {
+    width: 120px;
+  }
+
+  .table th:nth-child(5),
+  .amountHead {
+    width: 104px;
+  }
+
+  .table th:nth-child(6) {
+    width: 72px;
+  }
+
+  .dateCell span:last-child,
+  .noteLine {
+    display: none;
+  }
+
+  .badgeText {
+    max-width: 112px;
+  }
+
+  .iconLink {
+    min-height: 28px;
+    padding: 0 7px;
+  }
+}
+
+@media (max-width: 640px) {
   .tableScroll {
     overflow-x: visible;
   }

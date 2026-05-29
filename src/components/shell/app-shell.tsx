@@ -36,7 +36,7 @@ type RouteMeta = {
   title: string;
 };
 
-type OpportunisticSyncReason = "in_progress" | "no_items" | "recently_synced" | "synced";
+type OpportunisticSyncReason = "in_progress" | "no_items" | "synced";
 
 interface OpportunisticSyncResponse {
   opportunisticSync?: {
