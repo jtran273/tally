@@ -2,6 +2,11 @@ import type { LiabilityAccountSummary } from "./liabilities";
 
 export type UtilizationTier = "optimal" | "ok" | "high" | "critical" | "unknown";
 
+// Typical card grace period is ~21 days between statement close and the
+// payment due date. Statement-close date is what actually gets reported to
+// the credit bureaus, so deadlines target that.
+const GRACE_PERIOD_DAYS = 21;
+
 export interface PayoffCardPlan {
   accountId: string;
   name: string;
@@ -14,6 +19,16 @@ export interface PayoffCardPlan {
   payToReachTen: number;
   payToZero: number;
   suggestedPayment: number;
+  // Reported utilization after the suggested payment lands.
+  projectedUtilizationPercent: number | null;
+  projectedTier: UtilizationTier;
+  // Statement-close date estimated as due date − 21 days; this is the deadline
+  // that matters for the next bureau report.
+  statementCloseDate: string | null;
+  daysUntilStatementClose: number | null;
+  dueDate: string | null;
+  // Plain-English action line, e.g. "Pay $187 by Jun 18 to drop from 42% to 28%".
+  actionText: string | null;
 }
 
 export interface PayoffPlan {
@@ -27,7 +42,6 @@ export interface PayoffPlan {
   projectedUtilization: number | null;
   projectedTier: UtilizationTier;
   topPick: PayoffCardPlan | null;
-  topPickRationale: string | null;
 }
 
 const OPTIMAL_MAX = 10;
@@ -63,13 +77,71 @@ function payToReach(balance: number, limit: number | null, targetPct: number): n
   return Math.max(0, Math.round((balance - target) * 100) / 100);
 }
 
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function parseIsoDate(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function addDays(value: string, days: number): string {
+  return isoDate(new Date(parseIsoDate(value).getTime() + days * 86_400_000));
+}
+
+function dayDifference(fromIso: string, toIso: string) {
+  return Math.round(
+    (parseIsoDate(toIso).getTime() - parseIsoDate(fromIso).getTime()) / 86_400_000
+  );
+}
+
+function formatShortDate(iso: string): string {
+  const d = parseIsoDate(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function formatMoney(value: number): string {
+  return value.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function buildActionText(
+  card: PayoffCardPlan,
+  fallbackDeadlineIso: string | null
+): string | null {
+  if (card.suggestedPayment <= 0) {
+    if (card.tier === "optimal") return "Already in the optimal tier — no action needed.";
+    return null;
+  }
+  const deadlineIso = card.statementCloseDate ?? fallbackDeadlineIso;
+  const deadlineLabel = deadlineIso ? formatShortDate(deadlineIso) : "your next statement close";
+  const daysOut = card.daysUntilStatementClose;
+  const deadlineSuffix =
+    daysOut !== null && deadlineIso
+      ? daysOut <= 0
+        ? `before your next statement close`
+        : `by ${deadlineLabel} (in ${daysOut} day${daysOut === 1 ? "" : "s"}, statement close)`
+      : `by ${deadlineLabel}`;
+
+  const from = card.utilizationPercent;
+  const to = card.projectedUtilizationPercent;
+  const fromTo =
+    from !== null && to !== null
+      ? ` — reported utilization drops from ${from.toFixed(0)}% to ${to.toFixed(0)}%`
+      : "";
+
+  return `Pay ${formatMoney(card.suggestedPayment)} ${deadlineSuffix}${fromTo}.`;
+}
+
 export function buildPayoffPlan({
   rows,
-  cashAvailable
+  cashAvailable,
+  asOfDate
 }: {
   rows: readonly LiabilityAccountSummary[];
   cashAvailable: number;
+  asOfDate?: string;
 }): PayoffPlan {
+  const today = asOfDate ?? isoDate(new Date());
   const activeRows = rows.filter((row) => row.amountOwed > 0);
 
   const totalBalance = Math.round(activeRows.reduce((sum, r) => sum + r.amountOwed, 0) * 100) / 100;
@@ -79,6 +151,12 @@ export function buildPayoffPlan({
 
   const cards: PayoffCardPlan[] = activeRows.map((row) => {
     const tier = tierForUtilization(row.utilizationPercent);
+    const statementCloseDate = row.estimatedDueDate
+      ? addDays(row.estimatedDueDate, -GRACE_PERIOD_DAYS)
+      : null;
+    const daysUntilStatementClose = statementCloseDate
+      ? dayDifference(today, statementCloseDate)
+      : null;
     return {
       accountId: row.accountId,
       name: row.name,
@@ -90,15 +168,21 @@ export function buildPayoffPlan({
       payToReachThirty: payToReach(row.amountOwed, row.creditLimit, OK_MAX),
       payToReachTen: payToReach(row.amountOwed, row.creditLimit, OPTIMAL_MAX),
       payToZero: row.amountOwed,
-      suggestedPayment: 0
+      suggestedPayment: 0,
+      projectedUtilizationPercent: row.utilizationPercent,
+      projectedTier: tier,
+      statementCloseDate,
+      daysUntilStatementClose,
+      dueDate: row.estimatedDueDate,
+      actionText: null
     };
   });
 
-  // Allocation strategy (default = save money proxy w/o APR):
-  // 1. Drop any card above 30% down to 30% (biggest score lift per dollar).
-  // 2. Then drop any card above 10% down to 10%.
-  // 3. Then apply remaining cash to highest balance first (interest-saving proxy).
-  const order = [...cards].sort((a, b) => {
+  // Greedy allocation:
+  // 1. Bring every card above 30% down to 30% (biggest score gain per dollar).
+  // 2. Then push every card from 30% down to 10% (optimal tier).
+  // 3. Then highest-balance first as an APR-free interest proxy.
+  const byUtil = [...cards].sort((a, b) => {
     const aUtil = a.utilizationPercent ?? -1;
     const bUtil = b.utilizationPercent ?? -1;
     if (bUtil !== aUtil) return bUtil - aUtil;
@@ -107,14 +191,14 @@ export function buildPayoffPlan({
 
   let remaining = Math.max(0, cashAvailable);
 
-  for (const card of order) {
+  for (const card of byUtil) {
     if (card.payToReachThirty <= 0) continue;
     const apply = Math.min(remaining, card.payToReachThirty);
     card.suggestedPayment += apply;
     remaining -= apply;
     if (remaining <= 0) break;
   }
-  for (const card of order) {
+  for (const card of byUtil) {
     if (remaining <= 0) break;
     const stillOwedAfter = card.balance - card.suggestedPayment;
     const target = card.creditLimit ? (OPTIMAL_MAX / 100) * card.creditLimit : 0;
@@ -135,33 +219,36 @@ export function buildPayoffPlan({
   }
 
   const cashApplied = Math.round((Math.max(0, cashAvailable) - remaining) * 100) / 100;
+
+  // Compute projected per-card utilization and the action text now that
+  // suggestedPayment is settled.
+  const fallbackDeadlineIso = cards
+    .map((c) => c.statementCloseDate)
+    .filter((d): d is string => Boolean(d))
+    .sort()[0] ?? null;
+
   for (const card of cards) {
     card.suggestedPayment = Math.round(card.suggestedPayment * 100) / 100;
+    if (card.creditLimit && card.creditLimit > 0) {
+      const projectedBalance = Math.max(0, card.balance - card.suggestedPayment);
+      const projected = Math.round((projectedBalance / card.creditLimit) * 1000) / 10;
+      card.projectedUtilizationPercent = projected;
+      card.projectedTier = tierForUtilization(projected);
+    }
+    card.actionText = buildActionText(card, fallbackDeadlineIso);
   }
 
   const projectedBalance = Math.max(0, totalBalance - cashApplied);
   const projectedUtilization =
     totalLimit > 0 ? Math.round((projectedBalance / totalLimit) * 1000) / 10 : null;
 
-  // Top pick: card receiving the largest suggested payment, breaking ties by utilization.
-  const ranked = [...cards]
-    .filter((c) => c.suggestedPayment > 0)
-    .sort((a, b) => {
-      if (b.suggestedPayment !== a.suggestedPayment) return b.suggestedPayment - a.suggestedPayment;
-      return (b.utilizationPercent ?? 0) - (a.utilizationPercent ?? 0);
-    });
-  const topPick = ranked[0] ?? null;
-
-  let topPickRationale: string | null = null;
-  if (topPick) {
-    if (topPick.tier === "critical" || topPick.tier === "high") {
-      topPickRationale = "Highest utilization — biggest credit-score lift per dollar.";
-    } else if (topPick.tier === "ok") {
-      topPickRationale = "Already under 30% — extra payment pushes it toward the optimal <10% tier.";
-    } else if (topPick.tier === "optimal") {
-      topPickRationale = "Largest remaining balance — cuts the most interest at equal APRs.";
-    }
-  }
+  const topPick =
+    [...cards]
+      .filter((c) => c.suggestedPayment > 0)
+      .sort((a, b) => {
+        if (b.suggestedPayment !== a.suggestedPayment) return b.suggestedPayment - a.suggestedPayment;
+        return (b.utilizationPercent ?? 0) - (a.utilizationPercent ?? 0);
+      })[0] ?? null;
 
   return {
     cards,
@@ -173,7 +260,6 @@ export function buildPayoffPlan({
     cashApplied,
     projectedUtilization,
     projectedTier: tierForUtilization(projectedUtilization),
-    topPick,
-    topPickRationale
+    topPick
   };
 }

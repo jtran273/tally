@@ -2129,14 +2129,19 @@ function PayoffPlanPanel({
         <div className={styles.payoffCallout}>
           <div>
             <strong>Best move today</strong>
-            <span>{plan.topPickRationale}</span>
+            <span>
+              {plan.topPick.name}
+              {plan.topPick.mask ? ` · ${plan.topPick.mask}` : ""}
+            </span>
+            {plan.topPick.actionText ? (
+              <span className={styles.payoffActionText}>{plan.topPick.actionText}</span>
+            ) : null}
           </div>
           <div className={styles.payoffCalloutAmount}>
             <strong>{formatMoney(plan.topPick.suggestedPayment)}</strong>
-            <span>
-              to {plan.topPick.name}
-              {plan.topPick.mask ? ` · ${plan.topPick.mask}` : ""}
-            </span>
+            {plan.topPick.statementCloseDate ? (
+              <span>by {formatDate(plan.topPick.statementCloseDate)}</span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -2176,14 +2181,19 @@ function PayoffPlanPanel({
                   />
                 </div>
               ) : null}
+              {card.actionText ? (
+                <p className={styles.payoffActionText}>{card.actionText}</p>
+              ) : null}
             </div>
           );
         })}
       </div>
 
       <p className={styles.payoffFootnote}>
-        Tip: utilization is reported on each card&rsquo;s statement closing date. Paying before
-        statement close is what lowers the number sent to credit bureaus.
+        Issuers report the balance on each card&rsquo;s <strong>statement closing date</strong> (about
+        21 days before the due date) — that&rsquo;s the number credit bureaus see. Lower is always
+        better; under 30% per card and under 10% overall is the well-established target, with no
+        hard cliff. Expect score changes 30–45 days after the payment lands.
       </p>
     </section>
   );
