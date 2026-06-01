@@ -19,6 +19,12 @@ export interface LiabilityAccountSummary {
   estimatedDueDate: string | null;
   daysUntilDue: number | null;
   status: LiabilityStatus;
+  // From Plaid liabilities product when available; falls back to null.
+  lastStatementIssueDate: string | null;
+  lastStatementBalance: number | null;
+  minimumPaymentAmount: number | null;
+  // True when the due date came from Plaid liabilities, not an estimate.
+  dueDateIsActual: boolean;
 }
 
 export interface LiabilitiesDueSummary {
@@ -97,11 +103,13 @@ export function buildLiabilitiesDueSummary({
     .map((account) => {
       const amountOwed = Math.max(0, Math.abs(account.balance));
       const lastPayment = findLastPayment(account.id, sortedTransactions);
-      const estimatedDueDate = amountOwed > 0
+      const actualDueDate = account.nextPaymentDueDate ?? null;
+      const fallbackDueDate = amountOwed > 0
         ? lastPayment
           ? addDays(lastPayment.date, DEFAULT_BILLING_CYCLE_DAYS)
           : addDays(today, DEFAULT_BILLING_CYCLE_DAYS)
         : null;
+      const estimatedDueDate = actualDueDate ?? fallbackDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
       const utilizationPercent = account.creditLimit && account.creditLimit > 0
         ? Math.round((amountOwed / account.creditLimit) * 1000) / 10
@@ -116,6 +124,10 @@ export function buildLiabilitiesDueSummary({
         institutionName: account.institutionName,
         lastPaymentAmount: lastPayment?.amount ?? null,
         lastPaymentDate: lastPayment?.date ?? null,
+        lastStatementIssueDate: account.lastStatementIssueDate ?? null,
+        lastStatementBalance: account.lastStatementBalance ?? null,
+        minimumPaymentAmount: account.minimumPaymentAmount ?? null,
+        dueDateIsActual: Boolean(actualDueDate),
         mask: account.mask,
         name: account.name,
         status: statusForDays(daysUntilDue, amountOwed),

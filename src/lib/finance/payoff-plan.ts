@@ -22,11 +22,15 @@ export interface PayoffCardPlan {
   // Reported utilization after the suggested payment lands.
   projectedUtilizationPercent: number | null;
   projectedTier: UtilizationTier;
-  // Statement-close date estimated as due date − 21 days; this is the deadline
-  // that matters for the next bureau report.
+  // Statement-close date: when present, derived from the actual last
+  // statement-issue date returned by Plaid; otherwise estimated as
+  // (next due date − 21 days). This is the deadline that matters for the
+  // next bureau report.
   statementCloseDate: string | null;
   daysUntilStatementClose: number | null;
+  statementCloseIsActual: boolean;
   dueDate: string | null;
+  minimumPaymentAmount: number | null;
   // Plain-English action line, e.g. "Pay $187 by Jun 18 to drop from 42% to 28%".
   actionText: string | null;
 }
@@ -115,11 +119,12 @@ function buildActionText(
   const deadlineIso = card.statementCloseDate ?? fallbackDeadlineIso;
   const deadlineLabel = deadlineIso ? formatShortDate(deadlineIso) : "your next statement close";
   const daysOut = card.daysUntilStatementClose;
+  const closeLabel = card.statementCloseIsActual ? "statement closes" : "est. statement close";
   const deadlineSuffix =
     daysOut !== null && deadlineIso
       ? daysOut <= 0
-        ? `before your next statement close`
-        : `by ${deadlineLabel} (in ${daysOut} day${daysOut === 1 ? "" : "s"}, statement close)`
+        ? `before your next statement closes`
+        : `by ${deadlineLabel} (in ${daysOut} day${daysOut === 1 ? "" : "s"}, ${closeLabel})`
       : `by ${deadlineLabel}`;
 
   const from = card.utilizationPercent;
@@ -151,12 +156,25 @@ export function buildPayoffPlan({
 
   const cards: PayoffCardPlan[] = activeRows.map((row) => {
     const tier = tierForUtilization(row.utilizationPercent);
-    const statementCloseDate = row.estimatedDueDate
-      ? addDays(row.estimatedDueDate, -GRACE_PERIOD_DAYS)
-      : null;
+
+    // Prefer the next statement close inferred from Plaid's last statement
+    // issue date (cycles repeat ~monthly). Fall back to the due date − 21d.
+    let statementCloseDate: string | null = null;
+    let statementCloseIsActual = false;
+    if (row.lastStatementIssueDate) {
+      let next = addDays(row.lastStatementIssueDate, 30);
+      while (dayDifference(today, next) < 0) {
+        next = addDays(next, 30);
+      }
+      statementCloseDate = next;
+      statementCloseIsActual = true;
+    } else if (row.estimatedDueDate) {
+      statementCloseDate = addDays(row.estimatedDueDate, -GRACE_PERIOD_DAYS);
+    }
     const daysUntilStatementClose = statementCloseDate
       ? dayDifference(today, statementCloseDate)
       : null;
+
     return {
       accountId: row.accountId,
       name: row.name,
@@ -173,7 +191,9 @@ export function buildPayoffPlan({
       projectedTier: tier,
       statementCloseDate,
       daysUntilStatementClose,
+      statementCloseIsActual,
       dueDate: row.estimatedDueDate,
+      minimumPaymentAmount: row.minimumPaymentAmount ?? null,
       actionText: null
     };
   });

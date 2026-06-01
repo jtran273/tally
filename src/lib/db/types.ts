@@ -125,6 +125,10 @@ export interface AccountRow {
   color: string | null;
   is_active: boolean;
   last_synced_at: string | null;
+  last_statement_issue_date: string | null;
+  last_statement_balance: number | null;
+  next_payment_due_date: string | null;
+  minimum_payment_amount: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -445,6 +449,10 @@ export interface AccountRecord {
   color: string | null;
   isActive: boolean;
   lastSyncedAt: string | null;
+  lastStatementIssueDate?: string | null;
+  lastStatementBalance?: number | null;
+  nextPaymentDueDate?: string | null;
+  minimumPaymentAmount?: number | null;
   manualValuation?: ManualInvestmentValuationRecord;
 }
 

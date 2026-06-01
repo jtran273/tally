@@ -338,7 +338,11 @@ function toAccountRecord(row: AccountRow, institution?: InstitutionRow): Account
     currency: row.iso_currency_code,
     color: row.color,
     isActive: row.is_active,
-    lastSyncedAt: row.last_synced_at
+    lastSyncedAt: row.last_synced_at,
+    lastStatementIssueDate: row.last_statement_issue_date,
+    lastStatementBalance: row.last_statement_balance,
+    nextPaymentDueDate: row.next_payment_due_date,
+    minimumPaymentAmount: row.minimum_payment_amount
   };
 }
 
