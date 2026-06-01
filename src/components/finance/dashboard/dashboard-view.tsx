@@ -15,6 +15,12 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import {
+  buildPayoffPlan,
+  tierLabel,
+  type PayoffCardPlan,
+  type UtilizationTier
+} from "@/lib/finance/payoff-plan";
 import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
 import { CADENCE_LABEL, recurringMonthlyAmount } from "@/lib/finance/recurring-cadence";
@@ -1374,7 +1380,7 @@ function CategorySpendingPanel({
   setRangeKey: (key: TrendRangeKey) => void;
   transactions: DashboardBalanceTransaction[];
 }) {
-  const [viewMode, setViewMode] = useState<CategoryViewMode>("trend");
+  const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
   const [monthIndex, setMonthIndex] = useState(0);
   const breakdowns = useMemo(
     () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate),
@@ -1388,9 +1394,9 @@ function CategorySpendingPanel({
     () => buildCategoryTrend(transactions, fromDate, toDate),
     [fromDate, toDate, transactions]
   );
-  const width = 720;
-  const height = 248;
-  const padding = { bottom: 32, left: 58, right: 22, top: 18 };
+  const width = 560;
+  const height = 220;
+  const padding = { bottom: 28, left: 34, right: 18, top: 16 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const rangeLabel = rangeKey === "ALL" ? "All time" : rangeKey;
@@ -1998,6 +2004,7 @@ function SpendableComparisonPanel({
   const plainEnglish = coverageOk
     ? `You would have ${formatMoney(spendable)} left if every card were paid off today.`
     : `You are ${formatMoney(Math.abs(spendable))} short of paying off every card today.`;
+  const dueRows = liabilitiesDue.rows.filter((row) => row.amountOwed > 0);
 
   return (
     <section aria-label="Spendable comparison" className={styles.liabilityPanel}>
@@ -2034,7 +2041,173 @@ function SpendableComparisonPanel({
             </div>
           </div>
         </div>
+        {dueRows.length > 0 ? (
+          <div className={styles.liabilityTiming}>
+            <div className={styles.liabilityTimingHead}>
+              <strong>Card payoff timing</strong>
+              <span>Estimated from last likely payment plus the normal billing cycle.</span>
+            </div>
+            {dueRows.map((row) => {
+              const dueLabel = row.estimatedDueDate ? formatDate(row.estimatedDueDate) : "Unknown";
+              const paymentLabel = row.lastPaymentDate
+                ? `Last payment ${formatDate(row.lastPaymentDate)}`
+                : "No payment seen yet";
+              return (
+                <div className={styles.liabilityTimingRow} key={row.accountId}>
+                  <div>
+                    <strong>{row.name}{row.mask ? ` · ${row.mask}` : ""}</strong>
+                    <span>{paymentLabel}</span>
+                  </div>
+                  <div className={styles.liabilityTimingDue}>
+                    <strong>{dueLabel}</strong>
+                    <span className={liabilityStatusClass(row.status)}>
+                      {formatMoney(row.amountOwed)} · {liabilityStatusLabel(row)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
+    </section>
+  );
+}
+
+function payoffTierClass(tier: UtilizationTier) {
+  switch (tier) {
+    case "optimal":
+      return styles.payoffTierOptimal;
+    case "ok":
+      return styles.payoffTierOk;
+    case "high":
+      return styles.payoffTierHigh;
+    case "critical":
+      return styles.payoffTierCritical;
+    default:
+      return styles.payoffTierUnknown;
+  }
+}
+
+function PayoffPlanPanel({
+  accounts,
+  liabilitiesDue
+}: {
+  accounts: readonly AccountRecord[];
+  liabilitiesDue: LiabilitiesDueSummary;
+}) {
+  const liquidTotal = accounts
+    .filter((account) => account.type === "depository")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const plan = buildPayoffPlan({ rows: liabilitiesDue.rows, cashAvailable: liquidTotal });
+
+  if (plan.cards.length === 0) return null;
+
+  const aggregateLabel =
+    plan.aggregateUtilization !== null ? `${plan.aggregateUtilization.toFixed(0)}%` : "—";
+  const projectedLabel =
+    plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(0)}%` : "—";
+
+  // The earliest upcoming reporting date across all cards — this is what
+  // the user is racing for score-wise.
+  const upcomingReportingDays = plan.cards
+    .map((c) => c.daysUntilNextReporting)
+    .filter((d): d is number => d !== null && d >= 0)
+    .sort((a, b) => a - b)[0];
+  const upcomingReportingDate = plan.cards.find(
+    (c) => c.daysUntilNextReporting === upcomingReportingDays
+  )?.nextReportingDate;
+
+  return (
+    <section aria-label="Payoff plan" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Credit card usage</span>
+          <h3 className={`${styles.liabilityHeadline} ${payoffTierClass(plan.aggregateTier)}`}>
+            {aggregateLabel}
+          </h3>
+          <p className={styles.liabilityCoverage}>
+            That&rsquo;s what your last statement reported. Your next snapshot
+            {upcomingReportingDate
+              ? ` is around ${formatDate(upcomingReportingDate)}${
+                  typeof upcomingReportingDays === "number"
+                    ? ` (${upcomingReportingDays} day${upcomingReportingDays === 1 ? "" : "s"} away)`
+                    : ""
+                }`
+              : " is the next time each card&rsquo;s statement closes"}
+            {plan.cashApplied > 0
+              ? `. Following the plan below drops it to ${projectedLabel}.`
+              : "."}
+          </p>
+        </div>
+      </div>
+
+      {plan.topPick && plan.topPick.actionText ? (
+        <div className={styles.payoffCallout}>
+          <div>
+            <strong>Do this first</strong>
+            <span>
+              {plan.topPick.name}
+              {plan.topPick.mask ? ` · ${plan.topPick.mask}` : ""}
+            </span>
+            <span className={styles.payoffActionText}>{plan.topPick.actionText}</span>
+          </div>
+          <div className={styles.payoffCalloutAmount}>
+            <strong>{formatMoney(plan.topPick.suggestedPayment)}</strong>
+            {plan.topPick.statementCloseDate ? (
+              <span>by {formatDate(plan.topPick.statementCloseDate)}</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className={styles.liabilityRows}>
+        {plan.cards.map((card: PayoffCardPlan) => {
+          const utilLabel =
+            card.utilizationPercent !== null ? `${card.utilizationPercent.toFixed(0)}% used` : "No limit";
+          const isTopPick = plan.topPick?.accountId === card.accountId;
+          return (
+            <div className={styles.payoffRow} key={card.accountId}>
+              <div className={styles.payoffRowMain}>
+                <div>
+                  <strong>
+                    {card.name}
+                    {card.mask ? ` · ${card.mask}` : ""}
+                  </strong>
+                  <span className={payoffTierClass(card.tier)}>{utilLabel}</span>
+                </div>
+                <div className={styles.payoffRowAmount}>
+                  <strong>{formatMoney(card.balance)}</strong>
+                  {card.suggestedPayment > 0 ? (
+                    <span className={styles.payoffSuggested}>
+                      Pay {formatMoney(card.suggestedPayment)}
+                    </span>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </div>
+              </div>
+              {card.utilizationPercent !== null ? (
+                <div className={styles.utilizationTrack} aria-hidden>
+                  <span
+                    style={{ width: `${Math.min(100, card.utilizationPercent)}%` }}
+                    className={payoffTierClass(card.tier)}
+                  />
+                </div>
+              ) : null}
+              {!isTopPick && card.actionText ? (
+                <p className={styles.payoffActionText}>{card.actionText}</p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className={styles.payoffFootnote}>
+        Your card snapshots your balance once per cycle on its statement closing date — that&rsquo;s
+        what credit bureaus see. Paying by the due date above lands well before the next snapshot,
+        so the lower balance gets reported. Score updates 30–45 days after that.
+      </p>
     </section>
   );
 }
@@ -2330,6 +2503,7 @@ export function DashboardView({
               liabilitiesDue={liabilitiesDue}
               totals={totals}
             />
+            <PayoffPlanPanel accounts={accounts} liabilitiesDue={liabilitiesDue} />
             <CategorySpendingPanel
               asOfDate={asOfDate}
               rangeKey={trendRangeKey}

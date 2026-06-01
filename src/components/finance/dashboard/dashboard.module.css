@@ -734,15 +734,14 @@
   }
 
   .categoryTrendChart {
-    overflow-x: auto;
+    overflow-x: hidden;
     padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
   }
 
   .categoryTrendChart svg {
-    width: 640px;
-    min-width: 640px;
-    height: 220px;
+    width: 100%;
+    min-width: 0;
+    height: 200px;
   }
 }
 
@@ -940,6 +939,67 @@
   font-size: var(--text-meta);
 }
 
+.liabilityTiming {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.liabilityTimingHead {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line-2);
+  padding-bottom: 8px;
+}
+
+.liabilityTimingHead strong,
+.liabilityTimingRow strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.liabilityTimingHead span,
+.liabilityTimingRow span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+
+.liabilityTimingRow {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.liabilityTimingRow > div {
+  min-width: 0;
+}
+
+.liabilityTimingDue {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.liabilityTimingDue strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .liabilityCurrent {
   color: var(--muted);
 }
@@ -950,6 +1010,137 @@
 
 .liabilityOverdue {
   color: var(--neg);
+}
+
+.payoffCallout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.payoffCallout > div:first-child {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.payoffCallout strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.payoffCallout span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+
+.payoffCalloutAmount {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.payoffCalloutAmount strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+}
+
+.payoffRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.payoffRow:last-child {
+  border-bottom: none;
+}
+
+.payoffRowMain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payoffRowMain > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.payoffRowMain strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.payoffRowMain span {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+
+.payoffRowAmount {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.payoffRowAmount strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.payoffSuggested {
+  color: var(--pos, var(--ink));
+  font-weight: 500;
+}
+
+.payoffActionText {
+  display: block;
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+}
+
+.payoffFootnote {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+}
+
+.payoffTierOptimal {
+  color: var(--pos, #1a7f37);
+}
+
+.payoffTierOk {
+  color: var(--muted);
+}
+
+.payoffTierHigh {
+  color: var(--warn);
+}
+
+.payoffTierCritical {
+  color: var(--neg);
+}
+
+.payoffTierUnknown {
+  color: var(--muted);
 }
 
 .liabilityPaid {
@@ -1204,6 +1395,16 @@
   .syncActionLink {
     width: auto;
   }
+
+  .liabilityTimingHead,
+  .liabilityTimingRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .liabilityTimingDue {
+    text-align: left;
+  }
 }
 
 .categoryPanel {
@@ -1276,6 +1477,7 @@
 .categoryRow {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
   border: 1px solid var(--line-2);
@@ -1284,6 +1486,7 @@
   background: var(--surface-2);
   color: inherit;
   text-decoration: none;
+  text-align: left;
 }
 
 .categoryRow:hover {

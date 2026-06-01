@@ -5,6 +5,7 @@ import {
   ItemRemoveReasonCode,
   Products,
   type AccountBase,
+  type CreditCardLiability,
   type Institution,
   type LinkTokenCreateRequest,
   type RemovedTransaction,
@@ -157,6 +158,10 @@ const ACCOUNT_COLUMNS = [
   "color",
   "is_active",
   "last_synced_at",
+  "last_statement_issue_date",
+  "last_statement_balance",
+  "next_payment_due_date",
+  "minimum_payment_amount",
   "created_at",
   "updated_at"
 ].join(",");
@@ -965,7 +970,8 @@ function buildAccountInsert(
   item: PlaidItemRow,
   userId: string,
   account: AccountBase,
-  syncedAt: string
+  syncedAt: string,
+  liability?: CreditCardLiability
 ): AccountInsert {
   const type = mapPlaidAccountType(account);
 
@@ -977,6 +983,12 @@ function buildAccountInsert(
     is_active: true,
     iso_currency_code: normalizeCurrency(account.balances.iso_currency_code),
     last_synced_at: syncedAt,
+    last_statement_issue_date: liability?.last_statement_issue_date ?? null,
+    last_statement_balance:
+      liability?.last_statement_balance == null ? null : roundMoney(liability.last_statement_balance),
+    next_payment_due_date: liability?.next_payment_due_date ?? null,
+    minimum_payment_amount:
+      liability?.minimum_payment_amount == null ? null : roundMoney(liability.minimum_payment_amount),
     mask: account.mask,
     name: cleanRequiredText(account.name, "Plaid account"),
     official_name: account.official_name,
@@ -1055,6 +1067,7 @@ async function upsertPlaidAccounts({
   accounts,
   client,
   item,
+  liabilitiesByPlaidAccountId,
   snapshotDate,
   syncedAt,
   userId
@@ -1062,6 +1075,7 @@ async function upsertPlaidAccounts({
   accounts: AccountBase[];
   client: FinanceSupabaseClient;
   item: PlaidItemRow;
+  liabilitiesByPlaidAccountId?: Map<string, CreditCardLiability>;
   snapshotDate: string;
   syncedAt: string;
   userId: string;
@@ -1070,7 +1084,15 @@ async function upsertPlaidAccounts({
   const accountRows: AccountRow[] = [];
 
   if (uniqueAccounts.length > 0) {
-    const inserts = uniqueAccounts.map((account) => buildAccountInsert(item, userId, account, syncedAt));
+    const inserts = uniqueAccounts.map((account) =>
+      buildAccountInsert(
+        item,
+        userId,
+        account,
+        syncedAt,
+        liabilitiesByPlaidAccountId?.get(account.account_id)
+      )
+    );
 
     for (const batch of chunk(inserts, UPSERT_CHUNK_SIZE)) {
       const result = await client
@@ -1206,6 +1228,25 @@ async function fetchBalanceAccounts(accessToken: string) {
     }
 
     throw error;
+  }
+}
+
+async function fetchItemLiabilities(
+  accessToken: string
+): Promise<Map<string, CreditCardLiability>> {
+  const plaid = getPlaidClient();
+  try {
+    const response = await plaid.liabilitiesGet({ access_token: accessToken });
+    const credit = response.data.liabilities.credit ?? [];
+    return new Map(
+      credit
+        .filter((row): row is CreditCardLiability & { account_id: string } => Boolean(row.account_id))
+        .map((row) => [row.account_id, row])
+    );
+  } catch {
+    // Liabilities product may not be enabled for this item, or the institution
+    // doesn't support it. Fall back to estimation in liabilities.ts.
+    return new Map();
   }
 }
 
@@ -2143,11 +2184,13 @@ async function syncLoadedPlaidItem(
   const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
   const syncedAt = new Date().toISOString();
   const snapshotDate = syncedAt.slice(0, 10);
-  const [transactionUpdates, itemAccounts, balanceAccounts] = await Promise.all([
-    fetchTransactionSyncUpdatesForImport(accessToken, item.transaction_cursor),
-    fetchItemAccounts(accessToken),
-    isPlaidRealtimeBalanceAuthorized(item) ? fetchBalanceAccounts(accessToken) : Promise.resolve([])
-  ]);
+  const [transactionUpdates, itemAccounts, balanceAccounts, liabilitiesByPlaidAccountId] =
+    await Promise.all([
+      fetchTransactionSyncUpdatesForImport(accessToken, item.transaction_cursor),
+      fetchItemAccounts(accessToken),
+      isPlaidRealtimeBalanceAuthorized(item) ? fetchBalanceAccounts(accessToken) : Promise.resolve([]),
+      fetchItemLiabilities(accessToken)
+    ]);
   const accounts = mergePlaidAccountSourcesForSync({
     accountsGetAccounts: itemAccounts,
     balanceAccounts,
@@ -2157,6 +2200,7 @@ async function syncLoadedPlaidItem(
     accounts,
     client,
     item,
+    liabilitiesByPlaidAccountId,
     snapshotDate,
     syncedAt,
     userId
@@ -2242,7 +2286,7 @@ export function buildPlaidLinkTokenCreateRequest({
   return {
     ...(accessToken
       ? { access_token: accessToken }
-      : { products: [Products.Transactions] }),
+      : { products: [Products.Transactions], optional_products: [Products.Liabilities] }),
     client_name: "Tally",
     country_codes: [CountryCode.Us],
     language: "en",
