@@ -92,8 +92,6 @@ export interface GoogleCalendarConnectionRow {
   user_id: string;
   google_calendar_id: string;
   calendar_summary: string | null;
-  calendar_list: Json;
-  selected_calendar_ids: string[];
   access_token_ciphertext: string;
   refresh_token_ciphertext: string;
   scope: string;
