@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
-    "@supabase/supabase-js": "^2.106.0",
+    "@supabase/supabase-js": "^2.106.2",
     "lucide-react": "^1.16.0",
     "next": "^16.2.6",
     "plaid": "^42.2.0",
