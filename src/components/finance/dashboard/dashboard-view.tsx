@@ -2108,6 +2108,16 @@ function PayoffPlanPanel({
   const projectedLabel =
     plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(0)}%` : "—";
 
+  // The earliest upcoming reporting date across all cards — this is what
+  // the user is racing for score-wise.
+  const upcomingReportingDays = plan.cards
+    .map((c) => c.daysUntilNextReporting)
+    .filter((d): d is number => d !== null && d >= 0)
+    .sort((a, b) => a - b)[0];
+  const upcomingReportingDate = plan.cards.find(
+    (c) => c.daysUntilNextReporting === upcomingReportingDays
+  )?.nextReportingDate;
+
   return (
     <section aria-label="Payoff plan" className={styles.liabilityPanel}>
       <div className={styles.liabilityPanelHead}>
@@ -2117,9 +2127,17 @@ function PayoffPlanPanel({
             {aggregateLabel}
           </h3>
           <p className={styles.liabilityCoverage}>
+            That&rsquo;s what your last statement reported. Your next snapshot
+            {upcomingReportingDate
+              ? ` is around ${formatDate(upcomingReportingDate)}${
+                  typeof upcomingReportingDays === "number"
+                    ? ` (${upcomingReportingDays} day${upcomingReportingDays === 1 ? "" : "s"} away)`
+                    : ""
+                }`
+              : " is the next time each card&rsquo;s statement closes"}
             {plan.cashApplied > 0
-              ? `Following the plan below drops you to ${projectedLabel}. Under 10% looks best to credit bureaus.`
-              : "Under 10% looks best to credit bureaus."}
+              ? `. Following the plan below drops it to ${projectedLabel}.`
+              : "."}
           </p>
         </div>
       </div>
@@ -2186,8 +2204,9 @@ function PayoffPlanPanel({
       </div>
 
       <p className={styles.payoffFootnote}>
-        Pay before the date shown so the lower balance is what your card reports to credit bureaus.
-        Scores update 30–45 days after.
+        Your card snapshots your balance once per cycle on its statement closing date — that&rsquo;s
+        what credit bureaus see. Paying by the due date above lands well before the next snapshot,
+        so the lower balance gets reported. Score updates 30–45 days after that.
       </p>
     </section>
   );

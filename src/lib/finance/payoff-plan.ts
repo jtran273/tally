@@ -25,6 +25,10 @@ export interface PayoffCardPlan {
   daysUntilStatementClose: number | null;
   statementCloseIsActual: boolean;
   dueDate: string | null;
+  // The date the next statement closes — what credit bureaus actually
+  // snapshot. ≈ due date + 9 days for a 30-day cycle.
+  nextReportingDate: string | null;
+  daysUntilNextReporting: number | null;
   minimumPaymentAmount: number | null;
   // Plain-English action line, e.g. "Pay $187 by Jun 18 to drop from 42% to 28%".
   actionText: string | null;
@@ -111,14 +115,17 @@ function buildActionText(
     if (card.tier === "optimal") return "No action needed.";
     return null;
   }
-  const deadlineIso = card.statementCloseDate ?? fallbackDeadlineIso;
+  const deadlineIso = card.dueDate ?? fallbackDeadlineIso;
   const deadlineLabel = deadlineIso ? formatShortDate(deadlineIso) : null;
+  const reportLabel = card.nextReportingDate ? formatShortDate(card.nextReportingDate) : null;
   const from = card.utilizationPercent;
   const to = card.projectedUtilizationPercent;
   const dropClause =
-    from !== null && to !== null
-      ? ` Drops usage from ${from.toFixed(0)}% to ${to.toFixed(0)}%.`
-      : "";
+    from !== null && to !== null && reportLabel
+      ? ` Next report (${reportLabel}) drops from ${from.toFixed(0)}% to ${to.toFixed(0)}%.`
+      : from !== null && to !== null
+        ? ` Drops usage from ${from.toFixed(0)}% to ${to.toFixed(0)}%.`
+        : "";
 
   if (deadlineLabel) {
     return `Pay ${formatMoney(card.suggestedPayment)} by ${deadlineLabel}.${dropClause}`;
@@ -157,6 +164,18 @@ export function buildPayoffPlan({
     }
     const dueDateIsActual = Boolean(row.dueDateIsActual);
 
+    // Next statement close ≈ due date + 9 days (30-day cycle minus 21-day grace).
+    // When Plaid gives the actual last-statement-issue date, prefer that + 30.
+    let nextReportingDate: string | null = null;
+    if (row.lastStatementIssueDate) {
+      nextReportingDate = addDays(row.lastStatementIssueDate, 30);
+      while (nextReportingDate && dayDifference(today, nextReportingDate) < 0) {
+        nextReportingDate = addDays(nextReportingDate, 30);
+      }
+    } else if (dueDate) {
+      nextReportingDate = addDays(dueDate, 9);
+    }
+
     return {
       accountId: row.accountId,
       name: row.name,
@@ -175,6 +194,8 @@ export function buildPayoffPlan({
       daysUntilStatementClose: dueDate ? dayDifference(today, dueDate) : null,
       statementCloseIsActual: dueDateIsActual,
       dueDate,
+      nextReportingDate,
+      daysUntilNextReporting: nextReportingDate ? dayDifference(today, nextReportingDate) : null,
       minimumPaymentAmount: row.minimumPaymentAmount ?? null,
       actionText: null
     };
