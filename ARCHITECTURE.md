@@ -44,7 +44,7 @@ Plaid API
 | Route | Purpose | Data source |
 | --- | --- | --- |
 | `/login` | Supabase Auth sign-in and optional local demo entry | Supabase Auth server client |
-| `/dashboard` | Balance dashboard with Net worth, Liquid, Debt, and Spendable scopes, sync freshness, selected-period transaction activity, liabilities due, category trend/month spending views, and mobile summary | Accounts, snapshots, transactions |
+| `/dashboard` | Balance dashboard with Net worth, Liquid, Debt, and Spendable scopes, sync freshness, selected-period transaction activity, liabilities due, credit-card payoff plan (per-card utilization tiers + cash allocation), category trend/month spending views, and mobile summary | Accounts, snapshots, transactions |
 | `/transactions` | Searchable/filterable transaction table, summary cards, merchant cleanup, CSV export link | Accounts, categories, enriched transactions |
 | `/transactions/[transactionId]` | Transaction edit surface | One enriched transaction plus categories |
 | `/agent-inbox` | Sanitized proposal inbox derived from open review items and normalized review suggestions | Open review items and stored suggestions |
@@ -190,7 +190,9 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 `src/lib/finance/balances.ts` derives account totals, sync freshness, and balance trends from accounts, balance snapshots, and transaction history. The dashboard supports Net worth, Liquid, Debt, and Spendable views over 1-week, 1-month, 3-month, 6-month, 1-year, and all-time ranges; internally those map to `netWorth`, `cash`, `liabilities`, and `cashMinusLiabilities`. Desktop layouts render the interactive balance chart; mobile layouts use a simplified balance summary with the same range controls and transaction link so phone views avoid horizontal chart overflow. Selecting a point in the desktop trend surfaces the related non-transfer transactions and links back to the transaction filters.
 
-`src/lib/finance/liabilities.ts` builds the liabilities-due panel from active credit accounts, cash balances, credit limits, and likely payment transactions. It estimates due dates from the last payment when available and highlights overdue or due-soon balances without relying on provider-sensitive ids.
+`src/lib/finance/liabilities.ts` builds the liabilities-due panel from active credit accounts, cash balances, credit limits, and likely payment transactions. It prefers Plaid liabilities fields (`next_payment_due_date`, `last_statement_issue_date`, `last_statement_balance`, `minimum_payment_amount`) when available and otherwise estimates due dates from the last payment, highlighting overdue or due-soon balances without relying on provider-sensitive ids.
+
+`src/lib/finance/payoff-plan.ts` is a pure helper that turns the same active credit accounts plus available cash into a deterministic payoff recommendation for the dashboard. It classifies per-card utilization into Optimal (<10%), OK (<30%), High (30–50%), and Critical (50%+) tiers, greedily allocates cash to drop above-30% cards to 30%, then below 10%, then by remaining balance. The returned plan exposes a per-card `nextReportingDate` (≈ due date + 9 days, or `last_statement_issue_date` + 30 when Plaid supplies it) and rolls all dates forward in 30-day cycles whenever an estimate has passed, so the panel stays correct as time advances. No AI dependency; the allocator and copy are fully deterministic.
 
 `src/lib/finance/spending.ts` powers category spending breakdowns, spending confidence, reimbursement-aware totals, and cleanup quality flags. The dashboard category panel can show cumulative category trends for the selected range or month-by-month category rows for the last six months. The separate `budget-guardrails.ts` helper remains available for deterministic guardrail summaries, but it is not the primary dashboard surface today.
 
