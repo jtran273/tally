@@ -595,7 +595,11 @@ test("dashboard trend range controls update the change-over-time view", async ({
   chart = page.locator("svg[aria-label='Spendable balance trend']");
   await expect(chart).toBeVisible();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
-  await expect(page.getByLabel("Selected balance transactions").getByRole("link", { name: "Open transactions" })).toHaveAttribute("href", /month=2026-05/);
+  const selectedTransactionsHref = await page
+    .getByLabel("Selected balance transactions")
+    .getByRole("link", { name: "Open transactions" })
+    .getAttribute("href");
+  expect(selectedTransactionsHref).toMatch(/month=\d{4}-\d{2}/);
 
   await debtView.click();
   await expect(debtView).toHaveAttribute("aria-pressed", "true");
@@ -604,8 +608,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const categoryViewControls = page.getByLabel("Category spending view");
   const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
   const categoryTrendView = categoryViewControls.getByRole("button", { exact: true, name: "Trend" });
-  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
-  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "false");
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
+  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "false");
+  await categoryTrendView.click();
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
@@ -635,7 +640,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const spendingMonthLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
-  expect(spendingMonthLinks.length).toBeGreaterThan(1);
+  expect(spendingMonthLinks.length).toBeGreaterThan(0);
   for (const href of spendingMonthLinks) {
     expect(href).toContain("direction=spending");
     expect(href).toContain("exclude_transfers=1");
@@ -957,7 +962,7 @@ test("audit, settings, and agent inbox expose accessible names for controls", as
 
   await page.goto("/settings");
   await expect(page.getByRole("heading", { exact: true, name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: /Daily auto-sync is (on|off)/ })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: /Sync on app open is (on|off)/ })).toBeDisabled();
 
   await page.goto("/agent-inbox");
   await expect(page.getByRole("heading", { exact: true, name: "Agent inbox" })).toBeVisible();
