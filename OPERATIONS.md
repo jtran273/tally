@@ -275,6 +275,7 @@ Scheduled job routes are:
 ```text
 /api/plaid/sync/scheduled
 /api/agents/proactive-scan/scheduled
+/api/openclaw/anomaly-alerts/scheduled
 /api/openclaw/briefing/scheduled
 ```
 
@@ -284,7 +285,7 @@ Configure `CRON_SECRET` as a server-only environment variable before enabling a 
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The Plaid scheduled route uses the Supabase service-role client, finds users with at least one non-revoked Plaid item where `auto_sync_enabled = true`, syncs only those items, and writes the same persisted sync run summaries as manual sync. The proactive scan route returns `status: "disabled"` unless `PROACTIVE_SCAN_ENABLED=true`; when enabled, it uses `PROACTIVE_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 45 days for candidate expenses, caps candidate transactions with `PROACTIVE_SCAN_MAX_TX`, uses OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`, and writes only advisory reimbursement proposals. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, provider kind/version, and sanitized metadata.
+The Plaid scheduled route uses the Supabase service-role client, finds users with at least one non-revoked Plaid item where `auto_sync_enabled = true`, syncs only those items, and writes the same persisted sync run summaries as manual sync. The proactive scan route returns `status: "disabled"` unless `PROACTIVE_SCAN_ENABLED=true`; when enabled, it uses `PROACTIVE_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 45 days for candidate expenses, caps candidate transactions with `PROACTIVE_SCAN_MAX_TX`, uses OpenAI only when `ENABLE_OPENAI_AUTO_REVIEW=true`, and writes only advisory reimbursement proposals. The anomaly alert scan uses `ANOMALY_ALERT_SCAN_USER_ID` or `OPENCLAW_USER_ID`, looks back 120 days, caps transactions with `ANOMALY_ALERT_SCAN_MAX_TX`, and persists deterministic alert rows only. The OpenClaw briefing route uses `OPENCLAW_USER_ID` and writes only a proposal payload for OpenClaw to inspect. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, provider kind/version, and sanitized metadata.
 
 ## Supabase Troubleshooting
 
@@ -365,6 +366,7 @@ GET /api/openclaw/reimbursements?limit=<n>
 GET /api/openclaw/safe-to-spend?amount=<number>
 POST /api/openclaw/query
 POST /api/openclaw/replies
+GET|POST /api/openclaw/anomaly-alerts/scheduled
 GET|POST /api/openclaw/briefing/scheduled
 ```
 
@@ -381,6 +383,7 @@ Expected:
 - `/api/openclaw/safe-to-spend` returns a green/yellow/red answer with upcoming bills, projected cash, review count, reimbursement outstanding, and weekly pace,
 - `/api/openclaw/query` accepts only structured intents: `recent_transactions`, `review_items`, `reimbursements`, or `safe_to_spend`,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
+- `/api/openclaw/anomaly-alerts/scheduled` persists deterministic alert rows with minimized evidence for later outbox delivery,
 - `/api/openclaw/briefing/scheduled` idempotently creates or updates one `openclaw_briefing` proposal for the configured cadence, defaulting to weekly,
 - stale reply attempts for proposals that are no longer pending return `409` rather than retryable server errors,
 - OpenClaw never writes finance rows directly and Tally never sends iMessages,
@@ -394,6 +397,7 @@ The preferred OpenClaw delivery contract is `GET /api/openclaw/outbox`. It wraps
 - `reimbursement_alert`: high-priority summary when current-week reimbursement dollars are outstanding.
 - `reimbursement_clarification`: one concise question plus a `replyAction` pointing back to `/api/openclaw/replies`.
 - `review_queue_alert`: high-priority cleanup prompt when open review items exist.
+- `anomaly_alert`: compact persisted anomaly copy for duplicate charges, large transactions, stale syncs, and high card balances.
 
 The outbox does not contain delivery addresses, phone numbers, iMessage metadata, Twilio credentials, Plaid ids, raw provider payloads, service-role keys, or write authority. OpenClaw owns delivery/dedupe state; Tally owns finance records and reply validation.
 
@@ -540,6 +544,7 @@ Current OpenClaw production bridge expectation:
   - `supabase/migrations/20260513000100_add_agent_proposals.sql`,
   - `supabase/migrations/20260513000300_add_openclaw_briefing_proposals.sql`,
   - `supabase/migrations/20260513000500_restrict_direct_sensitive_table_access.sql`.
+- `anomaly_alert` packets require `supabase/migrations/20260604000100_add_anomaly_alerts.sql`.
 - If those migrations are absent, OpenClaw endpoints degrade by returning empty proposal/question arrays instead of exposing database errors to the local iMessage bridge.
 - Do not apply these migrations through the Supabase REST API or with the service-role key alone. Use Supabase SQL Editor, Supabase CLI, or a direct `SUPABASE_DB_URL` migration session, then confirm PostgREST schema reload with a no-budget outbox probe.
 

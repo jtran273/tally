@@ -1,21 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createAnomalyAlerts,
   createAgentProposal,
   dismissAgentProposal,
   filterTransactionRecordsForList,
   type FinanceSupabaseClient,
   getAgentProposalById,
   listAgentProposals,
+  listAnomalyAlerts,
   listAccounts,
   listReviewItems,
   listTransactions,
   recordClarificationAnswer,
   transactionMatchesSearch,
+  updateAnomalyAlertStatus,
   upsertAgentProposalBySourceContext
 } from "./queries";
 import type {
   AccountRow,
+  AnomalyAlertRow,
   AgentProposalRow,
   AuditEventRow,
   CategoryRow,
@@ -649,6 +653,7 @@ test("listTransactions pushes transfer and review filters before hydration limit
 type FakeTableName =
   | "accounts"
   | "agent_proposals"
+  | "anomaly_alerts"
   | "audit_events"
   | "categories"
   | "enriched_transactions"
@@ -787,6 +792,7 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 class FakeFinanceClient {
   accounts: AccountRow[] = [];
   agentProposals: AgentProposalRow[] = [];
+  anomalyAlerts: AnomalyAlertRow[] = [];
   auditEvents: AuditEventRow[] = [];
   categories: CategoryRow[] = [];
   enrichedTransactions: EnrichedTransactionRow[] = [];
@@ -809,6 +815,8 @@ class FakeFinanceClient {
         return this.accounts as unknown as Array<Record<string, unknown>>;
       case "agent_proposals":
         return this.agentProposals as unknown as Array<Record<string, unknown>>;
+      case "anomaly_alerts":
+        return this.anomalyAlerts as unknown as Array<Record<string, unknown>>;
       case "audit_events":
         return this.auditEvents as unknown as Array<Record<string, unknown>>;
       case "categories":
@@ -842,13 +850,13 @@ class FakeFinanceClient {
     const rows = this.rowsFor(table);
     return {
       delete: () => new FakeQueryBuilder(rows, "delete", undefined, (count) => this.recordLimit(table, count)),
-      insert: (values: Partial<AgentProposalRow> | Partial<AuditEventRow> | Array<Partial<AgentProposalRow> | Partial<AuditEventRow>>) =>
+      insert: (values: Partial<AgentProposalRow> | Partial<AnomalyAlertRow> | Partial<AuditEventRow> | Array<Partial<AgentProposalRow> | Partial<AnomalyAlertRow> | Partial<AuditEventRow>>) =>
         new FakeQueryBuilder(rows, "insert", values as Array<Partial<Record<string, unknown>>>, (count) => this.recordLimit(table, count)),
       select: (columns?: string) => {
         this.recordSelect(table, columns);
         return new FakeQueryBuilder(rows, "select", undefined, (count) => this.recordLimit(table, count));
       },
-      update: (values: Partial<AgentProposalRow> | Partial<AuditEventRow>) =>
+      update: (values: Partial<AgentProposalRow> | Partial<AnomalyAlertRow> | Partial<AuditEventRow>) =>
         new FakeQueryBuilder(rows, "update", values as Partial<Record<string, unknown>>, (count) => this.recordLimit(table, count)),
       upsert: (values: Partial<AgentProposalRow> | Partial<AgentProposalRow>[]) =>
         new FakeQueryBuilder(rows, "upsert", values, (count) => this.recordLimit(table, count))
@@ -910,6 +918,81 @@ function agentProposalRow(input: Partial<AgentProposalRow> = {}): AgentProposalR
     ...input
   };
 }
+
+function anomalyAlertRow(input: Partial<AnomalyAlertRow> = {}): AnomalyAlertRow {
+  return {
+    body: "Possible duplicate charge.",
+    created_at: "2026-06-04T08:00:00.000Z",
+    dedupe_key: "duplicate_charge:tx-1:tx-2",
+    detected_at: "2026-06-04T08:00:00.000Z",
+    dismissed_at: null,
+    evidence: {},
+    first_seen_at: "2026-06-04T08:00:00.000Z",
+    id: "alert-1",
+    last_seen_at: "2026-06-04T08:00:00.000Z",
+    reason_code: "duplicate_charge",
+    resolved_at: null,
+    severity: "warning",
+    status: "pending",
+    title: "Possible duplicate charge",
+    updated_at: "2026-06-04T08:00:00.000Z",
+    user_id: userId,
+    ...input
+  };
+}
+
+test("anomaly alerts insert, list pending, refresh, and update status", async () => {
+  const client = new FakeFinanceClient();
+  client.anomalyAlerts.push(anomalyAlertRow({
+    id: "resolved-alert",
+    status: "resolved"
+  }));
+
+  const [created] = await createAnomalyAlerts(client.asClient(), userId, [
+    {
+      body: "A large charge posted on 2026-06-04.",
+      dedupeKey: "large_transaction:tx-1",
+      evidence: { amount: 1800, transactionIds: ["tx-1"] },
+      reasonCode: "large_transaction",
+      severity: "warning",
+      title: "Large charge"
+    }
+  ], {
+    now: new Date("2026-06-04T12:00:00.000Z")
+  });
+  const pending = await listAnomalyAlerts(client.asClient(), userId, { status: "pending" });
+  const dismissed = await updateAnomalyAlertStatus(
+    client.asClient(),
+    userId,
+    created!.id,
+    "dismissed",
+    { now: new Date("2026-06-04T13:00:00.000Z") }
+  );
+
+  assert.equal(created?.status, "pending");
+  assert.deepEqual(pending.map((alert) => alert.id), [created!.id]);
+  assert.equal(dismissed.status, "dismissed");
+  assert.equal(dismissed.dismissedAt, "2026-06-04T13:00:00.000Z");
+});
+
+test("anomaly alert safety rejects forbidden evidence before insert", async () => {
+  const client = new FakeFinanceClient();
+
+  await assert.rejects(
+    () => createAnomalyAlerts(client.asClient(), userId, [
+      {
+        body: "Unsafe evidence",
+        dedupeKey: "large_transaction:tx-unsafe",
+        evidence: { raw_payload: { secret: true } },
+        reasonCode: "large_transaction",
+        severity: "warning",
+        title: "Unsafe evidence"
+      }
+    ]),
+    /forbidden data|forbidden fields/i
+  );
+  assert.equal(client.anomalyAlerts.length, 0);
+});
 
 test("agent proposals insert, list pending, and filter expired rows", async () => {
   const client = new FakeFinanceClient();

@@ -4,6 +4,9 @@ import {
   OpenClawRouteConfigurationError,
   requireOpenClawAuth
 } from "@/lib/openclaw/route-helpers";
+import { buildOpenClawAnomalyPackets } from "@/lib/anomaly/packet";
+import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
+import { FinanceDbError, listAnomalyAlerts } from "@/lib/db";
 import { buildOpenClawOutboxResponse } from "@/lib/openclaw/outbox";
 import {
   loadOpenClawSignals,
@@ -41,6 +44,12 @@ function parseMinPriority(value: string | null): OpenClawOutboxMinimumPriority |
   throw new OpenClawSignalsBadRequestError("min_priority must be normal or high.");
 }
 
+function isMissingAnomalyAlertsTable(error: unknown) {
+  return error instanceof FinanceDbError &&
+    error.message.toLowerCase().includes("anomaly_alerts") &&
+    error.message.toLowerCase().includes("could not find the table");
+}
+
 export async function GET(request: NextRequest) {
   const unauthorized = requireOpenClawAuth(request);
   if (unauthorized) return unauthorized;
@@ -64,7 +73,29 @@ export async function GET(request: NextRequest) {
   try {
     const { client, userId } = createOpenClawServiceContext();
     const signals = await loadOpenClawSignals(client, userId, { since });
-    return jsonNoStore(buildOpenClawOutboxResponse(signals, { includeBudgetBriefing, messageLimit, minPriority }));
+    let anomalyPackets: OpenClawAnomalyPacket[];
+    try {
+      const alerts = await listAnomalyAlerts(client, userId, {
+        limit: 10,
+        since,
+        status: "pending"
+      });
+      anomalyPackets = buildOpenClawAnomalyPackets(alerts, {
+        generatedAt: signals.generatedAt,
+        minSeverity: "warning",
+        packetLimit: 10
+      }).packets;
+    } catch (error) {
+      if (!isMissingAnomalyAlertsTable(error)) throw error;
+      anomalyPackets = [];
+    }
+
+    return jsonNoStore(buildOpenClawOutboxResponse(signals, {
+      anomalyPackets,
+      includeBudgetBriefing,
+      messageLimit,
+      minPriority
+    }));
   } catch (error) {
     if (error instanceof OpenClawRouteConfigurationError) {
       return jsonNoStore({ error: "OpenClaw integration is not configured." }, { status: 503 });

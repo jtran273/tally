@@ -2,6 +2,11 @@ import { createClient } from "@supabase/supabase-js";
 import type {
   AccountRecord,
   AccountRow,
+  AnomalyAlertRecord,
+  AnomalyAlertReasonCode,
+  AnomalyAlertRow,
+  AnomalyAlertSeverity,
+  AnomalyAlertStatus,
   AgentProposalRecord,
   AgentProposalRow,
   AgentProposalStatus,
@@ -46,6 +51,7 @@ import {
   normalizeAgentClarificationAnswer,
   type AgentProposalJsonObject
 } from "../agents/proposals";
+import { assertAssistantContextSafe } from "../agents/assistant-contract";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildReimbursementLinkDecision, isReportableIncomeIntent } from "../finance/reimbursement-linking";
 import { transactionSpendingAmount } from "../finance/spending";
@@ -199,6 +205,8 @@ export interface AuditEventInput {
 }
 
 type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transactions"]["Update"];
+type AnomalyAlertInsert = Database["public"]["Tables"]["anomaly_alerts"]["Insert"];
+type AnomalyAlertUpdate = Database["public"]["Tables"]["anomaly_alerts"]["Update"];
 type AgentProposalInsert = Database["public"]["Tables"]["agent_proposals"]["Insert"];
 type AgentProposalUpdate = Database["public"]["Tables"]["agent_proposals"]["Update"];
 type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
@@ -254,6 +262,24 @@ export interface AgentProposalListFilters {
   limit?: number;
   since?: string;
   status?: AgentProposalStatus | "all";
+}
+
+export interface AnomalyAlertMutationInput {
+  body: string;
+  dedupeKey: string;
+  detectedAt?: string;
+  evidence?: Json;
+  reasonCode: AnomalyAlertReasonCode;
+  severity: AnomalyAlertSeverity;
+  title: string;
+}
+
+export interface AnomalyAlertListFilters {
+  includeResolved?: boolean;
+  limit?: number;
+  reasonCode?: AnomalyAlertReasonCode;
+  since?: string;
+  status?: AnomalyAlertStatus | "all";
 }
 
 export interface AcceptAgentProposalOptions {
@@ -480,6 +506,27 @@ function toAgentProposalRecord(row: AgentProposalRow): AgentProposalRecord {
     acceptedAt: row.accepted_at,
     dismissedAt: row.dismissed_at,
     answeredAt: row.answered_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function toAnomalyAlertRecord(row: AnomalyAlertRow): AnomalyAlertRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    reasonCode: row.reason_code,
+    severity: row.severity,
+    status: row.status,
+    dedupeKey: row.dedupe_key,
+    title: row.title,
+    body: row.body,
+    evidence: row.evidence,
+    detectedAt: row.detected_at,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    dismissedAt: row.dismissed_at,
+    resolvedAt: row.resolved_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1292,6 +1339,118 @@ function assertPendingAgentProposal(proposal: AgentProposalRecord, context: stri
   if (isAgentProposalExpired(proposal)) {
     throw new FinanceDbError(context, { message: "Agent proposal has expired." });
   }
+}
+
+function anomalyAlertInsert(userId: string, input: AnomalyAlertMutationInput, now: string): AnomalyAlertInsert {
+  const evidence = input.evidence ?? {};
+  assertAssistantContextSafe(evidence);
+
+  return {
+    user_id: userId,
+    reason_code: input.reasonCode,
+    severity: input.severity,
+    dedupe_key: input.dedupeKey,
+    title: input.title,
+    body: input.body,
+    evidence,
+    detected_at: input.detectedAt ?? now,
+    first_seen_at: now,
+    last_seen_at: now
+  };
+}
+
+export async function createAnomalyAlerts(
+  client: FinanceSupabaseClient,
+  userId: string,
+  inputs: readonly AnomalyAlertMutationInput[],
+  options: { now?: Date } = {}
+): Promise<AnomalyAlertRecord[]> {
+  if (inputs.length === 0) return [];
+
+  const now = (options.now ?? new Date()).toISOString();
+  const result = await client
+    .from("anomaly_alerts")
+    .insert(inputs.map((input) => anomalyAlertInsert(userId, input, now)))
+    .select("*");
+
+  return expectData(result, "Create anomaly alerts").map(toAnomalyAlertRecord);
+}
+
+export async function listAnomalyAlerts(
+  client: FinanceSupabaseClient,
+  userId: string,
+  filters: AnomalyAlertListFilters = {}
+): Promise<AnomalyAlertRecord[]> {
+  let query = client
+    .from("anomaly_alerts")
+    .select("*")
+    .eq("user_id", userId)
+    .order("detected_at", { ascending: false });
+
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  } else if (!filters.includeResolved) {
+    query = query.eq("status", "pending");
+  }
+  if (filters.reasonCode) {
+    query = query.eq("reason_code", filters.reasonCode);
+  }
+  if (filters.since) {
+    query = query.gte("updated_at", filters.since);
+  }
+  if (filters.limit !== undefined) {
+    query = query.limit(filters.limit);
+  }
+
+  return expectData(await query, "List anomaly alerts").map(toAnomalyAlertRecord);
+}
+
+export async function refreshAnomalyAlerts(
+  client: FinanceSupabaseClient,
+  userId: string,
+  alertIds: readonly string[],
+  options: { now?: Date } = {}
+): Promise<AnomalyAlertRecord[]> {
+  if (alertIds.length === 0) return [];
+
+  const now = (options.now ?? new Date()).toISOString();
+  const update: AnomalyAlertUpdate = {
+    last_seen_at: now,
+    updated_at: now
+  };
+  const result = await client
+    .from("anomaly_alerts")
+    .update(update)
+    .eq("user_id", userId)
+    .in("id", [...alertIds])
+    .select("*");
+
+  return expectData(result, "Refresh anomaly alerts").map(toAnomalyAlertRecord);
+}
+
+export async function updateAnomalyAlertStatus(
+  client: FinanceSupabaseClient,
+  userId: string,
+  alertId: string,
+  status: AnomalyAlertStatus,
+  options: { now?: Date } = {}
+): Promise<AnomalyAlertRecord> {
+  const now = (options.now ?? new Date()).toISOString();
+  const update: AnomalyAlertUpdate = {
+    status,
+    dismissed_at: status === "dismissed" ? now : null,
+    resolved_at: status === "resolved" ? now : null,
+    updated_at: now
+  };
+  const result = await client
+    .from("anomaly_alerts")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", alertId)
+    .select("*")
+    .single();
+
+  return toAnomalyAlertRecord(expectData(result, "Update anomaly alert status"));
 }
 
 export async function createAgentProposal(
