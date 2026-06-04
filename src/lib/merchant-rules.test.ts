@@ -260,6 +260,7 @@ test("merchant rule impact preview deterministically shows safe recent matches a
           explanation: "Needs category",
           id: "review-openai",
           reason: "missing-category",
+          resolutionKind: null,
           resolutionNote: null,
           resolvedAt: null,
           status: "open",

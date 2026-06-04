@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
       const alerts = await listAnomalyAlerts(client, userId, {
         limit: 10,
         since,
+        sinceColumn: "first_seen_at",
         status: "pending"
       });
       anomalyPackets = buildOpenClawAnomalyPackets(alerts, {

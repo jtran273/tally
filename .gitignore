@@ -27,6 +27,8 @@ pnpm-debug.log*
 .vscode/
 .idea/
 .openclaw/
+.claude/worktrees/
+supabase/.temp/
 
 # Test and coverage output
 coverage/

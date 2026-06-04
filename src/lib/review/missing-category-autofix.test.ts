@@ -60,6 +60,7 @@ function reviewItem(overrides: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     explanation: "Missing category.",
     id: "review-1",
     reason: "missing-category",
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

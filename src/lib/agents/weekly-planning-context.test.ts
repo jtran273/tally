@@ -110,6 +110,7 @@ function reviewItem(transactionRecord: TransactionRecord): ReviewQueueItem {
     createdAt: "2026-05-12T09:00:00.000Z",
     explanation: "Needs category confirmation.",
     id: "review-shared",
+    resolutionKind: null,
     reason: "missing-category",
     resolutionNote: null,
     resolvedAt: null,

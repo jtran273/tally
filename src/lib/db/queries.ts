@@ -280,6 +280,7 @@ export interface AnomalyAlertListFilters {
   limit?: number;
   reasonCode?: AnomalyAlertReasonCode;
   since?: string;
+  sinceColumn?: "created_at" | "detected_at" | "first_seen_at" | "updated_at";
   status?: AnomalyAlertStatus | "all";
 }
 
@@ -347,7 +348,11 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function toAccountRecord(row: AccountRow, institution?: InstitutionRow): AccountRecord {
+function toAccountRecord(
+  row: AccountRow,
+  institution?: InstitutionRow,
+  plaidItem?: Pick<PlaidItemRow, "auto_sync_enabled" | "connection_source">
+): AccountRecord {
   return {
     id: row.id,
     userId: row.user_id,
@@ -366,6 +371,8 @@ function toAccountRecord(row: AccountRow, institution?: InstitutionRow): Account
     color: row.color,
     isActive: row.is_active,
     lastSyncedAt: row.last_synced_at,
+    plaidAutoSyncEnabled: plaidItem?.auto_sync_enabled ?? null,
+    plaidConnectionSource: plaidItem?.connection_source ?? null,
     lastStatementIssueDate: row.last_statement_issue_date,
     lastStatementBalance: row.last_statement_balance,
     nextPaymentDueDate: row.next_payment_due_date,
@@ -827,18 +834,18 @@ export async function listAccounts(client: FinanceSupabaseClient, userId: string
   const [accountResult, institutionResult, plaidItemResult] = await Promise.all([
     client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true).order("type").order("name"),
     client.from("institutions").select("*").eq("user_id", userId),
-    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
+    client.from("plaid_items").select("id,connection_source,auto_sync_enabled").eq("user_id", userId).neq("status", "revoked")
   ]);
 
   const institutionById = byId(expectData(institutionResult, "List account institutions"));
-  const activePlaidItemIds = new Set(
-    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
-      .map((item) => item.id)
+  const activePlaidItemsById = new Map(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "auto_sync_enabled" | "connection_source" | "id">>)
+      .map((item) => [item.id, item])
   );
   return expectData(accountResult, "List accounts")
-    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .filter((account) => activePlaidItemsById.has(account.plaid_item_id))
     .map((account) =>
-      toAccountRecord(account, institutionById.get(account.institution_id))
+      toAccountRecord(account, institutionById.get(account.institution_id), activePlaidItemsById.get(account.plaid_item_id))
     );
 }
 
@@ -1372,7 +1379,10 @@ export async function createAnomalyAlerts(
   const now = (options.now ?? new Date()).toISOString();
   const result = await client
     .from("anomaly_alerts")
-    .insert(inputs.map((input) => anomalyAlertInsert(userId, input, now)))
+    .upsert(inputs.map((input) => anomalyAlertInsert(userId, input, now)), {
+      ignoreDuplicates: true,
+      onConflict: "user_id,dedupe_key"
+    })
     .select("*");
 
   return expectData(result, "Create anomaly alerts").map(toAnomalyAlertRecord);
@@ -1398,7 +1408,7 @@ export async function listAnomalyAlerts(
     query = query.eq("reason_code", filters.reasonCode);
   }
   if (filters.since) {
-    query = query.gte("updated_at", filters.since);
+    query = query.gte(filters.sinceColumn ?? "updated_at", filters.since);
   }
   if (filters.limit !== undefined) {
     query = query.limit(filters.limit);

@@ -63,7 +63,13 @@ function daysBetween(left: string, right: string) {
 }
 
 function spendingTransactions(transactions: readonly TransactionRecord[]) {
-  return transactions.filter((transaction) => transactionSpendingAmount(transaction) > 0);
+  return transactions.filter((transaction) =>
+    transaction.status === "posted" && transactionSpendingAmount(transaction) > 0
+  );
+}
+
+function isSyncableAccount(account: AccountRecord) {
+  return account.plaidConnectionSource !== "manual" && account.plaidAutoSyncEnabled !== false;
 }
 
 /**
@@ -222,6 +228,7 @@ export function detectStaleSync(
 
   for (const account of input.accounts) {
     if (!account.isActive) continue;
+    if (!isSyncableAccount(account)) continue;
 
     const state = accountSyncState(account, { now, staleAfterHours: thresholds.staleAfterHours });
     if (state === "fresh") continue;

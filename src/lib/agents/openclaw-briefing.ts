@@ -397,8 +397,8 @@ export async function persistOpenClawBriefing(
     loadUpcomingCalendarContext(client, userId, { generatedAt, now }),
     listAgentProposals(client, userId, { status: "pending" }),
     listRecurringExpenses(client, userId),
-    listReviewItems(client, userId, "open"),
-    listTransactions(client, userId, { fromDate, limit: 250, toDate })
+    listReviewItems(client, userId, "open", { includeRawContext: false }),
+    listTransactions(client, userId, { fromDate, includeRawContext: false, limit: 250, toDate })
   ]);
 
   const weeklyPlanningContext = buildWeeklyPlanningContext({

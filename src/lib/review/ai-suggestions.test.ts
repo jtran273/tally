@@ -85,6 +85,7 @@ function reviewItem(input: Partial<ReviewItemRow>): ReviewItemRow {
     explanation: "Needs AI cleanup.",
     id: "review-openai",
     reason: "low-confidence",
+    resolution_kind: null,
     resolution_note: null,
     resolved_at: null,
     status: "open",

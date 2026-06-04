@@ -72,6 +72,12 @@ Plaid API
 | `/api/agents/proactive-scan/scheduled` | `GET`/`POST` | Run a bounded reimbursement candidate detector scan when authorized with `CRON_SECRET` |
 | `/api/openclaw/anomaly-alerts/scheduled` | `GET`/`POST` | Persist deterministic anomaly alerts for the configured OpenClaw user when authorized with `CRON_SECRET` |
 | `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
+| `/api/openclaw/outbox` | `GET` | Return delivery-neutral OpenClaw message packets, including clarification, review, reimbursement, anomaly, and budget messages |
+| `/api/openclaw/recent-transactions` | `GET` | Return bounded OpenClaw-safe recent transaction DTOs without raw Plaid context |
+| `/api/openclaw/review-items` | `GET` | Return bounded OpenClaw-safe open review items without raw Plaid context |
+| `/api/openclaw/reimbursements` | `GET` | Return outstanding reimbursement summaries and bounded reimbursement items |
+| `/api/openclaw/safe-to-spend` | `GET` | Return a bounded green/yellow/red spend answer from existing planning context |
+| `/api/openclaw/query` | `POST` | Route allowlisted structured OpenClaw read intents to safe read endpoints |
 | `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
 | `/api/openclaw/briefing/scheduled` | `GET`/`POST` | Compile or update the current OpenClaw briefing proposal when authorized with `CRON_SECRET` |
 | `/api/export/transactions` | `GET` | Export filtered enriched transactions as CSV |

@@ -46,6 +46,7 @@ function review(transactionId: string, reason: ReviewReason): ReviewItemRecord {
     explanation: `Fixture ${reason} review.`,
     id: `review-${reason}`,
     reason,
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

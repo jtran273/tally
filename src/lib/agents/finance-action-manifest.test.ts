@@ -65,6 +65,7 @@ function reviewItem(
     explanation: "Needs review.",
     id,
     reason,
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

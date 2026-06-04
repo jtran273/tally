@@ -295,7 +295,7 @@ export interface ReviewItemRow {
   confidence: number | null;
   resolved_at: string | null;
   resolution_note: string | null;
-  resolution_kind?: ReviewResolutionKind | null;
+  resolution_kind: ReviewResolutionKind | null;
   created_at: string;
   updated_at: string;
 }
@@ -491,6 +491,8 @@ export interface AccountRecord {
   color: string | null;
   isActive: boolean;
   lastSyncedAt: string | null;
+  plaidAutoSyncEnabled?: boolean | null;
+  plaidConnectionSource?: PlaidConnectionSource | null;
   lastStatementIssueDate?: string | null;
   lastStatementBalance?: number | null;
   nextPaymentDueDate?: string | null;
@@ -560,7 +562,7 @@ export interface ReviewItemRecord {
   confidence: number | null;
   resolvedAt: string | null;
   resolutionNote: string | null;
-  resolutionKind?: ReviewResolutionKind | null;
+  resolutionKind: ReviewResolutionKind | null;
   createdAt: string;
 }
 
