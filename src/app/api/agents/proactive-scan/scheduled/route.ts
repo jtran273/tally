@@ -43,5 +43,3 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ error: "Unable to run proactive scan." }, { status: 500 });
   }
 }
-
-export const GET = POST;
