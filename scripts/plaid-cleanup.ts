@@ -10,6 +10,13 @@ import {
 } from "../src/lib/admin/plaid-cleanup";
 import type { Database } from "../src/lib/db/types";
 
+// Admin-only script. Uses SUPABASE_SERVICE_ROLE_KEY to bypass RLS. Never wire
+// this into CI or any automated pipeline — running it there would expose the
+// service role key in workflow logs and risks mass-deleting Plaid items.
+if (process.env.CI) {
+  throw new Error("plaid-cleanup must not run in CI. Run from a trusted operator machine.");
+}
+
 function readValue(args: string[], name: string) {
   const index = args.indexOf(name);
   if (index === -1) return undefined;

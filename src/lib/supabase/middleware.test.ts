@@ -6,7 +6,16 @@ import { isSessionBypassPath, updateSession } from "./middleware";
 test("OpenClaw API routes bypass Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/openclaw/signals"), true);
   assert.equal(isSessionBypassPath("/api/openclaw/replies"), true);
-  assert.equal(isSessionBypassPath("/api/openclaw"), true);
+  assert.equal(isSessionBypassPath("/api/openclaw/query"), true);
+  assert.equal(isSessionBypassPath("/api/openclaw/briefing/scheduled"), true);
+});
+
+test("OpenClaw bypass is default-deny — unknown subpaths are not allowlisted", () => {
+  // Adding a new OpenClaw route requires editing SESSION_BYPASS_PATHS so the
+  // route's auth scheme gets a deliberate review.
+  assert.equal(isSessionBypassPath("/api/openclaw"), false);
+  assert.equal(isSessionBypassPath("/api/openclaw/admin"), false);
+  assert.equal(isSessionBypassPath("/api/openclaw/totally-new"), false);
 });
 
 test("scheduled proactive scan bypasses Supabase session redirects", () => {

@@ -62,6 +62,25 @@ const securityHeaders = [
   }
 ];
 
+function buildAllowedServerActionOrigins() {
+  const origins = new Set<string>();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (appUrl) {
+    try {
+      origins.add(new URL(appUrl).host);
+    } catch {
+      // ignore malformed NEXT_PUBLIC_APP_URL — fall back to Next defaults.
+    }
+  }
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    origins.add(vercelUrl);
+  }
+  return Array.from(origins);
+}
+
+const allowedServerActionOrigins = buildAllowedServerActionOrigins();
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -72,7 +91,12 @@ const nextConfig: NextConfig = {
     ];
   },
   devIndicators: false,
-  reactStrictMode: true
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
+  reactStrictMode: true,
+  ...(allowedServerActionOrigins.length
+    ? { experimental: { serverActions: { allowedOrigins: allowedServerActionOrigins } } }
+    : {})
 };
 
 export default nextConfig;

@@ -35,7 +35,7 @@ export function setDemoCookie(response: NextResponse) {
     httpOnly: true,
     maxAge: DEMO_COOKIE_MAX_AGE_SECONDS,
     path: "/",
-    sameSite: "lax",
+    sameSite: "strict",
     secure: isProductionRuntime()
   });
 }
@@ -45,7 +45,7 @@ export function clearDemoCookie(response: NextResponse) {
     httpOnly: true,
     maxAge: 0,
     path: "/",
-    sameSite: "lax",
+    sameSite: "strict",
     secure: isProductionRuntime()
   });
 }

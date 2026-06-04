@@ -103,6 +103,14 @@ async function assertLiveSignalsIfConfigured() {
     return;
   }
 
+  // Refuse to send the OpenClaw bearer over plaintext HTTP. Only allow
+  // localhost over http for developer-local smoke runs.
+  const parsedSignalsUrl = new URL(signalsUrl);
+  const isLocalhost = parsedSignalsUrl.hostname === "localhost" || parsedSignalsUrl.hostname === "127.0.0.1";
+  if (parsedSignalsUrl.protocol !== "https:" && !isLocalhost) {
+    throw new Error("OPENCLAW_SIGNALS_URL must use https:// (or be a localhost URL) so the bearer token is not sent in plaintext.");
+  }
+
   const response = await fetch(signalsUrl, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"

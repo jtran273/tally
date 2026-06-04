@@ -39,6 +39,11 @@ Current GitHub repository protections confirmed enabled:
 - branch protection on `main` (force-push and deletion blocked; conversation resolution required),
 - CodeQL code scanning through `.github/workflows/codeql.yml` (with `security-and-quality` query suite),
 - dependency review through `.github/workflows/dependency-review.yml` (fails PRs on `moderate` or higher),
+- supplementary secret scanning via `gitleaks` (`.github/workflows/gitleaks.yml`),
+- workflow lint via `actionlint` (`.github/workflows/actionlint.yml`),
+- OpenSSF Scorecard analysis (`.github/workflows/scorecard.yml`),
+- `npm ci --ignore-scripts` in CI to block transitive `postinstall` exfiltration,
+- all GitHub Actions pinned to commit SHAs,
 - private vulnerability reporting via GitHub Security Advisories.
 
 ## Secret Handling
@@ -198,6 +203,8 @@ If push notifications are added later, they must be opt-in, manageable from Sett
 `next.config.ts` sets baseline headers:
 
 - `Content-Security-Policy`
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Resource-Policy: same-origin`
 - `Permissions-Policy`
 - `Referrer-Policy`
 - `Strict-Transport-Security`
@@ -205,7 +212,13 @@ If push notifications are added later, they must be opt-in, manageable from Sett
 - `X-DNS-Prefetch-Control`
 - `X-Frame-Options`
 
+`poweredByHeader` is disabled (no `X-Powered-By: Next.js`). Production browser source maps are disabled. Server actions are constrained to `NEXT_PUBLIC_APP_URL` and `VERCEL_URL` via `experimental.serverActions.allowedOrigins`.
+
 The CSP allows the app itself, Supabase, and Plaid domains needed for Auth and Plaid Link. If a new browser-side vendor is added, update the CSP intentionally.
+
+### Known CSP gap
+
+`script-src` and `style-src` still include `'unsafe-inline'`. The app has no inline scripts/styles of its own (confirmed by audit), but Next.js emits inline hydration scripts that require nonces if `'unsafe-inline'` is removed. Migrating to a nonce-based CSP requires generating a per-request nonce in `src/proxy.ts`, propagating it via the `x-nonce` request header, marking the root layout dynamic (`export const dynamic = 'force-dynamic'`), and ideally running a `Content-Security-Policy-Report-Only` rollout for 1-2 weeks before enforcement. This is tracked as future work.
 
 ## Logging Rules
 

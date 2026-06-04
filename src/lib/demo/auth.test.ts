@@ -73,5 +73,5 @@ test("demo cookie persists for a longer same-device session", () => {
   assert.match(setCookie ?? "", new RegExp(`^${DEMO_COOKIE_NAME}=1;`));
   assert.match(setCookie ?? "", new RegExp(`Max-Age=${DEMO_COOKIE_MAX_AGE_SECONDS}`));
   assert.match(setCookie ?? "", /HttpOnly/);
-  assert.match(setCookie ?? "", /SameSite=lax/i);
+  assert.match(setCookie ?? "", /SameSite=strict/i);
 });
