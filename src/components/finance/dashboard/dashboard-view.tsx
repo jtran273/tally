@@ -575,6 +575,10 @@ function TrendChart({
     () => transactions.filter((transaction) => transactionIncludedInScope(transaction, accountTypeById, scope)),
     [accountTypeById, scope, transactions]
   );
+  const activityTransactions = useMemo(
+    () => scope === "cash" ? filterReportableInflowTransactions(transactions) : scopedTransactions,
+    [scope, scopedTransactions, transactions]
+  );
   const delta = latestTrendDelta(selectedTrend);
   const DeltaIcon = !delta || delta.amount >= 0 ? TrendingUp : TrendingDown;
   const deltaClassName = delta ? deltaToneClass(delta.amount, positiveIsGood) : undefined;
@@ -625,10 +629,10 @@ function TrendChart({
   const activeDelta = pointDelta(selectedTrend, selectedIndex);
   const activeDeltaClass = activeDelta ? deltaToneClass(activeDelta.amount, positiveIsGood) : undefined;
   const periodTransactions = sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= end.date)
+    activityTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= end.date)
   ).slice(0, 10);
   const pointTransactions = hasSelectedPoint ? sortTransactionsForPoint(
-    scopedTransactions.filter((transaction) => (
+    activityTransactions.filter((transaction) => (
       previousPoint
         ? transaction.date > previousPoint.date && transaction.date <= activePoint.date
         : transaction.date >= start.date && transaction.date <= activePoint.date
@@ -641,14 +645,14 @@ function TrendChart({
   const beforePointEndDate = hasSelectedPoint ? addDaysIso(activePoint.date, -1) : end.date;
   const afterPointStartDate = hasSelectedPoint ? addDaysIso(activePoint.date, 1) : start.date;
   const beforeTransactions = hasSelectedPoint ? sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => (
+    activityTransactions.filter((transaction) => (
       beforePointEndDate >= activityPeriodStartDate &&
       transaction.date >= activityPeriodStartDate &&
       transaction.date <= beforePointEndDate
     ))
   ).slice(0, 10) : periodTransactions;
   const afterTransactions = hasSelectedPoint ? sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => (
+    activityTransactions.filter((transaction) => (
       afterPointStartDate <= end.date &&
       transaction.date >= afterPointStartDate &&
       transaction.date <= end.date
@@ -661,9 +665,7 @@ function TrendChart({
       : activityMode === "before"
         ? beforeTransactions
         : afterTransactions;
-  const visibleTransactions = scope === "cash"
-    ? rawVisibleTransactions.filter((transaction) => dashboardTransactionIncomeAmount(transaction) > 0)
-    : rawVisibleTransactions;
+  const visibleTransactions = rawVisibleTransactions;
   const candidateActivityFromDate = !hasSelectedPoint
     ? start.date
     : activityMode === "point"
@@ -682,7 +684,7 @@ function TrendChart({
   const activityFromDate = hasValidActivityRange ? candidateActivityFromDate : start.date;
   const activityToDate = hasValidActivityRange ? candidateActivityToDate : end.date;
   const activityHref = transactionsHref({
-    exclude_transfers: true,
+    ...(scope === "cash" ? { direction: "income" } : { exclude_transfers: true }),
     ...transactionDateParams(activityFromDate, activityToDate, rangeKey === "1M")
   });
   const gridLines = [
@@ -2223,7 +2225,7 @@ export function DashboardView({
                 asOfDate={asOfDate}
                 rangeKey={cashInflowRangeKey}
                 setRangeKey={setCashInflowRangeKey}
-                transactions={scopedTransactions}
+                transactions={balanceTransactions}
               />
             </>
           );

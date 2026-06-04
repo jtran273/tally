@@ -696,6 +696,19 @@ test("dashboard inflows drilldown opens income-only transactions", async ({ base
   await page.goto("/dashboard");
 
   await page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" }).click();
+  const activityLink = page
+    .getByLabel("Selected balance transactions")
+    .getByRole("link", { exact: true, name: "Open transactions" });
+  await expect(activityLink).toHaveAttribute("href", /direction=income/);
+  await activityLink.click();
+
+  await expect(page).toHaveURL(/\/transactions\?.*direction=income/);
+  let filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
+
+  await page.goto("/dashboard");
+  await page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" }).click();
   await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
 
   const incomePanel = page.getByLabel("Cash inflows by category");
@@ -704,7 +717,7 @@ test("dashboard inflows drilldown opens income-only transactions", async ({ base
   await openTransactions.click();
 
   await expect(page).toHaveURL(/\/transactions\?.*direction=income/);
-  const filterForm = page.locator("form[action='/transactions']");
+  filterForm = page.locator("form[action='/transactions']");
   await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
   await expect(page.locator("td[aria-label^='Inflow']").first()).toBeVisible();
   await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
