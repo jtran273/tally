@@ -115,6 +115,7 @@ const PLAID_SYNC_RUN_COLUMNS = [
   "enriched_transactions_inserted",
   "enriched_transactions_updated",
   "transactions_removed",
+  "pending_transactions_replaced",
   "safe_error_code",
   "safe_error_message",
   "created_at",
@@ -135,6 +136,7 @@ const PLAID_SYNC_RUN_ITEM_COLUMNS = [
   "enriched_transactions_inserted",
   "enriched_transactions_updated",
   "transactions_removed",
+  "pending_transactions_replaced",
   "safe_error_code",
   "safe_error_message",
   "last_successful_sync_at",
@@ -286,6 +288,7 @@ export interface PlaidSyncItemSummary {
   errorMessage?: string;
   id: string;
   lastSuccessfulSyncAt: string | null;
+  pendingTransactionsReplaced: number;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   transactionsRemoved: number;
@@ -314,6 +317,7 @@ export interface PlaidSyncRunSummary {
   enrichedTransactionsUpdated: number;
   failed: number;
   items: PlaidSyncItemSummary[];
+  pendingTransactionsReplaced: number;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   runId: string | null;
@@ -1491,6 +1495,7 @@ async function upsertRawTransactions({
   }
 
   return {
+    pendingTransactionsReplaced: replacementResult.replacedPendingPlaidTransactionIds.size,
     rawRows,
     rawTransactionsSkipped: skipped,
     rawTransactionsUpserted: rawRows.length,
@@ -2044,6 +2049,7 @@ function itemSummaryCounts(item: PlaidSyncItemSummary) {
     balance_snapshots_upserted: item.balanceSnapshotsUpserted,
     enriched_transactions_inserted: item.enrichedTransactionsInserted,
     enriched_transactions_updated: item.enrichedTransactionsUpdated,
+    pending_transactions_replaced: item.pendingTransactionsReplaced,
     raw_transactions_skipped: item.rawTransactionsSkipped,
     raw_transactions_upserted: item.rawTransactionsUpserted,
     transactions_removed: item.transactionsRemoved
@@ -2157,6 +2163,7 @@ async function finalizePlaidSyncRun(
     enriched_transactions_inserted: summary.enrichedTransactionsInserted,
     enriched_transactions_updated: summary.enrichedTransactionsUpdated,
     failed_items: summary.failed,
+    pending_transactions_replaced: summary.pendingTransactionsReplaced,
     raw_transactions_skipped: summary.rawTransactionsSkipped,
     raw_transactions_upserted: summary.rawTransactionsUpserted,
     safe_error_code: summary.failed > 0 ? "PLAID_SYNC_PARTIAL_FAILURE" : null,
@@ -2232,6 +2239,7 @@ async function syncLoadedPlaidItem(
     enrichedTransactionsUpdated: transactionResult.enrichedTransactionsUpdated,
     id: item.id,
     lastSuccessfulSyncAt: syncedItem.last_successful_sync_at,
+    pendingTransactionsReplaced: transactionResult.pendingTransactionsReplaced,
     rawTransactionsSkipped,
     rawTransactionsUpserted: transactionResult.rawTransactionsUpserted,
     transactionsRemoved: transactionResult.transactionsRemoved,
@@ -2381,6 +2389,7 @@ export async function syncPlaidItem({
       errorMessage: persistedError.error_message,
       id: item.id,
       lastSuccessfulSyncAt: item.last_successful_sync_at,
+      pendingTransactionsReplaced: 0,
       rawTransactionsSkipped: 0,
       rawTransactionsUpserted: 0,
       transactionsRemoved: 0
@@ -2412,6 +2421,7 @@ export function summarizeSyncRun(
       summary.enrichedTransactionsInserted += item.enrichedTransactionsInserted;
       summary.enrichedTransactionsUpdated += item.enrichedTransactionsUpdated;
       summary.failed += item.errorCode ? 1 : 0;
+      summary.pendingTransactionsReplaced += item.pendingTransactionsReplaced;
       summary.rawTransactionsSkipped += item.rawTransactionsSkipped;
       summary.rawTransactionsUpserted += item.rawTransactionsUpserted;
       summary.succeeded += item.errorCode ? 0 : 1;
@@ -2425,6 +2435,7 @@ export function summarizeSyncRun(
       enrichedTransactionsUpdated: 0,
       failed: 0,
       items,
+      pendingTransactionsReplaced: 0,
       rawTransactionsSkipped: 0,
       rawTransactionsUpserted: 0,
       succeeded: 0,
@@ -2484,6 +2495,7 @@ async function syncLoadedPlaidItems({
         errorMessage: safeError.error_message,
         id: item.id,
         lastSuccessfulSyncAt: item.last_successful_sync_at,
+        pendingTransactionsReplaced: 0,
         rawTransactionsSkipped: 0,
         rawTransactionsUpserted: 0,
         transactionsRemoved: 0
@@ -2552,6 +2564,7 @@ function toPersistedSyncRunItemSummary(row: PlaidSyncRunItemRow): PlaidSyncRunIt
     errorMessage: row.status === "failed" ? row.safe_error_message ?? undefined : undefined,
     id: row.plaid_item_id,
     lastSuccessfulSyncAt: row.last_successful_sync_at,
+    pendingTransactionsReplaced: row.pending_transactions_replaced,
     rawTransactionsSkipped: row.raw_transactions_skipped,
     rawTransactionsUpserted: row.raw_transactions_upserted,
     status: row.status,
@@ -2575,6 +2588,7 @@ function toPersistedSyncRunSummary(
     errorMessage: run.safe_error_message,
     failed: run.failed_items,
     items: items.map(toPersistedSyncRunItemSummary),
+    pendingTransactionsReplaced: run.pending_transactions_replaced,
     rawTransactionsSkipped: run.raw_transactions_skipped,
     rawTransactionsUpserted: run.raw_transactions_upserted,
     runId: run.id,

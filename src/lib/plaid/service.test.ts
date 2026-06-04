@@ -170,6 +170,67 @@ test("pending raw transaction is planned for in-place posted replacement", () =>
   );
 });
 
+test("a single pending row is replaced once even if multiple posted rows claim it", () => {
+  const replacements = planPendingRawTransactionReplacements({
+    existingPendingRows: [
+      {
+        id: "raw-pending",
+        plaid_transaction_id: "pending-tx",
+        status: "pending"
+      }
+    ],
+    incomingRows: [
+      {
+        pending_transaction_id: "pending-tx",
+        plaid_transaction_id: "posted-tx-a",
+        status: "posted"
+      },
+      {
+        pending_transaction_id: "pending-tx",
+        plaid_transaction_id: "posted-tx-b",
+        status: "posted"
+      }
+    ]
+  });
+
+  assert.equal(replacements.length, 1);
+  assert.equal(replacements[0]?.incomingPlaidTransactionId, "posted-tx-a");
+  assert.equal(replacements[0]?.rawTransactionId, "raw-pending");
+});
+
+test("sync run summary reports pending replacements separately from removed counts", () => {
+  const summary = summarizeSyncRun([
+    {
+      accountsUpserted: 1,
+      balanceSnapshotsUpserted: 1,
+      enrichedTransactionsInserted: 0,
+      enrichedTransactionsUpdated: 2,
+      id: "item-a",
+      lastSuccessfulSyncAt: "2026-06-04T08:00:00.000Z",
+      pendingTransactionsReplaced: 3,
+      rawTransactionsSkipped: 0,
+      rawTransactionsUpserted: 5,
+      transactionsRemoved: 1
+    },
+    {
+      accountsUpserted: 1,
+      balanceSnapshotsUpserted: 1,
+      enrichedTransactionsInserted: 1,
+      enrichedTransactionsUpdated: 0,
+      id: "item-b",
+      lastSuccessfulSyncAt: "2026-06-04T08:00:00.000Z",
+      pendingTransactionsReplaced: 2,
+      rawTransactionsSkipped: 0,
+      rawTransactionsUpserted: 4,
+      transactionsRemoved: 0
+    }
+  ]);
+
+  assert.equal(summary.pendingTransactionsReplaced, 5);
+  assert.equal(summary.transactionsRemoved, 1);
+  assert.equal(summary.status, "succeeded");
+});
+
 test("manual or reviewed Plaid enrichment is not refreshed by Plaid modifications", () => {
   assert.equal(shouldRefreshPlaidEnrichment({
     reviewed_at: null,
@@ -318,6 +379,7 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
         enrichedTransactionsUpdated: 1,
         id: "internal-item-id",
         lastSuccessfulSyncAt: "2026-05-07T08:00:00.000Z",
+        pendingTransactionsReplaced: 2,
         rawTransactionsSkipped: 1,
         rawTransactionsUpserted: 4,
         transactionsRemoved: 0,
@@ -333,6 +395,7 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
         errorMessage: "Plaid sync failed.",
         id: "internal-error-item-id",
         lastSuccessfulSyncAt: null,
+        pendingTransactionsReplaced: 0,
         rawTransactionsSkipped: 0,
         rawTransactionsUpserted: 0,
         transactionsRemoved: 0
@@ -350,6 +413,7 @@ test("sync run summary marks partial failures and excludes provider ids", () => 
   assert.equal(summary.failed, 1);
   assert.equal(summary.items[0]?.warningCode, "PRODUCT_NOT_ENABLED");
   assert.equal(summary.rawTransactionsUpserted, 4);
+  assert.equal(summary.pendingTransactionsReplaced, 2);
   assert.equal("plaidItemId" in summary.items[0], false);
   assert.equal("transactionCursor" in summary.items[0], false);
 });
