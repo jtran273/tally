@@ -4,6 +4,8 @@ const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
 const DUE_SOON_DAYS = 7;
 
+export type LiabilityTransactionInput = Pick<TransactionRecord, "accountId" | "amount" | "date" | "intent" | "merchant" | "plaidName">;
+
 export type LiabilityStatus = "current" | "due-soon" | "overdue" | "no-balance";
 
 export interface LiabilityAccountSummary {
@@ -70,7 +72,7 @@ function statusForDays(days: number | null, owed: number): LiabilityStatus {
 
 function findLastPayment(
   accountId: string,
-  transactions: readonly TransactionRecord[]
+  transactions: readonly LiabilityTransactionInput[]
 ): { date: string; amount: number } | null {
   for (const transaction of transactions) {
     if (transaction.accountId !== accountId) continue;
@@ -93,7 +95,7 @@ export function buildLiabilitiesDueSummary({
   accounts: readonly AccountRecord[];
   asOfDate?: string;
   cashAvailable: number;
-  transactions: readonly TransactionRecord[];
+  transactions: readonly LiabilityTransactionInput[];
 }): LiabilitiesDueSummary {
   const today = asOfDate ?? isoDate(new Date());
   const sortedTransactions = [...transactions].sort((a, b) => b.date.localeCompare(a.date));

@@ -252,7 +252,7 @@ test("transaction direction filters keep income and spending slices separate", (
 
   assert.deepEqual(
     filterTransactionRecordsForList(rows, { direction: "income" }).map((item) => item.id),
-    ["tx-shopping-income"]
+    ["tx-shopping-income", "tx-reimbursable-income"]
   );
   assert.deepEqual(
     filterTransactionRecordsForList(rows, { direction: "spending" }).map((item) => item.id),

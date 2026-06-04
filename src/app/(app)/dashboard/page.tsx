@@ -13,6 +13,7 @@ import {
   calculateAccountTotals,
   summarizeSync
 } from "@/lib/finance/balances";
+import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,12 @@ export default async function DashboardPage() {
     ...trendOptions,
     scope: "netWorth"
   });
+  const liabilitiesDueSummary = buildLiabilitiesDueSummary({
+    accounts,
+    asOfDate,
+    cashAvailable: totals.cash,
+    transactions: trendTransactions
+  });
   const balanceTrends = {
     cash: buildBalanceTrend(accounts, snapshots, {
       ...trendOptions,
@@ -90,6 +97,7 @@ export default async function DashboardPage() {
     id: transaction.id,
     intent: transaction.intent,
     merchant: transaction.merchant,
+    plaidName: transaction.plaidName,
     reviewItems: transaction.reviewItems.map((review) => ({
       reason: review.reason,
       status: review.status
@@ -112,6 +120,7 @@ export default async function DashboardPage() {
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
+      liabilitiesDueSummary={liabilitiesDueSummary}
       snapshotCount={snapshots.length}
       syncSummary={summarizeSync(plaidSyncAccounts)}
       totals={totals}

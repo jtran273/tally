@@ -24,7 +24,7 @@ export const transactionIntentOptions: Array<{ label: string; value: Transaction
 export const transactionDirectionOptions: Array<{ label: string; value: TransactionDirectionFilter }> = [
   { value: "all", label: "All flows" },
   { value: "spending", label: "Spending only" },
-  { value: "income", label: "Income only" }
+  { value: "income", label: "Inflows only" }
 ];
 
 export const transactionReviewOptions: Array<{ label: string; value: ReviewStatus | "all" }> = [

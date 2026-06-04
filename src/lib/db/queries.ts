@@ -47,7 +47,7 @@ import {
   type AgentProposalJsonObject
 } from "../agents/proposals";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
-import { buildReimbursementLinkDecision, isReportableIncomeIntent } from "../finance/reimbursement-linking";
+import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
 import { transactionSpendingAmount } from "../finance/spending";
 import { isRecurringReview } from "../review/reasons";
 import { getSupabaseConfig } from "../supabase/env";
@@ -536,7 +536,7 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
 
 function transactionMatchesDirection(transaction: TransactionRecord, direction: TransactionDirectionFilter | undefined) {
   if (!direction || direction === "all") return true;
-  if (direction === "income") return transaction.amount > 0 && isReportableIncomeIntent(transaction.intent);
+  if (direction === "income") return transaction.amount > 0 && transaction.intent !== "transfer";
   return transactionSpendingAmount(transaction) > 0;
 }
 

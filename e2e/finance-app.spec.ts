@@ -552,7 +552,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   let chart = page.locator("svg[aria-label='Net worth balance trend']");
   await expect(chart).toBeVisible();
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
-  const incomeView = page.getByRole("button", { exact: true, name: "Income / liquid assets balance view" });
+  const incomeView = page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" });
   const cashFlowView = page.getByRole("button", { exact: true, name: "Cash flow balance view" });
   const balanceRangeControls = page.getByLabel("Balance trend range");
   await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
@@ -581,6 +581,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
   chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  const cardActions = page.getByRole("region", { name: "Credit card actions" });
+  await expect(cardActions).toBeVisible();
+  await expect(cardActions).toContainText("Utilization");
   await expect(page.getByLabel("Spendable comparison")).toHaveCount(0);
   const selectedTransactionsHref = await page
     .getByLabel("Selected balance transactions")
@@ -631,12 +634,12 @@ test("dashboard trend range controls update the change-over-time view", async ({
 
   await incomeView.click();
   await expect(incomeView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Income / liquid assets balance trend']")).toBeVisible();
+  await expect(page.locator("svg[aria-label='Inflows / liquid assets balance trend']")).toBeVisible();
 
-  const incomePanel = page.getByLabel("Income by category");
+  const incomePanel = page.getByLabel("Cash inflows by category");
   await expect(incomePanel).toBeVisible();
   await expect(incomePanel).toContainText("transfers excluded");
-  await expect(page.getByLabel("Income range").getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
   const incomeLinks = await incomePanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
