@@ -113,7 +113,7 @@ After a Vercel deployment:
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
-6. Confirm the dashboard Net worth, Liquid, Debt, and Spendable scopes, liabilities-due panel, and category trend/month views render without page overflow.
+6. Confirm the dashboard Cash flow, Inflows / liquid assets, and Net worth views render without page overflow, that category trend/month views live under Cash flow, and that the Inflows / liquid assets drilldown opens income-only transactions from its default All range.
 7. In an iPhone-sized viewport, confirm the dashboard uses the simplified balance summary instead of the desktop balance chart, the top header stays visible, the bottom nav remains reachable, route loading stays compact, and no horizontal page overflow appears.
 8. In demo mode, confirm Plaid, Calendar, merchant cleanup, transaction edit, review, and recurring write controls show read-only copy instead of starting provider OAuth or write actions.
 9. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.

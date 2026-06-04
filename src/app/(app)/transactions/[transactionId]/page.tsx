@@ -136,7 +136,7 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
   }
 
   return (
-    <>
+    <div className={styles.editPageStack}>
       <TransactionEditForm categories={categories} isDemo={isDemo} transaction={transaction} />
       <ReimbursementLinkPanel
         isDemo={isDemo}
@@ -149,6 +149,6 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
           Advanced: audit trail
         </Link>
       </p>
-    </>
+    </div>
   );
 }

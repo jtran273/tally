@@ -1,4 +1,5 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
+import { excludeMatchedRefundReversalTransactions } from "@/lib/finance/refund-reversals";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
@@ -35,7 +36,8 @@ function formatMoney(value: number) {
 }
 
 function summarize(transactions: TransactionRecord[]) {
-  const transactionSummary = transactions.reduce(
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
+  const transactionSummary = reportableTransactions.reduce(
     (summary, transaction) => {
       summary.spending += transactionSpendingAmount(transaction);
 

@@ -5,6 +5,7 @@ import type {
   ReviewReason
 } from "../db";
 import type { RecurringCandidate } from "../recurring";
+import { getMatchedRefundReversalTransactionIds } from "../finance/refund-reversals";
 
 type ReviewItemInsert = Database["public"]["Tables"]["review_items"]["Insert"];
 
@@ -70,15 +71,14 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
     ));
   }
 
-  // Flag low-confidence when Plaid is genuinely uncertain:
-  // - Below VERY_LOW threshold (≈ UNKNOWN Plaid level): flag regardless of category
-  // - Below LOW_CONFIDENCE threshold: only flag when the category is also unclear
+  // Missing category already gives the user one label-fixing action, so do not
+  // add a separate low-confidence item for the same uncategorized row.
   const isVeryLowConfidence = transaction.confidence !== null && transaction.confidence < VERY_LOW_CONFIDENCE_THRESHOLD;
   const isModeratelyLowWithNoCategory = transaction.confidence !== null &&
     transaction.confidence < LOW_CONFIDENCE_THRESHOLD &&
     needsCategory;
 
-  if (isVeryLowConfidence || isModeratelyLowWithNoCategory) {
+  if (!needsCategory && (isVeryLowConfidence || isModeratelyLowWithNoCategory)) {
     items.push(baseReviewItem(
       transaction,
       "low-confidence",
@@ -111,6 +111,13 @@ export function buildTransactionReviewItems(transaction: EnrichedTransactionRow)
   }
 
   return items;
+}
+
+export function buildTransactionReviewItemsForImport(transactions: readonly EnrichedTransactionRow[]): ReviewItemInsert[] {
+  const matchedReversalIds = getMatchedRefundReversalTransactionIds(transactions);
+  return transactions.flatMap((transaction) =>
+    matchedReversalIds.has(transaction.id) ? [] : buildTransactionReviewItems(transaction)
+  );
 }
 
 function isPeerToPeerTransaction(

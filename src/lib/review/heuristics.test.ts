@@ -1,5 +1,7 @@
+import assert from "node:assert/strict";
+import test from "node:test";
 import type { EnrichedTransactionRow, ReviewReason } from "../db";
-import { buildTransactionReviewItems } from "./heuristics";
+import { buildTransactionReviewItems, buildTransactionReviewItemsForImport } from "./heuristics";
 
 const userId = "11111111-1111-1111-1111-111111111111";
 
@@ -73,7 +75,7 @@ export const reviewHeuristicModerateConfidenceGoodCategoryFixture = reasonsFor(t
   merchant_name: "Trader Joe's"
 }));
 
-// confidence 0.55 with Uncategorized — should flag because category is unclear
+// confidence 0.55 with Uncategorized — missing-category is the single actionable label fix.
 export const reviewHeuristicModerateConfidenceUncategorizedFixture = reasonsFor(transaction({
   category_id: null,
   category_name: "Uncategorized",
@@ -81,6 +83,45 @@ export const reviewHeuristicModerateConfidenceUncategorizedFixture = reasonsFor(
   id: "tx-moderate-uncategorized",
   merchant_name: "Unknown Vendor"
 }));
+
+export const reviewHeuristicRefundReversalFixture = buildTransactionReviewItemsForImport([
+  transaction({
+    amount: -50,
+    category_id: null,
+    category_name: "Shopping",
+    confidence: 0.55,
+    date: "2026-06-02",
+    id: "tx-canva-debit",
+    merchant_name: "Canva* 04900-22971910"
+  }),
+  transaction({
+    amount: 50,
+    category_id: null,
+    category_name: "Shopping",
+    confidence: 0.55,
+    date: "2026-06-03",
+    id: "tx-canva-credit",
+    merchant_name: "Canva refund"
+  }),
+  transaction({
+    amount: -1,
+    category_id: null,
+    category_name: "Uncategorized",
+    confidence: 0.55,
+    date: "2026-06-03",
+    id: "tx-google-debit",
+    merchant_name: "GOOGLE"
+  }),
+  transaction({
+    amount: 1,
+    category_id: null,
+    category_name: "Uncategorized",
+    confidence: 0.55,
+    date: "2026-06-03",
+    id: "tx-google-credit",
+    merchant_name: "GOOGLE temporary authorization reversal"
+  })
+]);
 
 export const reviewHeuristicLargeTransferFixture = reasonsFor(transaction({
   amount: -1500,
@@ -125,8 +166,15 @@ function assertReviewHeuristicFixtures(): true {
     throw new Error("Expected moderate-confidence transactions with a clear category to skip low-confidence review.");
   }
 
-  if (!reviewHeuristicModerateConfidenceUncategorizedFixture.includes("low-confidence")) {
-    throw new Error("Expected moderate-confidence transactions with no category to remain in low-confidence review.");
+  if (
+    reviewHeuristicModerateConfidenceUncategorizedFixture.length !== 1 ||
+    reviewHeuristicModerateConfidenceUncategorizedFixture[0] !== "missing-category"
+  ) {
+    throw new Error("Expected uncategorized moderate-confidence rows to produce one missing-category review item.");
+  }
+
+  if (reviewHeuristicRefundReversalFixture.length !== 0) {
+    throw new Error("Expected matched refund/reversal pairs to stay out of generated review items.");
   }
 
   if (reviewHeuristicLargeTransferFixture.includes("large")) {
@@ -139,3 +187,20 @@ function assertReviewHeuristicFixtures(): true {
 
   return true;
 }
+
+test("uncategorized low-confidence transactions create one category-fixing review item", () => {
+  assert.deepEqual(
+    reasonsFor(transaction({
+      category_id: null,
+      category_name: "Uncategorized",
+      confidence: 0.35,
+      id: "tx-low-confidence-uncategorized",
+      merchant_name: "Canva"
+    })),
+    ["missing-category"]
+  );
+});
+
+test("import review generation suppresses matched Canva and Google refund/reversal pairs", () => {
+  assert.deepEqual(reviewHeuristicRefundReversalFixture.map((item) => item.reason), []);
+});

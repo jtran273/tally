@@ -1,4 +1,5 @@
 import type { TransactionRecord } from "@/lib/db";
+import { excludeMatchedRefundReversalTransactions } from "./refund-reversals";
 import { hasOpenReview, transactionSpendingAmount } from "./spending";
 
 const DAY_MS = 86_400_000;
@@ -97,7 +98,8 @@ export function buildBudgetGuardrailSummary(
     minimumBudgetAmount?: number;
   } = {}
 ): BudgetGuardrailSummary {
-  const asOfDate = options.asOfDate ?? transactions.reduce(
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
+  const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
     (latest, transaction) => transaction.date > latest ? transaction.date : latest,
     isoDate(new Date())
   );
@@ -112,7 +114,7 @@ export function buildBudgetGuardrailSummary(
   const baselineTotals = new Map<string, { id: string | null; label: string; totals: Map<string, number> }>();
   const currentGroups = new Map<string, MutableGuardrailGroup>();
 
-  transactions.forEach((transaction) => {
+  reportableTransactions.forEach((transaction) => {
     const amount = transactionSpendingAmount(transaction);
     if (amount <= 0) return;
 

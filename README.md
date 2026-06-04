@@ -170,7 +170,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | Route | What it does |
 | --- | --- |
 | `/login` | Supabase sign-in and seeded demo entry |
-| `/dashboard` | Balance dashboard with Net worth, Liquid, Debt, and Spendable scopes, sync freshness, selected-period transactions, liabilities due, category trend/month views, and a simplified mobile balance summary |
+| `/dashboard` | Simplified balance dashboard with Net worth, Income / liquid assets, and Cash flow views, sync freshness, selected-period transactions, category trend/month views, and a simplified mobile balance summary |
 | `/transactions` | Filterable enriched transaction table with review reason filters, merchant cleanup, reimbursement badges, and CSV export |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Derived proposal queue for sanitized finance-agent recommendations from open review items |

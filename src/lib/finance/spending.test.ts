@@ -212,6 +212,59 @@ function assertSpendingFixtures(): true {
     })
   ], { asOfDate: "2026-05-06" });
 
+  const refundedShoppingSummary = buildSpendingInsightSummary([
+    transaction({
+      amount: -424.98,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      date: "2026-06-03",
+      id: "tx-target-debit",
+      merchant: "Target"
+    }),
+    transaction({
+      amount: 424.98,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      date: "2026-06-04",
+      id: "tx-target-credit",
+      merchant: "Target refund"
+    }),
+    transaction({
+      amount: -50,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      date: "2026-06-02",
+      id: "tx-canva-debit",
+      merchant: "Canva* 04900-22971910"
+    }),
+    transaction({
+      amount: 50,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      date: "2026-06-03",
+      id: "tx-canva-credit",
+      merchant: "Canva",
+      plaidName: "Canva refund"
+    }),
+    transaction({
+      amount: -12,
+      category: "Shopping",
+      categoryId: "category-shopping",
+      date: "2026-06-03",
+      id: "tx-real-shopping",
+      merchant: "Bookstore"
+    })
+  ], { asOfDate: "2026-06-04" });
+
+  if (refundedShoppingSummary.currentWeek.spending !== 12) {
+    throw new Error("Expected matched refund/reversal pairs to be excluded from spending totals.");
+  }
+
+  const shopping = refundedShoppingSummary.currentMonth.topCategories.find((category) => category.label === "Shopping");
+  if (shopping?.amount !== 12 || shopping.transactionIds.join(",") !== "tx-real-shopping") {
+    throw new Error("Expected refunded Target/Canva rows not to inflate Shopping category totals.");
+  }
+
   if (summary.currentWeek.spending !== 582 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2418) {
     throw new Error("Expected current week cashflow to count net spend, income, transfer exclusions, and reimbursement inflow exclusions deterministically.");
   }

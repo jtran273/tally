@@ -7,6 +7,7 @@ import type {
 } from "@/lib/db";
 import type { UpcomingCalendarContext } from "@/lib/calendar/context";
 import { accountSyncState, summarizeSync, type SyncSummary } from "@/lib/finance/balances";
+import { excludeMatchedRefundReversalTransactions } from "@/lib/finance/refund-reversals";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import type { WeeklyPlanningContext } from "./weekly-planning-context";
@@ -287,7 +288,7 @@ export function buildSpendingSummary(
   const byIntent = new Map<TransactionIntent, SpendingSummaryIntentBucket>();
   let totalSpending = 0;
 
-  transactions.forEach((transaction) => {
+  excludeMatchedRefundReversalTransactions(transactions).forEach((transaction) => {
     const spending = transactionSpendingAmount(transaction);
     if (spending <= 0) return;
 

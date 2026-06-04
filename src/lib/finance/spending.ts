@@ -1,6 +1,7 @@
 import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
 import { isRecurringReview } from "@/lib/review/reasons";
 import { displayCategoryName } from "./classification";
+import { excludeMatchedRefundReversalTransactions } from "./refund-reversals";
 import { isReportableIncomeIntent } from "./reimbursement-linking";
 import { summarizeTransactionReimbursement } from "./reimbursements";
 
@@ -532,7 +533,8 @@ export function buildCategoryBreakdown(
   transactions: readonly TransactionRecord[],
   options: { asOfDate?: string } = {}
 ): CategoryBreakdownSummary {
-  const asOfDate = options.asOfDate ?? transactions.reduce(
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
+  const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
     (latest, transaction) => transaction.date > latest ? transaction.date : latest,
     isoDate(new Date())
   );
@@ -540,7 +542,7 @@ export function buildCategoryBreakdown(
   const previousFrom = previousMonthStart(asOfDate);
   const previousTo = previousMonthEnd(asOfDate);
 
-  return buildCategoryBreakdownForRange(transactions, fromDate, asOfDate, previousFrom, previousTo);
+  return buildCategoryBreakdownForRange(reportableTransactions, fromDate, asOfDate, previousFrom, previousTo);
 }
 
 /**
@@ -551,7 +553,8 @@ export function buildCategoryBreakdownsByMonth(
   transactions: readonly TransactionRecord[],
   options: { asOfDate?: string; monthCount?: number } = {}
 ): CategoryBreakdownSummary[] {
-  const asOfDate = options.asOfDate ?? transactions.reduce(
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
+  const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
     (latest, transaction) => transaction.date > latest ? transaction.date : latest,
     isoDate(new Date())
   );
@@ -562,7 +565,7 @@ export function buildCategoryBreakdownsByMonth(
     const bounds = monthBoundsFor(asOfDate, offset);
     const toDate = offset === 0 ? asOfDate : bounds.toDate;
     results.push(buildCategoryBreakdownForRange(
-      transactions,
+      reportableTransactions,
       bounds.fromDate,
       toDate,
       bounds.previousFrom,
@@ -576,7 +579,8 @@ export function buildSpendingInsightSummary(
   transactions: readonly TransactionRecord[],
   options: { asOfDate?: string } = {}
 ): SpendingInsightSummary {
-  const asOfDate = options.asOfDate ?? transactions.reduce(
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
+  const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
     (latest, transaction) => transaction.date > latest ? transaction.date : latest,
     isoDate(new Date())
   );
@@ -588,17 +592,17 @@ export function buildSpendingInsightSummary(
   const previousMonthFrom = previousMonthStart(asOfDate);
   const previousMonthTo = previousMonthEnd(asOfDate);
 
-  const previousWeekTransactions = transactions.filter((transaction) => inDateRange(transaction, previousWeekFrom, previousWeekTo));
-  const previousMonthTransactions = transactions.filter((transaction) => inDateRange(transaction, previousMonthFrom, previousMonthTo));
-  const currentWeek = summarizeWindow(transactions, currentWeekFrom, asOfDate, previousWeekTransactions);
+  const previousWeekTransactions = reportableTransactions.filter((transaction) => inDateRange(transaction, previousWeekFrom, previousWeekTo));
+  const previousMonthTransactions = reportableTransactions.filter((transaction) => inDateRange(transaction, previousMonthFrom, previousMonthTo));
+  const currentWeek = summarizeWindow(reportableTransactions, currentWeekFrom, asOfDate, previousWeekTransactions);
 
   return {
     asOfDate,
-    confidence: summarizeConfidence(transactions.filter((transaction) => transaction.date >= currentMonthFrom && transaction.date <= asOfDate)),
-    currentMonth: summarizeWindow(transactions, currentMonthFrom, asOfDate, previousMonthTransactions),
+    confidence: summarizeConfidence(reportableTransactions.filter((transaction) => transaction.date >= currentMonthFrom && transaction.date <= asOfDate)),
+    currentMonth: summarizeWindow(reportableTransactions, currentMonthFrom, asOfDate, previousMonthTransactions),
     currentWeek,
-    previousMonth: summarizeWindow(transactions, previousMonthFrom, previousMonthTo),
-    previousWeek: summarizeWindow(transactions, previousWeekFrom, previousWeekTo),
-    unusualSpend: findUnusualSpend(transactions, currentWeek)
+    previousMonth: summarizeWindow(reportableTransactions, previousMonthFrom, previousMonthTo),
+    previousWeek: summarizeWindow(reportableTransactions, previousWeekFrom, previousWeekTo),
+    unusualSpend: findUnusualSpend(reportableTransactions, currentWeek)
   };
 }

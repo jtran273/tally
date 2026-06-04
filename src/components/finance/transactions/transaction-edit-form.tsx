@@ -89,6 +89,7 @@ export function TransactionEditForm({ categories, isDemo, transaction }: Transac
       <div className={styles.editGrid}>
         <form
           action={formAction}
+          aria-label="Edit transaction enrichment"
           className={styles.editPanel}
           onSubmit={(event) => {
             if (isDemo) event.preventDefault();

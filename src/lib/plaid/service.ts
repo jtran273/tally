@@ -36,7 +36,7 @@ import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { evaluateAutoCategorization } from "../review/auto-categorization";
 import { displayCategoryName } from "../finance/classification";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
-import { buildTransactionReviewItems } from "../review/heuristics";
+import { buildTransactionReviewItemsForImport } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
 import { getPlaidLinkTokenConfig, PlaidConfigurationError } from "./config";
 import { getPlaidClient } from "./client";
@@ -1698,7 +1698,7 @@ async function insertGeneratedReviewItems(
     rawRows: RawTransactionRow[];
   }
 ) {
-  const reviewItems: ReviewItemInsert[] = transactions.flatMap(buildTransactionReviewItems);
+  const reviewItems: ReviewItemInsert[] = buildTransactionReviewItemsForImport(transactions);
   const aiUpdates = await attachAiSuggestionsToReviewItems(reviewItems, {
     categories: context.categoryRows.map(toCategoryRecordForAi),
     maxSuggestions: PLAID_IMPORT_AI_REVIEW_SUGGESTION_LIMIT,

@@ -939,6 +939,132 @@
   font-size: var(--text-meta);
 }
 
+.cardActionSummary {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill);
+  padding: 8px 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cardActionSummary svg {
+  flex: 0 0 auto;
+  color: var(--sage-ink);
+}
+
+.cardActionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cardActionRow {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.cardActionRow:hover,
+.cardActionRow:focus-visible {
+  border-color: var(--line);
+  background: var(--surface);
+  outline: none;
+}
+
+.cardActionTopline {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardActionTopline > div {
+  min-width: 0;
+}
+
+.cardActionTopline strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardActionTopline span {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardActionGuidance {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+  line-height: 1.35;
+}
+
+.cardActionGuidance span {
+  min-width: 0;
+}
+
+.cardPrimaryAction {
+  color: var(--ink);
+  font-size: var(--text-ui-sm);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.cardUtilizationLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.cardUtilizationLine strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cardActionMoreLink {
+  width: fit-content;
+  color: var(--ink);
+  font-size: var(--text-ui-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .liabilityTiming {
   display: flex;
   min-width: 0;
@@ -1010,137 +1136,6 @@
 
 .liabilityOverdue {
   color: var(--neg);
-}
-
-.payoffCallout {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-card);
-  padding: 12px;
-  background: var(--surface);
-}
-
-.payoffCallout > div:first-child {
-  min-width: 0;
-  flex: 1 1 200px;
-}
-
-.payoffCallout strong {
-  display: block;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.payoffCallout span {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--text-meta);
-  line-height: 1.35;
-}
-
-.payoffCalloutAmount {
-  text-align: right;
-  flex: 0 0 auto;
-}
-
-.payoffCalloutAmount strong {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 16px;
-}
-
-.payoffRow {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line-2);
-}
-
-.payoffRow:last-child {
-  border-bottom: none;
-}
-
-.payoffRowMain {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.payoffRowMain > div:first-child {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.payoffRowMain strong {
-  display: block;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.payoffRowMain span {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--text-meta);
-  line-height: 1.35;
-}
-
-.payoffRowAmount {
-  text-align: right;
-  flex: 0 0 auto;
-}
-
-.payoffRowAmount strong {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.payoffSuggested {
-  color: var(--pos, var(--ink));
-  font-weight: 500;
-}
-
-.payoffActionText {
-  display: block;
-  margin: 6px 0 0;
-  color: var(--ink);
-  font-size: var(--text-meta);
-  line-height: 1.4;
-}
-
-.payoffFootnote {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: var(--text-meta);
-  line-height: 1.4;
-}
-
-.payoffTierOptimal {
-  color: var(--pos, #1a7f37);
-}
-
-.payoffTierOk {
-  color: var(--muted);
-}
-
-.payoffTierHigh {
-  color: var(--warn);
-}
-
-.payoffTierCritical {
-  color: var(--neg);
-}
-
-.payoffTierUnknown {
-  color: var(--muted);
 }
 
 .liabilityPaid {
@@ -1377,6 +1372,25 @@
 }
 
 @media (max-width: 600px) {
+  .cardActionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardActionSummary {
+    width: 100%;
+    border-radius: var(--radius-card);
+  }
+
+  .cardActionTopline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cardActionTopline strong,
+  .cardActionTopline span {
+    white-space: normal;
+  }
+
   .liabilityRowMain {
     flex-direction: column;
     align-items: stretch;

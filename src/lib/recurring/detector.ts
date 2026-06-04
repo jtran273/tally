@@ -70,6 +70,15 @@ const CADENCE_CONFIG = {
   }
 >;
 
+const SUBSCRIPTION_MERCHANT_PATTERN =
+  /\b(?:adobe|anthropic|apple|chatgpt|claude|cloud|cursor|domain|dropbox|figma|github|hulu|icloud|linear|membership|microsoft|netflix|notion|openai|renewal|saas|spotify|substack|subscription|vercel)\b/;
+const SUBSCRIPTION_CATEGORY_PATTERN =
+  /\b(?:ai tools|hosting|saas|software|subscriptions?)\b/;
+const DISCRETIONARY_MERCHANT_PATTERN =
+  /\b(?:arco|bagel|car wash|chevron|dining|exxon|fuel|mobil|pizza|restaurant|retail wash|shell|thai|valero)\b/;
+const DISCRETIONARY_CATEGORY_PATTERN =
+  /\b(?:dining|food|gas|restaurants?|transportation \/ gas)\b/;
+
 interface ResolvedDetectionOptions {
   existingRecurring: readonly KnownRecurringExpense[];
   allowedCadences: readonly DetectedRecurringCadence[];
@@ -103,6 +112,14 @@ interface AmountEvaluation {
   score: number;
   evidence: RecurringAmountEvidence;
   priceChange: RecurringPriceChangeSignal | null;
+}
+
+interface MerchantEvidenceProfile {
+  confidenceAdjustment: number;
+  discretionaryStrength: number;
+  recurringStrength: number;
+  minimumConfidence: number;
+  variableAmount: boolean;
 }
 
 export function detectRecurringCandidates(
@@ -266,16 +283,22 @@ function evaluateCadence({
   const amountEvaluation = evaluateAmounts(rows, existingRecurring, options);
   if (amountEvaluation.score < 0.58) return null;
 
+  const merchantProfile = scoreMerchantEvidence(rows, normalizedMerchant, cadence, amountEvaluation, existingRecurring);
+  if (!hasRequiredMerchantEvidence(rows, cadenceEvidence, amountEvaluation, merchantProfile, existingRecurring)) {
+    return null;
+  }
+
   const occurrenceScore = Math.min(1, rows.length / 4);
   const recurringSignal = rows.filter((row) => row.transaction.recurring).length / rows.length;
   const confidence = roundScore(
     cadenceEvidence.score * 0.42 +
     amountEvaluation.score * 0.33 +
     occurrenceScore * 0.15 +
-    recurringSignal * 0.1
+    recurringSignal * 0.1 +
+    merchantProfile.confidenceAdjustment
   );
 
-  if (confidence < options.minimumConfidence) return null;
+  if (confidence < Math.max(options.minimumConfidence, merchantProfile.minimumConfidence)) return null;
 
   const first = rows[0];
   const last = rows[rows.length - 1];
@@ -394,6 +417,63 @@ function evaluateAmounts(
     evidence,
     priceChange: null
   };
+}
+
+function scoreMerchantEvidence(
+  rows: readonly DatedTransaction[],
+  normalizedMerchant: string,
+  cadence: DetectedRecurringCadence,
+  amountEvaluation: AmountEvaluation,
+  existingRecurring: KnownRecurringExpense | null
+): MerchantEvidenceProfile {
+  const categoryText = rows.map((row) => row.transaction.category).join(" ").toLowerCase();
+  const merchantRecurring = SUBSCRIPTION_MERCHANT_PATTERN.test(normalizedMerchant) ? 1 : 0;
+  const categoryRecurring = SUBSCRIPTION_CATEGORY_PATTERN.test(categoryText) ? 1 : 0;
+  const recurringStrength = merchantRecurring + categoryRecurring;
+  const merchantDiscretionary = DISCRETIONARY_MERCHANT_PATTERN.test(normalizedMerchant) ? 1 : 0;
+  const categoryDiscretionary = DISCRETIONARY_CATEGORY_PATTERN.test(categoryText) ? 1 : 0;
+  const discretionaryStrength = merchantDiscretionary + categoryDiscretionary;
+  const variableAmount =
+    amountEvaluation.evidence.score < 0.92 ||
+    amountEvaluation.evidence.maxAmount - amountEvaluation.evidence.minAmount > amountEvaluation.evidence.toleranceAmount;
+
+  let confidenceAdjustment = 0;
+  if (recurringStrength >= 2) confidenceAdjustment += 0.07;
+  else if (recurringStrength === 1) confidenceAdjustment += 0.04;
+  if (cadence === "annual" && recurringStrength > 0) confidenceAdjustment += 0.05;
+
+  if (!existingRecurring && discretionaryStrength > 0) {
+    confidenceAdjustment -= discretionaryStrength >= 2 ? 0.22 : 0.12;
+    if (variableAmount) confidenceAdjustment -= 0.08;
+  }
+
+  return {
+    confidenceAdjustment,
+    discretionaryStrength,
+    recurringStrength,
+    minimumConfidence: !existingRecurring && discretionaryStrength > 0 ? (variableAmount ? 0.92 : 0.86) : 0,
+    variableAmount
+  };
+}
+
+function hasRequiredMerchantEvidence(
+  rows: readonly DatedTransaction[],
+  cadenceEvidence: RecurringCadenceEvidence,
+  amountEvaluation: AmountEvaluation,
+  profile: MerchantEvidenceProfile,
+  existingRecurring: KnownRecurringExpense | null
+): boolean {
+  if (existingRecurring || profile.discretionaryStrength === 0) return true;
+
+  const recurringSignal = rows.filter((row) => row.transaction.recurring).length / rows.length;
+  if (profile.recurringStrength > 0 && recurringSignal >= 0.5) return true;
+
+  const enoughOccurrences = rows.length >= (profile.variableAmount ? 5 : 4);
+  const strongCadence = cadenceEvidence.score >= 0.95;
+  const strongAmount = amountEvaluation.score >= (profile.variableAmount ? 0.97 : 0.95);
+  const strongRecurringSignal = recurringSignal >= 0.75;
+
+  return enoughOccurrences && strongCadence && strongAmount && strongRecurringSignal;
 }
 
 function amountSimilarityScore(

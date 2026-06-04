@@ -943,6 +943,14 @@
   gap: 16px;
 }
 
+.editPageStack {
+  display: flex;
+  width: min(100%, 1040px);
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .editHeader {
   display: flex;
   min-width: 0;
@@ -1212,6 +1220,10 @@
 
   .summaryCard {
     min-height: 78px;
+  }
+
+  .editGrid {
+    grid-template-columns: 1fr;
   }
 }
 

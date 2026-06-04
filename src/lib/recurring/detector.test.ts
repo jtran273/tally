@@ -17,7 +17,8 @@ function tx(
   merchant: string,
   date: string,
   amount: number,
-  recurring = false
+  recurring = false,
+  overrides: Partial<RecurringDetectionTransaction> = {}
 ): RecurringDetectionTransaction {
   return {
     id,
@@ -30,7 +31,8 @@ function tx(
     amount,
     status: "posted",
     intent: "personal",
-    recurring
+    recurring,
+    ...overrides
   };
 }
 
@@ -94,6 +96,105 @@ export const recurringDetectionStaticResult = detectRecurringCandidates(recurrin
 
 export const recurringDetectionStaticAssertions = assertRecurringDetectionFixture(recurringDetectionStaticResult);
 
+export const recurringQualityFixture = [
+  tx("retail-wash-1", "Retail Wash", "2026-03-01", -18.5, false, {
+    categoryId: "category-auto",
+    category: "Auto / Car Maintenance"
+  }),
+  tx("retail-wash-2", "Retail Wash", "2026-03-08", -21, false, {
+    categoryId: "category-auto",
+    category: "Auto / Car Maintenance"
+  }),
+  tx("retail-wash-3", "Retail Wash", "2026-03-15", -19, false, {
+    categoryId: "category-auto",
+    category: "Auto / Car Maintenance"
+  }),
+  tx("arco-1", "ARCO Gas", "2026-03-02", -48, false, {
+    categoryId: "category-gas",
+    category: "Transportation / Gas"
+  }),
+  tx("arco-2", "ARCO Gas", "2026-03-09", -48, false, {
+    categoryId: "category-gas",
+    category: "Transportation / Gas"
+  }),
+  tx("arco-3", "ARCO Gas", "2026-03-16", -48, false, {
+    categoryId: "category-gas",
+    category: "Transportation / Gas"
+  }),
+  tx("arco-4", "ARCO Gas", "2026-03-23", -48, false, {
+    categoryId: "category-gas",
+    category: "Transportation / Gas"
+  }),
+  tx("thai-1", "Thai Kitchen", "2026-03-03", -31, false, {
+    categoryId: "category-restaurants",
+    category: "Food / Restaurants"
+  }),
+  tx("thai-2", "Thai Kitchen", "2026-03-10", -29, false, {
+    categoryId: "category-restaurants",
+    category: "Food / Restaurants"
+  }),
+  tx("thai-3", "Thai Kitchen", "2026-03-17", -32, false, {
+    categoryId: "category-restaurants",
+    category: "Food / Restaurants"
+  }),
+  tx("spotify-1", "Spotify", "2026-01-08", -11.99, true),
+  tx("spotify-2", "Spotify", "2026-02-08", -11.99, true),
+  tx("spotify-3", "Spotify", "2026-03-08", -11.99, true),
+  tx("claude-annual-1", "Claude Annual", "2025-03-01", -200, false, {
+    categoryId: "category-ai-tools",
+    category: "Software / AI Tools"
+  }),
+  tx("claude-annual-2", "Claude Annual", "2026-03-01", -240, false, {
+    categoryId: "category-ai-tools",
+    category: "Software / AI Tools"
+  }),
+  tx("chatgpt-1", "OpenAI ChatGPT", "2026-01-11", -20, true, {
+    categoryId: "category-ai-tools",
+    category: "Software / AI Tools"
+  }),
+  tx("chatgpt-2", "OpenAI ChatGPT", "2026-02-11", -20, true, {
+    categoryId: "category-ai-tools",
+    category: "Software / AI Tools"
+  }),
+  tx("chatgpt-3", "OpenAI ChatGPT", "2026-03-11", -25, true, {
+    categoryId: "category-ai-tools",
+    category: "Software / AI Tools"
+  }),
+  tx("socal-gas-1", "SoCal Gas", "2026-01-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
+  }),
+  tx("socal-gas-2", "SoCal Gas", "2026-02-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
+  }),
+  tx("socal-gas-3", "SoCal Gas", "2026-03-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
+  })
+] satisfies readonly RecurringDetectionTransaction[];
+
+export const recurringQualityResult = detectRecurringCandidates(recurringQualityFixture, {
+  asOfDate: "2026-03-24",
+  existingRecurring: [
+    {
+      id: "rec-chatgpt",
+      merchant: "OpenAI ChatGPT",
+      amount: 20,
+      cadence: "monthly",
+      accountId: "account-1",
+      categoryId: "category-ai-tools",
+      lastChargeDate: "2026-02-11",
+      lastAmount: 20,
+      status: "active",
+      isNew: false,
+      confidence: 0.95
+    }
+  ]
+});
+
+export const recurringQualityAssertions = assertRecurringQualityFixture(recurringQualityResult);
+
 export const recurringDetectionConfirmPayload = buildConfirmRecurringPayload(
   requireCandidate(recurringDetectionStaticResult, "Substack"),
   { reviewedAt: "2026-05-16T12:00:00.000Z" }
@@ -153,6 +254,25 @@ function assertRecurringDetectionFixture(candidates: readonly RecurringCandidate
 
   if (candidates.some((candidate) => candidate.merchant === "Old Membership")) {
     throw new Error("Expected stale recurring-looking rows to be suppressed by default.");
+  }
+
+  return true;
+}
+
+function assertRecurringQualityFixture(candidates: readonly RecurringCandidate[]): true {
+  for (const merchant of ["Retail Wash", "ARCO Gas", "Thai Kitchen"]) {
+    if (candidates.some((candidate) => candidate.merchant === merchant)) {
+      throw new Error(`Expected discretionary repeat ${merchant} to be excluded from recurring candidates.`);
+    }
+  }
+
+  expectCandidate(candidates, "Spotify", "monthly", "new-recurring");
+  expectCandidate(candidates, "Claude Annual", "annual", "new-recurring");
+  expectCandidate(candidates, "SoCal Gas", "monthly", "new-recurring");
+
+  const chatGpt = requireCandidate(candidates, "OpenAI ChatGPT");
+  if (chatGpt.priceChange?.source !== "known-recurring" || chatGpt.amount !== 25) {
+    throw new Error("Expected OpenAI ChatGPT to keep recurring status through a known plan amount change.");
   }
 
   return true;

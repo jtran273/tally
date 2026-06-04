@@ -4,6 +4,8 @@ const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
 const DUE_SOON_DAYS = 7;
 
+export type LiabilityTransactionInput = Pick<TransactionRecord, "accountId" | "amount" | "date" | "intent" | "merchant" | "plaidName">;
+
 export type LiabilityStatus = "current" | "due-soon" | "overdue" | "no-balance";
 
 export interface LiabilityAccountSummary {
@@ -25,6 +27,7 @@ export interface LiabilityAccountSummary {
   minimumPaymentAmount: number | null;
   // True when the due date came from Plaid liabilities, not an estimate.
   dueDateIsActual: boolean;
+  actionRank: number;
 }
 
 export interface LiabilitiesDueSummary {
@@ -68,9 +71,44 @@ function statusForDays(days: number | null, owed: number): LiabilityStatus {
   return "current";
 }
 
+function utilizationRank(utilizationPercent: number | null) {
+  if (utilizationPercent === null) return 0;
+  if (utilizationPercent >= 50) return 3;
+  if (utilizationPercent >= 30) return 2;
+  if (utilizationPercent >= 10) return 1;
+  return 0;
+}
+
+function minimumPaymentDue(row: Pick<LiabilityAccountSummary, "amountOwed" | "minimumPaymentAmount">) {
+  if (row.amountOwed <= 0) return 0;
+  if (row.minimumPaymentAmount && row.minimumPaymentAmount > 0) {
+    return Math.min(row.amountOwed, row.minimumPaymentAmount);
+  }
+  return row.amountOwed;
+}
+
+function actionRank(row: Omit<LiabilityAccountSummary, "actionRank">, cashAvailable: number) {
+  if (row.amountOwed <= 0) return 0;
+
+  const statusWeight: Record<LiabilityStatus, number> = {
+    overdue: 1_000_000,
+    "due-soon": 800_000,
+    current: 400_000,
+    "no-balance": 0
+  };
+  const dueUrgency = row.daysUntilDue === null
+    ? 0
+    : Math.max(0, 60 - Math.max(0, row.daysUntilDue)) * 1_000;
+  const coveredMinimum = minimumPaymentDue(row) <= Math.max(0, cashAvailable) ? 20_000 : 0;
+  const utilization = utilizationRank(row.utilizationPercent) * 10_000 + (row.utilizationPercent ?? 0) * 100;
+  const balanceWeight = Math.min(row.amountOwed, 10_000);
+
+  return Math.round(statusWeight[row.status] + dueUrgency + coveredMinimum + utilization + balanceWeight);
+}
+
 function findLastPayment(
   accountId: string,
-  transactions: readonly TransactionRecord[]
+  transactions: readonly LiabilityTransactionInput[]
 ): { date: string; amount: number } | null {
   for (const transaction of transactions) {
     if (transaction.accountId !== accountId) continue;
@@ -93,7 +131,7 @@ export function buildLiabilitiesDueSummary({
   accounts: readonly AccountRecord[];
   asOfDate?: string;
   cashAvailable: number;
-  transactions: readonly TransactionRecord[];
+  transactions: readonly LiabilityTransactionInput[];
 }): LiabilitiesDueSummary {
   const today = asOfDate ?? isoDate(new Date());
   const sortedTransactions = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
@@ -115,7 +153,7 @@ export function buildLiabilitiesDueSummary({
         ? Math.round((amountOwed / account.creditLimit) * 1000) / 10
         : null;
 
-      return {
+      const row = {
         accountId: account.id,
         amountOwed,
         creditLimit: account.creditLimit,
@@ -133,17 +171,15 @@ export function buildLiabilitiesDueSummary({
         status: statusForDays(daysUntilDue, amountOwed),
         utilizationPercent
       };
+
+      return {
+        ...row,
+        actionRank: actionRank(row, cashAvailable)
+      };
     })
     .sort((a, b) => {
-      // Overdue first, then due-soon, then by days remaining, then by amount owed.
-      const statusOrder: Record<LiabilityStatus, number> = {
-        overdue: 0,
-        "due-soon": 1,
-        current: 2,
-        "no-balance": 3
-      };
-      const statusDiff = statusOrder[a.status] - statusOrder[b.status];
-      if (statusDiff !== 0) return statusDiff;
+      const rankDiff = b.actionRank - a.actionRank;
+      if (rankDiff !== 0) return rankDiff;
       const aDays = a.daysUntilDue ?? Number.POSITIVE_INFINITY;
       const bDays = b.daysUntilDue ?? Number.POSITIVE_INFINITY;
       if (aDays !== bDays) return aDays - bDays;

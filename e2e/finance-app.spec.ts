@@ -273,7 +273,11 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Tally dashboard" })).toBeVisible();
   await expect(page.getByText("Seeded demo workspace")).toBeVisible();
   await expect(page.getByText("Real data workspace")).toHaveCount(0);
-  await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  const balanceView = page.getByLabel("Balance view");
+  await expect(balanceView.getByRole("button", { exact: true, name: "Cash flow balance view" })).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+  await expect(balanceView.getByRole("button").nth(0)).toContainText("Cash flow");
+  await expect(balanceView.getByRole("button").nth(1)).toContainText("Inflows / liquid assets");
+  await expect(balanceView.getByRole("button").nth(2)).toContainText("Net worth");
   await expectNoVisibleLegacyBrand(page);
 });
 
@@ -534,7 +538,7 @@ test("Tally surfaces respect reduced motion preferences", async ({ baseURL, cont
   }
 });
 
-test("dashboard keeps cashflow reporting off the main surface", async ({ baseURL, context, page }) => {
+test("dashboard keeps the old cashflow runway off the main surface", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
@@ -549,32 +553,21 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
-  let chart = page.locator("svg[aria-label='Spendable balance trend']");
+  let chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
-  const spendableView = page.getByRole("button", { exact: true, name: "Spendable balance view" });
-  const balanceRangeControls = page.getByLabel("Balance trend range");
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
-
-  const liquidView = page.getByRole("button", { exact: true, name: "Liquid assets balance view" });
-  await liquidView.click();
-  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
-
-  const debtView = page.getByRole("button", { exact: true, name: "Debt balance view" });
-  await debtView.click();
-  await expect(debtView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
-
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Spendable balance trend']")).toBeVisible();
-
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
-  await netWorthView.click();
-  await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Net worth balance trend']");
-  await expect(chart).toBeVisible();
+  const incomeView = page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" });
+  const cashFlowView = page.getByRole("button", { exact: true, name: "Cash flow balance view" });
+  const balanceRangeControls = page.getByLabel("Balance trend range");
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(0)).toContainText("Cash flow");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(1)).toContainText("Inflows / liquid assets");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(2)).toContainText("Net worth");
+  await expect(netWorthView).toBeVisible();
+  await expect(incomeView).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "Debt balance view" })).toHaveCount(0);
+  await expect(page.getByRole("button", { exact: true, name: "Spendable balance view" })).toHaveCount(0);
+  await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
 
   const oneYear = balanceRangeControls.getByRole("button", { name: "1Y" });
   await oneYear.click();
@@ -587,23 +580,27 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const chartBox = await chart.boundingBox();
   expect(chartBox?.width ?? 0).toBeGreaterThan(250);
   expect(chartBox?.height ?? 0).toBeGreaterThan(100);
+  await netWorthView.click();
+  await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Net worth balance trend']");
+  await expect(chart).toBeVisible();
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
   await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
 
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await cashFlowView.click();
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  const cardActions = page.getByRole("region", { name: "Credit card actions" });
+  await expect(cardActions).toBeVisible();
+  await expect(cardActions).toContainText("Utilization");
+  await expect(page.getByLabel("Spendable comparison")).toHaveCount(0);
   const selectedTransactionsHref = await page
     .getByLabel("Selected balance transactions")
     .getByRole("link", { name: "Open transactions" })
     .getAttribute("href");
   expect(selectedTransactionsHref).toMatch(/month=\d{4}-\d{2}/);
-
-  await debtView.click();
-  await expect(debtView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
 
   const categoryViewControls = page.getByLabel("Category spending view");
   const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
@@ -646,14 +643,14 @@ test("dashboard trend range controls update the change-over-time view", async ({
     expect(href).toContain("exclude_transfers=1");
   }
 
-  await liquidView.click();
-  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
+  await incomeView.click();
+  await expect(incomeView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Inflows / liquid assets balance trend']")).toBeVisible();
 
-  const incomePanel = page.getByLabel("Income by category");
+  const incomePanel = page.getByLabel("Cash inflows by category");
   await expect(incomePanel).toBeVisible();
   await expect(incomePanel).toContainText("transfers excluded");
-  await expect(page.getByLabel("Income range").getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
   const incomeLinks = await incomePanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
@@ -662,9 +659,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
     expect(href).toContain("direction=income");
   }
 
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await cashFlowView.click();
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
 
   const trendPoints = chart.locator("g[role='button']");
@@ -694,12 +691,45 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expectNoPageOverflow(page);
 });
 
+test("dashboard inflows drilldown opens income-only transactions", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.goto("/dashboard");
+
+  await page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" }).click();
+  const activityLink = page
+    .getByLabel("Selected balance transactions")
+    .getByRole("link", { exact: true, name: "Open transactions" });
+  await expect(activityLink).toHaveAttribute("href", /direction=income/);
+  await activityLink.click();
+
+  await expect(page).toHaveURL(/\/transactions\?.*direction=income/);
+  let filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
+
+  await page.goto("/dashboard");
+  await page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" }).click();
+  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
+
+  const incomePanel = page.getByLabel("Cash inflows by category");
+  const openTransactions = incomePanel.getByRole("link", { exact: true, name: "Open transactions" });
+  await expect(openTransactions).toHaveAttribute("href", /direction=income/);
+  await openTransactions.click();
+
+  await expect(page).toHaveURL(/\/transactions\?.*direction=income/);
+  filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  await expect(page.locator("td[aria-label^='Inflow']").first()).toBeVisible();
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
+  await expectNoPageOverflow(page);
+});
+
 test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
 
-  const chart = page.locator("svg[aria-label='Spendable balance trend']");
+  const chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeHidden();
 
   await expect(page.getByLabel("Mobile balance trend summary")).toBeVisible();
@@ -797,6 +827,16 @@ test("transaction review cards stay readable on narrow mobile", async ({ baseURL
   await expectNoPageOverflow(page);
 });
 
+test("income transaction filter shows only positive inflows", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.goto("/transactions?direction=income");
+
+  const filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  expect(await page.locator("td[aria-label^='Inflow']").count()).toBeGreaterThan(0);
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
+});
+
 test("transactions keep amount and edit controls visible at laptop width", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 844, width: 1100 });
@@ -871,12 +911,16 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expect(page.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
 
   await page.goto("/transactions/t25");
+  const editFormBox = await page.getByLabel("Edit transaction enrichment").boundingBox();
   const reimbursementApproval = page.getByLabel("Reimbursement linking");
   await expect(reimbursementApproval).toContainText("Reimbursement approval");
   await expect(reimbursementApproval).toContainText("Link this positive inflow");
   await expect(reimbursementApproval).toContainText("$60.00 outstanding");
   await expect(reimbursementApproval).toContainText("preview-only");
   await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();
+  const reimbursementBox = await reimbursementApproval.boundingBox();
+  expect(editFormBox?.width).toBeGreaterThan(360);
+  expect(reimbursementBox?.y).toBeGreaterThan((editFormBox?.y ?? 0) + (editFormBox?.height ?? 0) - 1);
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });
