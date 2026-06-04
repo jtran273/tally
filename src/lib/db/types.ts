@@ -24,6 +24,12 @@ export type ReviewReason =
   | "unclear-transfer"
   | "recurring-candidate";
 export type ReviewStatus = "open" | "resolved" | "dismissed";
+export type ReviewResolutionKind =
+  | "accepted_ai"
+  | "accepted_manual"
+  | "edited"
+  | "dismissed"
+  | "auto_resolved";
 export type RecurringCadence = "weekly" | "biweekly" | "monthly" | "quarterly" | "annual";
 export type RecurringStatus = "active" | "pending" | "paused" | "dismissed";
 export type ReimbursementStatus = "expected" | "requested" | "received" | "written-off";
@@ -289,6 +295,7 @@ export interface ReviewItemRow {
   confidence: number | null;
   resolved_at: string | null;
   resolution_note: string | null;
+  resolution_kind?: ReviewResolutionKind | null;
   created_at: string;
   updated_at: string;
 }
@@ -450,6 +457,7 @@ export type Database = {
       transaction_intent: TransactionIntent;
       review_reason: ReviewReason;
       review_status: ReviewStatus;
+      review_resolution_kind: ReviewResolutionKind;
       recurring_cadence: RecurringCadence;
       recurring_status: RecurringStatus;
       reimbursement_status: ReimbursementStatus;
@@ -552,6 +560,7 @@ export interface ReviewItemRecord {
   confidence: number | null;
   resolvedAt: string | null;
   resolutionNote: string | null;
+  resolutionKind?: ReviewResolutionKind | null;
   createdAt: string;
 }
 

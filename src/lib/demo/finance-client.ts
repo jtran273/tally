@@ -209,6 +209,7 @@ const reviewItems: ReviewItemRow[] = ledgerData.txns.flatMap((transaction) => {
     explanation: transaction.aiSuggested?.reason ?? "Demo data flagged this transaction for review.",
     id: `demo-review-${transaction.id}`,
     reason,
+    resolution_kind: null,
     resolution_note: null,
     resolved_at: null,
     status: "open",

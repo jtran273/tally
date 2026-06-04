@@ -116,6 +116,7 @@ async function ensureMissingCategoryReviews(client: FinanceSupabaseClient, userI
     const result = await client
       .from("review_items")
       .update({
+        resolution_kind: null,
         resolution_note: null,
         resolved_at: null,
         status: "open"
@@ -158,6 +159,7 @@ async function autoFixMissingCategoryReviews(
       userId,
       plan.reviewItemId,
       "resolved",
+      "auto_resolved",
       plan.needsCategoryLink
         ? `Auto-linked exact category match: ${plan.categoryName}.`
         : "Auto-resolved stale missing-category review."

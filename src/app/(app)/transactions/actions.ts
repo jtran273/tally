@@ -266,6 +266,7 @@ async function resolveManualEditReviewItemsForTransaction({
       userId,
       item.id,
       "resolved",
+      "edited",
       "Edited transaction details and finalized review."
     );
 

@@ -3,6 +3,7 @@ import type {
   RecurringCadence,
   RecurringExpenseRecord,
   ReviewReason,
+  ReviewResolutionKind,
   ReviewStatus,
   TransactionRecord
 } from "../db/types";
@@ -159,6 +160,7 @@ export interface RecurringTransactionPatchPayload {
 
 export interface RecurringReviewResolutionPayload {
   reviewItemId: string;
+  resolutionKind: ReviewResolutionKind;
   status: Exclude<ReviewStatus, "open">;
   resolutionNote: string;
 }

@@ -1889,6 +1889,7 @@ async function autoApplyReviewSuggestions(
       resolvedReviewItems.push({
         ...item,
         confidence: plan.decision.suggestion.confidence ?? item.confidence ?? null,
+        resolution_kind: "auto_resolved",
         resolution_note: "Auto-applied high-confidence non-manual categorization.",
         resolved_at: reviewedAt,
         status: "resolved"

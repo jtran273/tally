@@ -20,6 +20,7 @@ function review(overrides: Partial<ReviewItemRecord> = {}): ReviewItemRecord {
     confidence: 0.4,
     resolvedAt: null,
     resolutionNote: null,
+    resolutionKind: null,
     createdAt: "2026-05-01T00:00:00Z",
     ...overrides
   };
@@ -52,20 +53,20 @@ test("hasAiSuggestion returns true only for non-empty suggestion objects", () =>
   assert.equal(hasAiSuggestion({ merchantName: "Coffee" }), true);
 });
 
-test("isResolvedAccept / isResolvedEdit classify resolved review items by note", () => {
-  assert.equal(isResolvedAccept({ status: "resolved", resolutionNote: null }), true);
-  assert.equal(isResolvedAccept({ status: "resolved", resolutionNote: "AI suggestion accepted" }), true);
-  assert.equal(isResolvedAccept({ status: "resolved", resolutionNote: "Manually edited" }), false);
-  assert.equal(isResolvedEdit({ status: "resolved", resolutionNote: "Edited categories" }), true);
-  assert.equal(isResolvedEdit({ status: "dismissed", resolutionNote: "Edited" }), false);
+test("isResolvedAccept / isResolvedEdit prefer structured resolution kind with note fallback", () => {
+  assert.equal(isResolvedAccept({ status: "resolved", resolutionKind: "accepted_ai", resolutionNote: "Edited later" }), true);
+  assert.equal(isResolvedAccept({ status: "resolved", resolutionKind: null, resolutionNote: null }), true);
+  assert.equal(isResolvedAccept({ status: "resolved", resolutionKind: null, resolutionNote: "Manually edited" }), false);
+  assert.equal(isResolvedEdit({ status: "resolved", resolutionKind: "edited", resolutionNote: "Accepted" }), true);
+  assert.equal(isResolvedEdit({ status: "dismissed", resolutionKind: "dismissed", resolutionNote: "Edited" }), false);
 });
 
 test("summarizeAiReviewQuality counts accepted, dismissed, edited, and skips open items", () => {
   const summary = summarizeAiReviewQuality({
     reviews: [
-      { review: review({ id: "r1", status: "resolved" }), merchant: "Aldi", category: "Groceries" },
-      { review: review({ id: "r2", status: "dismissed" }), merchant: "Aldi", category: "Groceries" },
-      { review: review({ id: "r3", status: "resolved", resolutionNote: "edited" }), merchant: "Spotify", category: "Subscriptions" },
+      { review: review({ id: "r1", status: "resolved", resolutionKind: "accepted_ai" }), merchant: "Aldi", category: "Groceries" },
+      { review: review({ id: "r2", status: "dismissed", resolutionKind: "dismissed" }), merchant: "Aldi", category: "Groceries" },
+      { review: review({ id: "r3", status: "resolved", resolutionKind: "edited" }), merchant: "Spotify", category: "Subscriptions" },
       { review: review({ id: "r4", status: "open" }), merchant: "X", category: "Y" },
       { review: review({ id: "r5", status: "resolved", aiSuggestion: {} }) }
     ],

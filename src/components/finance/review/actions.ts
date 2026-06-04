@@ -371,6 +371,7 @@ async function applyAcceptedReviewSuggestion(
     userId,
     item.id,
     "resolved",
+    "accepted_ai",
     `Accepted suggestion fields: ${suggestionFieldSummary(suggestion).join(", ")}.`
   );
 
@@ -572,7 +573,7 @@ export async function dismissReviewItemAction(
     }
 
     const note = cleanString(formData.get("resolutionNote"), 240) || "Dismissed from review queue.";
-    const dismissed = await resolveReviewItem(client, userId, item.id, "dismissed", note);
+    const dismissed = await resolveReviewItem(client, userId, item.id, "dismissed", "dismissed", note);
 
     await recordAuditEvent(client, userId, {
       action: "review.dismissed",
@@ -812,6 +813,7 @@ export async function editReviewTransactionAction(
         userId,
         target.id,
         "resolved",
+        "edited",
         merchantRule
           ? "Edited transaction in review queue and saved merchant rule."
           : "Edited transaction in review queue and finalized."
@@ -906,6 +908,7 @@ export async function resolvePeerToPeerReviewAction(
       userId,
       item.id,
       "resolved",
+      "accepted_manual",
       resolutionNote,
       { explanation }
     );

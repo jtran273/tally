@@ -145,6 +145,7 @@ export async function runAiReviewCleanup({
       userId,
       item.id,
       "resolved",
+      "auto_resolved",
       "Auto-applied high-confidence AI categorization."
     );
 

@@ -1,4 +1,4 @@
-import type { Json, MerchantRuleRow, ReviewItemRecord, ReviewReason } from "@/lib/db";
+import type { Json, MerchantRuleRow, ReviewItemRecord, ReviewReason, ReviewResolutionKind } from "@/lib/db";
 
 export interface AiQualityGroupCount {
   label: string;
@@ -37,18 +37,40 @@ export function hasAiSuggestion(value: Json | null | undefined): boolean {
   return Object.values(value).some((field) => field !== null && field !== undefined && field !== "");
 }
 
-export function isResolvedAccept(review: Pick<ReviewItemRecord, "status" | "resolutionNote">): boolean {
-  if (review.status !== "resolved") return false;
+export type ReviewQualityBucket = "accepted" | "dismissed" | "edited";
+
+type ResolvedReview = Pick<ReviewItemRecord, "status" | "resolutionKind" | "resolutionNote">;
+
+const RESOLUTION_KIND_BUCKETS: Record<ReviewResolutionKind, ReviewQualityBucket> = {
+  accepted_ai: "accepted",
+  accepted_manual: "accepted",
+  auto_resolved: "accepted",
+  edited: "edited",
+  dismissed: "dismissed"
+};
+
+// Legacy rows resolved before `resolution_kind` existed only carry note copy.
+// The backfill migration covers stored rows, so this is a defensive fallback
+// for in-memory records that have not been re-read from the database.
+function legacyBucket(review: ResolvedReview): ReviewQualityBucket {
+  if (review.status === "dismissed") return "dismissed";
   const note = (review.resolutionNote ?? "").toLowerCase();
-  if (!note) return true;
-  if (note.includes("edit")) return false;
-  return true;
+  if (note.includes("edit")) return "edited";
+  return "accepted";
 }
 
-export function isResolvedEdit(review: Pick<ReviewItemRecord, "status" | "resolutionNote">): boolean {
-  if (review.status !== "resolved") return false;
-  const note = (review.resolutionNote ?? "").toLowerCase();
-  return note.includes("edit");
+export function reviewResolutionBucket(review: ResolvedReview): ReviewQualityBucket | null {
+  if (review.status !== "resolved" && review.status !== "dismissed") return null;
+  if (review.resolutionKind) return RESOLUTION_KIND_BUCKETS[review.resolutionKind];
+  return legacyBucket(review);
+}
+
+export function isResolvedAccept(review: ResolvedReview): boolean {
+  return reviewResolutionBucket(review) === "accepted";
+}
+
+export function isResolvedEdit(review: ResolvedReview): boolean {
+  return reviewResolutionBucket(review) === "edited";
 }
 
 const REASON_LABELS: Record<ReviewReason, string> = {
@@ -105,22 +127,17 @@ export function summarizeAiReviewQuality(input: {
   for (const { review, merchant, category } of input.reviews) {
     if (!hasAiSuggestion(review.aiSuggestion)) continue;
 
-    let bucket: "accepted" | "dismissed" | "edited" | null = null;
-    if (review.status === "dismissed") {
-      bucket = "dismissed";
-      dismissedCount += 1;
-    } else if (isResolvedEdit(review)) {
-      bucket = "edited";
-      editedCount += 1;
-    } else if (isResolvedAccept(review)) {
-      bucket = "accepted";
-      acceptedCount += 1;
-    } else if (review.status === "open") {
+    if (review.status === "open") {
       openCount += 1;
       continue;
-    } else {
-      continue;
     }
+
+    const bucket = reviewResolutionBucket(review);
+    if (!bucket) continue;
+
+    if (bucket === "dismissed") dismissedCount += 1;
+    else if (bucket === "edited") editedCount += 1;
+    else acceptedCount += 1;
 
     total += 1;
     bumpGroup(byReason, reasonLabel(review.reason), bucket);

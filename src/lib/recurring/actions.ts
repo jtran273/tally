@@ -182,11 +182,15 @@ function reviewResolutions(
   status: RecurringReviewResolutionPayload["status"],
   resolutionNote: string
 ): RecurringReviewResolutionPayload[] {
+  const resolutionKind: RecurringReviewResolutionPayload["resolutionKind"] =
+    status === "dismissed" ? "dismissed" : "accepted_manual";
+
   return candidate.transactions.flatMap((transaction) =>
     transaction.reviewItems
       .filter((review) => review.status === "open" && RECURRING_REVIEW_REASONS.has(review.reason))
       .map((review) => ({
         reviewItemId: review.id,
+        resolutionKind,
         status,
         resolutionNote
       }))
@@ -212,7 +216,14 @@ async function applyReviewResolutions(
 ) {
   await Promise.all(
     resolutions.map((resolution) =>
-      resolveReviewItem(client, userId, resolution.reviewItemId, resolution.status, resolution.resolutionNote)
+      resolveReviewItem(
+        client,
+        userId,
+        resolution.reviewItemId,
+        resolution.status,
+        resolution.resolutionKind,
+        resolution.resolutionNote
+      )
     )
   );
 }
