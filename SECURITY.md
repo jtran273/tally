@@ -34,14 +34,12 @@ gh repo edit jtran273/personal-finance-os --visibility private --accept-visibili
 Current GitHub repository protections confirmed enabled:
 
 - secret scanning,
-- secret scanning push protection.
-
-Recommended GitHub repository settings to enable or keep enabled:
-
+- secret scanning push protection,
 - Dependabot alerts and security updates,
-- branch protection on `main` requiring pull requests and passing checks,
-- CodeQL code scanning through `.github/workflows/codeql.yml`,
-- dependency review through `.github/workflows/dependency-review.yml`.
+- branch protection on `main` (force-push and deletion blocked; conversation resolution required),
+- CodeQL code scanning through `.github/workflows/codeql.yml` (with `security-and-quality` query suite),
+- dependency review through `.github/workflows/dependency-review.yml` (fails PRs on `moderate` or higher),
+- private vulnerability reporting via GitHub Security Advisories.
 
 ## Secret Handling
 
@@ -285,7 +283,13 @@ If Google Calendar tokens are exposed:
 
 ## Reporting Security Issues
 
-Do not open public GitHub issues with secrets or private financial data. Use a private channel and include:
+Do not open public GitHub issues with secrets or private financial data. Report privately through GitHub's private vulnerability reporting:
+
+```text
+https://github.com/jtran273/personal-finance-os/security/advisories/new
+```
+
+Include:
 
 - what happened,
 - when it happened,

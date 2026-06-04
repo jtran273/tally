@@ -58,5 +58,3 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ error: "Unable to compile OpenClaw briefing." }, { status: 500 });
   }
 }
-
-export const GET = POST;
