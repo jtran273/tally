@@ -28,7 +28,11 @@ function row(input: Partial<LiabilityAccountSummary> & {
     lastStatementIssueDate: input.lastStatementIssueDate ?? null,
     lastStatementBalance: input.lastStatementBalance ?? null,
     minimumPaymentAmount: input.minimumPaymentAmount ?? null,
-    dueDateIsActual: input.dueDateIsActual ?? false
+    dueDateIsActual: input.dueDateIsActual ?? false,
+    reportingDate: input.reportingDate ?? null,
+    reportingDateAnchorDate: input.reportingDateAnchorDate ?? null,
+    reportingDateConfidence: input.reportingDateConfidence ?? "unknown",
+    reportingDateSource: input.reportingDateSource ?? "unknown"
   };
 }
 
@@ -151,12 +155,14 @@ test("prefers actual lastStatementIssueDate when present and rolls forward", () 
     ]
   });
   const card = plan.cards[0];
-  assert.equal(card?.statementCloseIsActual, true);
+  assert.equal(card?.statementCloseIsActual, false);
+  assert.equal(card?.reportedBalanceOptimization.source, "inferred_from_statement_cycle");
+  assert.equal(card?.reportedBalanceOptimization.confidence, "medium");
   // First +30 after 2026-04-10 = 2026-05-10; still past today (2026-06-15) → +30 = 2026-06-09; still past → +30 = 2026-07-09
   assert.equal(card?.nextReportingDate, "2026-07-09");
 });
 
-test("action text references the next reporting date and the drop in utilization", () => {
+test("action text references the reporting pay-by date and avoids exact score promises", () => {
   const plan = buildPayoffPlan({
     asOfDate: "2026-06-01",
     cashAvailable: 1500,
@@ -170,9 +176,12 @@ test("action text references the next reporting date and the drop in utilization
     ]
   });
   const card = plan.cards[0];
-  assert.match(card?.actionText ?? "", /Pay \$1,500\.00 by Jun 18/);
-  assert.match(card?.actionText ?? "", /Next report \(Jun 27\)/);
+  assert.match(card?.actionText ?? "", /Pay \$1,500\.00 by Jun 24/);
+  assert.match(card?.actionText ?? "", /before Jun 27/);
   assert.match(card?.actionText ?? "", /from 14% to 6%/);
+  assert.doesNotMatch(card?.actionText ?? "", /raise.*score|score.*points/i);
+  assert.equal(card?.reportedBalanceOptimization.payByDate, "2026-06-24");
+  assert.equal(card?.reportedBalanceOptimization.processingBufferDays, 3);
 });
 
 test("aggregate utilization and projected utilization reflect allocation", () => {
@@ -202,4 +211,138 @@ test("topPick is null when no cash to apply", () => {
   });
   assert.equal(plan.topPick, null);
   assert.equal(plan.cards[0]?.suggestedPayment, 0);
+});
+
+test("missing credit limit does not create utilization target actions", () => {
+  const plan = buildPayoffPlan({
+    asOfDate: "2026-06-01",
+    cashAvailable: 500,
+    rows: [
+      row({
+        accountId: "unknown-limit",
+        amountOwed: 900,
+        creditLimit: null,
+        estimatedDueDate: "2026-06-18"
+      })
+    ]
+  });
+  const card = plan.cards[0];
+  assert.equal(card?.utilizationPercent, null);
+  assert.equal(card?.payToReachThirty, 0);
+  assert.equal(card?.payToReachTen, 0);
+  assert.deepEqual(card?.reportedBalanceOptimization.actions, []);
+  assert.equal(card?.actionText, null);
+});
+
+test("unknown reporting date keeps due-date safety but suppresses reporting action text", () => {
+  const plan = buildPayoffPlan({
+    asOfDate: "2026-06-01",
+    cashAvailable: 500,
+    rows: [
+      row({
+        accountId: "unknown-date",
+        amountOwed: 2000,
+        creditLimit: 4000,
+        estimatedDueDate: null,
+        minimumPaymentAmount: 80,
+        status: "due-soon"
+      })
+    ]
+  });
+  const card = plan.cards[0];
+  assert.equal(card?.reportedBalanceOptimization.source, "unknown");
+  assert.equal(card?.reportedBalanceOptimization.confidence, "unknown");
+  assert.equal(card?.reportedBalanceOptimization.payByDate, null);
+  assert.equal(card?.actionText, null);
+  assert.equal(card?.dueDateSafety.minimumPaymentAmount, 80);
+  assert.equal(card?.dueDateSafety.status, "due-soon");
+});
+
+test("reporting metadata supports actual, inferred, estimated, and unknown sources", () => {
+  const plan = buildPayoffPlan({
+    asOfDate: "2026-06-01",
+    cashAvailable: 0,
+    rows: [
+      row({
+        accountId: "actual",
+        amountOwed: 100,
+        creditLimit: 1000,
+        reportingDate: "2026-06-12",
+        reportingDateAnchorDate: "2026-06-12",
+        reportingDateConfidence: "high",
+        reportingDateSource: "actual_plaid_liability"
+      }),
+      row({
+        accountId: "inferred",
+        amountOwed: 100,
+        creditLimit: 1000,
+        lastStatementIssueDate: "2026-05-20"
+      }),
+      row({
+        accountId: "estimated",
+        amountOwed: 100,
+        creditLimit: 1000,
+        estimatedDueDate: "2026-06-18"
+      }),
+      row({
+        accountId: "unknown",
+        amountOwed: 100,
+        creditLimit: 1000,
+        estimatedDueDate: null
+      })
+    ]
+  });
+
+  const byId = new Map(plan.cards.map((card) => [card.accountId, card]));
+  assert.equal(byId.get("actual")?.nextReportingDate, "2026-06-12");
+  assert.equal(byId.get("actual")?.reportedBalanceOptimization.source, "actual_plaid_liability");
+  assert.equal(byId.get("actual")?.reportedBalanceOptimization.confidence, "high");
+  assert.equal(byId.get("actual")?.statementCloseIsActual, true);
+  assert.equal(byId.get("inferred")?.nextReportingDate, "2026-06-19");
+  assert.equal(byId.get("inferred")?.reportedBalanceOptimization.source, "inferred_from_statement_cycle");
+  assert.equal(byId.get("inferred")?.reportedBalanceOptimization.confidence, "medium");
+  assert.equal(byId.get("estimated")?.nextReportingDate, "2026-06-27");
+  assert.equal(byId.get("estimated")?.reportedBalanceOptimization.source, "estimated_from_due_date");
+  assert.equal(byId.get("estimated")?.reportedBalanceOptimization.confidence, "low");
+  assert.equal(byId.get("unknown")?.nextReportingDate, null);
+  assert.equal(byId.get("unknown")?.reportedBalanceOptimization.source, "unknown");
+  assert.equal(byId.get("unknown")?.reportedBalanceOptimization.confidence, "unknown");
+});
+
+test("surfaces high individual utilization even when aggregate utilization is ok", () => {
+  const plan = buildPayoffPlan({
+    asOfDate: "2026-06-01",
+    cashAvailable: 1000,
+    rows: [
+      row({ accountId: "spike", amountOwed: 800, creditLimit: 1000, estimatedDueDate: "2026-06-15" }),
+      row({ accountId: "wide", amountOwed: 1000, creditLimit: 20000, estimatedDueDate: "2026-06-20" })
+    ]
+  });
+
+  assert.equal(plan.aggregateUtilization, 8.6);
+  assert.equal(plan.aggregateTier, "optimal");
+  assert.equal(plan.highestIndividualUtilization, 80);
+  assert.equal(plan.highestIndividualCard?.accountId, "spike");
+  assert.equal(plan.topPick?.accountId, "spike");
+  assert.ok((plan.highestIndividualCard?.suggestedPayment ?? 0) > 500);
+});
+
+test("cash buffer limits deployable payoff guidance", () => {
+  const plan = buildPayoffPlan({
+    asOfDate: "2026-06-01",
+    cashAvailable: 1000,
+    cashBuffer: 750,
+    rows: [
+      row({ accountId: "a", amountOwed: 900, creditLimit: 1000, estimatedDueDate: "2026-06-15" })
+    ]
+  });
+
+  const card = plan.cards[0];
+  assert.equal(plan.cashAvailable, 1000);
+  assert.equal(plan.cashBuffer, 750);
+  assert.equal(plan.cashDeployable, 250);
+  assert.equal(plan.cashApplied, 250);
+  assert.equal(card?.suggestedPayment, 250);
+  assert.equal(card?.reportedBalanceOptimization.actions[0]?.isFullyFunded, false);
+  assert.equal(card?.reportedBalanceOptimization.actions[0]?.affordablePayment, 250);
 });
