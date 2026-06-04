@@ -282,8 +282,17 @@ async function callOpenAiReimbursementCandidate({
     throw new Error("OpenAI reimbursement candidate response had no output text.");
   }
 
-  const parsed = JSON.parse(outputText) as OpenAiReimbursementCandidatePayload;
-  return parsed && typeof parsed === "object" ? parsed : {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch (error) {
+    throw new Error(
+      `OpenAI reimbursement candidate response was not valid JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as OpenAiReimbursementCandidatePayload)
+    : {};
 }
 
 async function suggestTransactionWithOpenAi({
@@ -446,8 +455,17 @@ async function callOpenAi({
     throw new Error("OpenAI suggestion response had no output text.");
   }
 
-  const parsed = JSON.parse(outputText) as OpenAiSuggestionPayload;
-  return parsed && typeof parsed === "object" ? parsed : {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch (error) {
+    throw new Error(
+      `OpenAI suggestion response was not valid JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as OpenAiSuggestionPayload)
+    : {};
 }
 
 function buildSystemPrompt(request: TransactionSuggestionRequest) {

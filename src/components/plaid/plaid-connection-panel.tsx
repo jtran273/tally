@@ -301,14 +301,19 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
     [connections]
   );
   const lastSyncAt = useMemo(() => {
-    const values = connections
-      .filter((connection) => connection.status !== "revoked")
-      .map((connection) => connection.lastSuccessfulSyncAt)
-      .filter((value): value is string => Boolean(value));
-
-    return values.length > 0
-      ? values.sort((a, b) => Date.parse(b) - Date.parse(a))[0]
-      : null;
+    let mostRecent: string | null = null;
+    let mostRecentMs = -Infinity;
+    for (const connection of connections) {
+      if (connection.status === "revoked") continue;
+      const value = connection.lastSuccessfulSyncAt;
+      if (!value) continue;
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed) && parsed > mostRecentMs) {
+        mostRecentMs = parsed;
+        mostRecent = value;
+      }
+    }
+    return mostRecent;
   }, [connections]);
   const statusSummary = useMemo(() => buildPlaidConnectionsStatusSummary(connections), [connections]);
   const autoSyncEnabled = useMemo(
