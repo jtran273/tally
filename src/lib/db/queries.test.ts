@@ -737,6 +737,27 @@ test("listReviewItems suppresses one-sided refund reversal review noise", async 
   assert.deepEqual(reviewItems.map((item) => item.id), []);
 });
 
+test("listReviewItems loads refund context in bounded date windows", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  client.rawTransactions.push(
+    fixtureRawTransaction("raw-old-review", "2026-01-02", "Old Review"),
+    fixtureRawTransaction("raw-new-review", "2026-06-02", "New Review")
+  );
+  client.enrichedTransactions.push(
+    fixtureEnrichedTransaction("tx-old-review", "raw-old-review", "2026-01-02", "Old Review"),
+    fixtureEnrichedTransaction("tx-new-review", "raw-new-review", "2026-06-02", "New Review")
+  );
+  client.reviewItems.push(
+    fixtureReviewRow("review-old", "tx-old-review", "open", "missing-category"),
+    fixtureReviewRow("review-new", "tx-new-review", "open", "missing-category")
+  );
+
+  await listReviewItems(client.asClient(), userId, "open");
+
+  assert.equal(client.selectCalls.enriched_transactions?.length, 3);
+});
+
 test("listTransactions pushes transfer and review filters before hydration limits", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);

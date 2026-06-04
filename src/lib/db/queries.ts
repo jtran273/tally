@@ -1123,6 +1123,33 @@ function addDaysIso(value: string, days: number) {
   return new Date(time + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+interface DateWindow {
+  fromDate: string;
+  toDate: string;
+}
+
+function refundContextWindowsForRows(rows: readonly EnrichedTransactionRow[]): DateWindow[] {
+  const windows = rows.flatMap((row) => {
+    const fromDate = addDaysIso(row.date, -DEFAULT_REVERSAL_WINDOW_DAYS);
+    const toDate = addDaysIso(row.date, DEFAULT_REVERSAL_WINDOW_DAYS);
+    return fromDate && toDate ? [{ fromDate, toDate }] : [];
+  }).sort((left, right) => left.fromDate.localeCompare(right.fromDate));
+
+  return windows.reduce<DateWindow[]>((merged, window) => {
+    const previous = merged[merged.length - 1];
+    const mergeBoundary = previous ? addDaysIso(previous.toDate, 1) ?? previous.toDate : null;
+    if (!previous || !mergeBoundary || window.fromDate > mergeBoundary) {
+      merged.push({ ...window });
+      return merged;
+    }
+
+    if (window.toDate > previous.toDate) {
+      previous.toDate = window.toDate;
+    }
+    return merged;
+  }, []);
+}
+
 async function loadReviewRowsWithRefundReversalContext(
   client: FinanceSupabaseClient,
   userId: string,
@@ -1136,19 +1163,21 @@ async function loadReviewRowsWithRefundReversalContext(
   const reviewTransactionRows = expectData(transactionResult, "Load review transactions");
   if (reviewTransactionRows.length === 0) return [];
 
-  const dates = reviewTransactionRows.map((row) => row.date).sort();
-  const fromDate = addDaysIso(dates[0] ?? "", -DEFAULT_REVERSAL_WINDOW_DAYS);
-  const toDate = addDaysIso(dates[dates.length - 1] ?? "", DEFAULT_REVERSAL_WINDOW_DAYS);
-  if (!fromDate || !toDate) return reviewTransactionRows;
+  const rowsById = new Map(reviewTransactionRows.map((row) => [row.id, row]));
+  const windows = refundContextWindowsForRows(reviewTransactionRows);
 
-  const contextResult = await client
-    .from("enriched_transactions")
-    .select("*")
-    .eq("user_id", userId)
-    .gte("date", fromDate)
-    .lte("date", toDate);
-  const contextRows = expectData(contextResult, "Load review refund reversal context");
-  return [...new Map([...reviewTransactionRows, ...contextRows].map((row) => [row.id, row])).values()];
+  for (const window of windows) {
+    const contextResult = await client
+      .from("enriched_transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", window.fromDate)
+      .lte("date", window.toDate);
+    const contextRows = expectData(contextResult, "Load review refund reversal context");
+    contextRows.forEach((row) => rowsById.set(row.id, row));
+  }
+
+  return [...rowsById.values()];
 }
 
 export async function listReviewItems(
