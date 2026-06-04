@@ -44,7 +44,12 @@ function normalizeSymbol(value: unknown) {
 }
 
 function parseJsonHoldingConfig(value: string): HoldingConfig[] {
-  const parsed = JSON.parse(value) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
   const rows = Array.isArray(parsed) ? parsed : [parsed];
 
   return rows.flatMap((row) => {
