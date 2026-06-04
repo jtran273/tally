@@ -101,7 +101,7 @@ Actual deletion requires `--execute --confirm DELETE_PLAID_ITEM_DATA`.
 
 The app also performs a throttled opportunistic Plaid sync on app open through `/api/plaid/sync/opportunistic`. It skips items synced successfully in the last 24 hours and no-ops if another sync is already running.
 
-Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
+Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, `/api/openclaw/anomaly-alerts/scheduled`, which persists deterministic anomaly alerts for OpenClaw delivery, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
 
 ### Review Transactions
 
@@ -128,6 +128,7 @@ Ambiguous reimbursement matches should become concise clarification requests onl
 The `/agent-inbox` route remains available as a secondary proposal/audit queue for finance-agent recommendations. It derives sanitized proposals from open review items and stored suggestions; it is not a separate autonomous mutation store. The primary workflow is `/review`; the main navigation points there so high-confidence automation stays out of the way and only exceptions need attention.
 
 Tally also has a persistent `agent_proposals` store for longer-lived assistant proposals and clarification requests. The store is user-owned, RLS-protected, and accepts only minimized evidence/proposed-patch JSON that passes forbidden-field checks. Persisted proposals can be dismissed, answered, or accepted only through Tally-owned helpers that re-read the current finance rows and write audit events.
+Tally also persists deterministic `anomaly_alerts` for OpenClaw delivery. These alerts flag finance exceptions such as duplicate charges, large transactions, stale syncs, and high card balances; browser clients can read their own rows, while scheduled/server code owns writes and OpenClaw receives only compact alert copy, reason code, and severity.
 
 Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Import-time auto-categorization is limited to conservative high-confidence cleanup and records audit events.
 
@@ -306,6 +307,7 @@ src/components/ledger/           Seeded Tally data and legacy prototype UI used 
 src/components/plaid/            Plaid Link connection panel
 src/components/shell/            Authenticated app navigation shell
 src/components/ui/               Reusable Tally primitives
+src/lib/anomaly/                 Deterministic anomaly detectors, persistence scan, and OpenClaw packets
 src/lib/agents/                  Agent-safe finance manifest and derived proposal helpers
 src/lib/ai/                      AI provider interface, deterministic fallback, optional OpenAI provider
 src/lib/calendar/                Google Calendar OAuth, token vault, event listing, and safe context builder

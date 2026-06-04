@@ -457,6 +457,7 @@ const auditEvents: AuditEventRow[] = [
 const rows = {
   accounts,
   agent_proposals: [] as AgentProposalRow[],
+  anomaly_alerts: [],
   audit_events: auditEvents,
   balance_snapshots: balanceSnapshots,
   categories,

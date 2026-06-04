@@ -33,6 +33,7 @@ Plaid API
 - `src/lib/plaid` owns Plaid configuration, Link token creation, public token exchange, transaction sync, disconnect, token encryption, and safe error handling.
 - `src/lib/calendar` owns read-only Google Calendar OAuth, encrypted token storage, token refresh, bounded event reads, and safe upcoming-event context.
 - `src/lib/demo` owns local demo mode and seeded in-memory finance data.
+- `src/lib/anomaly` owns deterministic persisted anomaly detectors, scan orchestration, and minimized OpenClaw alert packets.
 - `src/lib/agents` owns the proposal-only finance action manifest, OpenClaw-safe context contracts, clarification policy, weekly planning context, and proposal-store safety helpers.
 - `src/lib/review`, `src/lib/recurring`, `src/lib/finance`, `src/lib/settings`, and `src/lib/insights` own domain calculations and setup-state helpers.
 - `supabase/migrations` owns schema, indexes, grants, RLS, and policies.
@@ -69,6 +70,7 @@ Plaid API
 | `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
 | `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
 | `/api/agents/proactive-scan/scheduled` | `GET`/`POST` | Run a bounded reimbursement candidate detector scan when authorized with `CRON_SECRET` |
+| `/api/openclaw/anomaly-alerts/scheduled` | `GET`/`POST` | Persist deterministic anomaly alerts for the configured OpenClaw user when authorized with `CRON_SECRET` |
 | `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
 | `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
 | `/api/openclaw/briefing/scheduled` | `GET`/`POST` | Compile or update the current OpenClaw briefing proposal when authorized with `CRON_SECRET` |
@@ -98,13 +100,14 @@ Core tables:
 - `transaction_splits`: split allocations for peer-to-peer or shared spending.
 - `reimbursement_records`: expected/requested/received reimbursement tracking for reimbursable split portions.
 - `agent_proposals`: persistent user-owned assistant proposals and clarification requests. Evidence and proposed patches are JSON objects that must pass forbidden-field checks before insert; accepted writes still re-read user-owned finance rows and write audit events.
+- `anomaly_alerts`: deterministic user-owned finance exceptions, keyed by stable dedupe keys so dismissed or resolved alerts do not re-page. Evidence is minimized and checked against assistant forbidden fields before persistence.
 - `recurring_expenses`: confirmed, pending, paused, or dismissed recurring rows.
 - `insights`: persisted insight cards.
 - `merchant_rules`: reusable merchant/category/intent rules for future automation.
 - `audit_events`: material changes to labels, review state, recurring rows, and related records.
 
 Every finance table includes `user_id`. RLS policies enforce user ownership.
-Sensitive raw/provider columns are additionally hidden from direct authenticated selects where the browser does not need them, including Plaid access tokens, Plaid item ids, sync cursors, raw provider payloads, provider transaction ids, location, and payment metadata. `plaid_items`, `agent_proposals`, and `audit_events` writes go through service-route code instead of direct browser-table writes.
+Sensitive raw/provider columns are additionally hidden from direct authenticated selects where the browser does not need them, including Plaid access tokens, Plaid item ids, sync cursors, raw provider payloads, provider transaction ids, location, and payment metadata. `plaid_items`, `agent_proposals`, `anomaly_alerts`, and `audit_events` writes go through service-route code instead of direct browser-table writes.
 
 ## Plaid Flow
 
@@ -205,6 +208,8 @@ Manual AI suggestions are advisory and require explicit user acceptance. When `E
 The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. `src/lib/agents/weekly-planning-context.ts` builds the v1 OpenClaw/assistant weekly planning context as a pure read model over existing spending, income, reimbursement, review, cashflow, and sync summaries. It excludes transfers from spend/income planning and surfaces transfers only as a separate signal, and it runs the manifest forbidden-field guard before handoff.
 
 The `agent_proposals` table persists longer-lived assistant suggestions and clarification requests so OpenClaw integrations do not need to recreate state from open review items on every poll. `src/lib/db/queries.ts` exposes creation, listing, dismissal, clarification-answer recording, and narrow acceptance helpers. Inserted evidence and proposed patches are JSON objects checked by the assistant forbidden-field guard; expired pending proposals are hidden from normal pending lists. Acceptance is not autonomous: Tally re-reads the current user-owned target row, dispatches through known mutation paths such as review suggestion acceptance or reimbursement matching, and writes `audit_events`.
+
+The `anomaly_alerts` table persists deterministic alerts for OpenClaw delivery. The scheduled scan loads bounded account and transaction context, emits stable dedupe keys for high-signal conditions, inserts only new alerts, and refreshes still-pending matches. Dismissed and resolved dedupe keys suppress future inserts so the same condition does not repeatedly notify. OpenClaw outbox packets omit evidence and ids beyond the app-owned alert id.
 
 `src/lib/review/reimbursement-candidates.ts` detects unlabeled personal expenses that may be reimbursable before the user marks them shared. It runs a deterministic prefilter over safe enriched transaction summaries and nearby positive inflows, then asks the configured AI suggestion provider to refine the candidate into a `reimbursement_candidate` proposal. The detector only emits proposals and clarification questions; it does not create splits, reimbursement records, or links.
 
