@@ -12,8 +12,7 @@ The app already has the foundation:
 
 - Plaid liabilities fields on `accounts`: `last_statement_issue_date`, `last_statement_balance`, `next_payment_due_date`, and `minimum_payment_amount`.
 - `src/lib/finance/liabilities.ts` builds due-date and utilization summaries from credit accounts, cash, and likely payment transactions.
-- `src/lib/finance/payoff-plan.ts` allocates available cash toward high-utilization cards and explains the next payment.
-- `src/components/finance/dashboard/dashboard-view.tsx` already shows liabilities, utilization, and a payoff panel.
+- `src/components/finance/dashboard/dashboard-view.tsx` shows liabilities, utilization, and a credit-card action panel driven by `liabilities.ts`. (The earlier `payoff-plan.ts` cash-allocator was removed once the simplified dashboard shipped — the reported-balance optimizer below replaces that surface from scratch.)
 - OpenClaw reads/outbox patterns already exist for proactive but bounded nudges.
 
 The best next features should sharpen that existing system instead of adding a large credit-monitoring product.
@@ -138,7 +137,7 @@ These are intentionally small enough for separate PRs and safe Codex runs.
 
 ## Current Code References
 
-- Domain calculations: `src/lib/finance/liabilities.ts`, `src/lib/finance/payoff-plan.ts`.
+- Domain calculations: `src/lib/finance/liabilities.ts`.
 - Dashboard UI: `src/components/finance/dashboard/dashboard-view.tsx`, `src/components/finance/dashboard/dashboard.module.css`.
 - Account/liability schema: `src/lib/db/types.ts`, `supabase/migrations/20260601000100_add_credit_liability_fields.sql`.
 - Plaid liability import: `src/lib/plaid/service.ts`.

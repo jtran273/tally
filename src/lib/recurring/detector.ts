@@ -1,3 +1,4 @@
+import { clamp } from "../util/clamp";
 import type {
   DetectedRecurringCadence,
   KnownRecurringExpense,
@@ -737,10 +738,6 @@ function median(values: readonly number[]): number {
 function average(values: readonly number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
 
 function roundMoney(value: number): number {

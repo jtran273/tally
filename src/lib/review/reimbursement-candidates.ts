@@ -15,6 +15,7 @@ import {
   listAgentProposals,
   upsertAgentProposalBySourceContext
 } from "@/lib/db/queries";
+import { clamp } from "@/lib/util/clamp";
 
 export interface ReimbursementCandidateDetectorOptions {
   cacheKey?: string;
@@ -71,10 +72,6 @@ function roundMoney(value: number) {
 
 function roundConfidence(value: number) {
   return Math.round(value * 100) / 100;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function daysBetween(left: string, right: string) {

@@ -1,3 +1,4 @@
+import { clamp } from "../util/clamp";
 import type { CategoryRecord, MerchantRuleRow, TransactionIntent } from "../db/types";
 import type {
   AiSuggestionAdapter,
@@ -730,10 +731,6 @@ function stableHash(value: string) {
   }
 
   return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function roundConfidence(value: number) {
