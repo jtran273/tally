@@ -848,6 +848,14 @@
   font-weight: 500;
 }
 
+.liabilityHint {
+  max-width: 680px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.4;
+}
+
 .liabilityCashBlock {
   display: flex;
   flex-direction: column;
@@ -1024,6 +1032,39 @@
   background: var(--surface);
 }
 
+.payoffMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.payoffMetrics > div {
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-control);
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+.payoffMetrics span {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-label);
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.payoffMetrics strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 .payoffCallout > div:first-child {
   min-width: 0;
   flex: 1 1 200px;
@@ -1114,6 +1155,19 @@
   color: var(--ink);
   font-size: var(--text-meta);
   line-height: 1.4;
+}
+
+.payoffMetaGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+}
+
+.payoffMetaGrid span {
+  min-width: min(100%, 180px);
 }
 
 .payoffFootnote {
@@ -1350,6 +1404,10 @@
 }
 
 @media (max-width: 760px) {
+  .payoffMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .syncActionPanel {
     display: grid;
     width: 100%;
@@ -1377,6 +1435,10 @@
 }
 
 @media (max-width: 600px) {
+  .payoffMetrics {
+    grid-template-columns: 1fr;
+  }
+
   .liabilityRowMain {
     flex-direction: column;
     align-items: stretch;

@@ -1651,6 +1651,17 @@ function liabilityStatusClass(status: LiabilityAccountSummary["status"]) {
   return styles.liabilityCurrent;
 }
 
+function liabilityDueDateLabel(row: LiabilityAccountSummary) {
+  if (!row.estimatedDueDate) return "Due date unknown";
+  return `${row.dueDateIsActual ? "Due" : "Est. due"} ${formatDate(row.estimatedDueDate)}`;
+}
+
+function liabilityDueDateSourceLabel(row: LiabilityAccountSummary) {
+  if (row.dueDateIsActual) return "Due date from Plaid liabilities";
+  if (row.estimatedDueDate) return "Due date estimated from payment cadence";
+  return "Plaid has not reported a due date yet";
+}
+
 function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
   if (summary.rows.length === 0) return null;
 
@@ -1667,12 +1678,15 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
         : styles.liabilityDueSoon;
 
   return (
-    <section aria-label="Liabilities due" className={styles.liabilityPanel}>
+    <section aria-label="Due-date safety" className={styles.liabilityPanel}>
       <div className={styles.liabilityPanelHead}>
         <div>
-          <span className={styles.eyebrow}>Liabilities due</span>
+          <span className={styles.eyebrow}>Due-date safety</span>
           <h3 className={styles.liabilityHeadline}>{formatMoney(summary.totalOwed)} owed</h3>
           <p className={`${styles.liabilityCoverage} ${headlineTone}`}>{coverageLabel}</p>
+          <p className={styles.liabilityHint}>
+            Paying by the due date protects payment history. Statement-close timing is separate.
+          </p>
         </div>
         <div className={styles.liabilityCashBlock}>
           <span>Cash available</span>
@@ -1689,7 +1703,8 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
           const lastPayment = row.lastPaymentDate
             ? `Last payment ${formatDate(row.lastPaymentDate)}${row.lastPaymentAmount ? ` · ${formatMoney(row.lastPaymentAmount)}` : ""}`
             : "No payment seen yet";
-          const dueLabel = row.estimatedDueDate ? `Est. due ${formatDate(row.estimatedDueDate)}` : "Schedule unknown";
+          const dueLabel = liabilityDueDateLabel(row);
+          const dueSourceLabel = liabilityDueDateSourceLabel(row);
 
           return (
             <div className={styles.liabilityRow} key={row.accountId}>
@@ -1705,6 +1720,7 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
               </div>
               <div className={styles.liabilityRowMeta}>
                 <span>{dueLabel}</span>
+                <span>{dueSourceLabel}</span>
                 <span>{lastPayment}</span>
                 <span>{utilizationLabel}</span>
               </div>
@@ -2089,6 +2105,81 @@ function payoffTierClass(tier: UtilizationTier) {
   }
 }
 
+type PayoffCardTimingFields = PayoffCardPlan & {
+  dueDateIsActual?: boolean;
+  reportingConfidence?: "actual" | "high" | "medium" | "low" | "estimated" | "unknown";
+  reportingDateSource?: string;
+  statementCloseConfidence?: "actual" | "high" | "medium" | "low" | "estimated" | "unknown";
+  statementCloseSource?: string;
+};
+
+type LiabilityReportingFields = {
+  reportingDate?: string | null;
+  reportingDateAnchorDate?: string | null;
+  reportingDateConfidence?: "high" | "medium" | "low" | "unknown";
+  reportingDateSource?:
+    | "actual_plaid_liability"
+    | "inferred_from_statement_cycle"
+    | "estimated_from_due_date"
+    | "unknown";
+};
+
+type DashboardLiabilityRow = LiabilityAccountSummary & LiabilityReportingFields;
+
+function formatUtilization(value: number | null | undefined, digits = 0) {
+  return typeof value === "number" ? `${value.toFixed(digits)}%` : "—";
+}
+
+function payoffDateWithFallback(value: string | null | undefined) {
+  return value ? formatDate(value) : "Unknown";
+}
+
+function payoffReportingDate(card: PayoffCardTimingFields, row?: DashboardLiabilityRow) {
+  return row?.reportingDate ?? card.nextReportingDate;
+}
+
+function daysUntilPayoffDate(fromDate: string, toDate: string) {
+  return Math.round((parseIsoDate(toDate).getTime() - parseIsoDate(fromDate).getTime()) / DAY_MS);
+}
+
+function payoffReportingConfidenceLabel(card: PayoffCardTimingFields, row?: DashboardLiabilityRow) {
+  const confidence = row?.reportingDateConfidence ?? card.reportingConfidence ?? card.statementCloseConfidence;
+
+  if (confidence === "actual") return "Actual";
+  if (confidence === "high") return "High confidence";
+  if (confidence === "medium") return "Medium confidence";
+  if (confidence === "low") return "Low confidence";
+  if (confidence === "estimated") return "Estimated";
+  if (confidence === "unknown") return "Unknown";
+  if (card.reportingDateSource || card.statementCloseSource) return "Estimated";
+  if (row?.lastStatementIssueDate) return "Estimated";
+  if (card.nextReportingDate) return "Estimated";
+  return "Unknown";
+}
+
+function payoffReportingSourceLabel(card: PayoffCardTimingFields, row?: DashboardLiabilityRow) {
+  if (row?.reportingDateSource === "actual_plaid_liability") return "Plaid statement date";
+  if (row?.reportingDateSource === "inferred_from_statement_cycle") return "Inferred from Plaid statement cycle";
+  if (row?.reportingDateSource === "estimated_from_due_date") return "Estimated from due date";
+  if (row?.reportingDateSource === "unknown") return "Reporting date not available";
+  if (card.reportingDateSource) return card.reportingDateSource;
+  if (card.statementCloseSource) return card.statementCloseSource;
+  if (row?.lastStatementIssueDate) return "Uses Plaid last statement date";
+  if (card.nextReportingDate && (card.dueDateIsActual ?? card.statementCloseIsActual)) {
+    return "Estimated from Plaid due date";
+  }
+  if (card.nextReportingDate) return "Estimated from billing cycle";
+  return "Reporting date not available";
+}
+
+function payoffDueSourceLabel(card: PayoffCardTimingFields, row?: DashboardLiabilityRow) {
+  if (card.dueDateIsActual ?? row?.dueDateIsActual ?? card.statementCloseIsActual) {
+    return "Due date from Plaid";
+  }
+  if (card.dueDate) return "Due date estimated";
+  return "Due date unknown";
+}
+
 function PayoffPlanPanel({
   accounts,
   liabilitiesDue
@@ -2103,44 +2194,90 @@ function PayoffPlanPanel({
 
   if (plan.cards.length === 0) return null;
 
+  const rowByAccountId = new Map<string, DashboardLiabilityRow>(
+    liabilitiesDue.rows.map((row) => [row.accountId, row])
+  );
+  const highestUtilizationCard =
+    [...plan.cards]
+      .filter((card) => card.utilizationPercent !== null)
+      .sort((a, b) => (b.utilizationPercent ?? -1) - (a.utilizationPercent ?? -1))[0] ?? null;
   const aggregateLabel =
     plan.aggregateUtilization !== null ? `${plan.aggregateUtilization.toFixed(0)}%` : "—";
   const projectedLabel =
     plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(0)}%` : "—";
 
-  // The earliest upcoming reporting date across all cards — this is what
-  // the user is racing for score-wise.
   const upcomingReportingDays = plan.cards
-    .map((c) => c.daysUntilNextReporting)
+    .map((card) => {
+      const row = rowByAccountId.get(card.accountId);
+      if (row?.reportingDate) return daysUntilPayoffDate(liabilitiesDue.asOfDate, row.reportingDate);
+      return card.daysUntilNextReporting;
+    })
     .filter((d): d is number => d !== null && d >= 0)
     .sort((a, b) => a - b)[0];
-  const upcomingReportingDate = plan.cards.find(
-    (c) => c.daysUntilNextReporting === upcomingReportingDays
-  )?.nextReportingDate;
+  const upcomingReportingDate =
+    plan.cards
+      .map((card) => payoffReportingDate(card, rowByAccountId.get(card.accountId)))
+      .filter((date): date is string => Boolean(date))
+      .filter((date) => daysUntilPayoffDate(liabilitiesDue.asOfDate, date) >= 0)
+      .sort((a, b) => {
+        const aDays = daysUntilPayoffDate(liabilitiesDue.asOfDate, a);
+        const bDays = daysUntilPayoffDate(liabilitiesDue.asOfDate, b);
+        return aDays - bDays;
+      })[0] ?? null;
+  const topPickRow = plan.topPick ? rowByAccountId.get(plan.topPick.accountId) : undefined;
+  const topPickReportingDate = plan.topPick ? payoffReportingDate(plan.topPick, topPickRow) : null;
 
   return (
-    <section aria-label="Payoff plan" className={styles.liabilityPanel}>
+    <section aria-label="Reported balance optimization" className={styles.liabilityPanel}>
       <div className={styles.liabilityPanelHead}>
         <div>
-          <span className={styles.eyebrow}>Credit card usage</span>
+          <span className={styles.eyebrow}>Reported balance</span>
           <h3 className={`${styles.liabilityHeadline} ${payoffTierClass(plan.aggregateTier)}`}>
             {aggregateLabel}
           </h3>
           <p className={styles.liabilityCoverage}>
-            That&rsquo;s what your last statement reported. Your next snapshot
-            {upcomingReportingDate
-              ? ` is around ${formatDate(upcomingReportingDate)}${
-                  typeof upcomingReportingDays === "number"
-                    ? ` (${upcomingReportingDays} day${upcomingReportingDays === 1 ? "" : "s"} away)`
-                    : ""
-                }`
-              : " is the next time each card&rsquo;s statement closes"}
-            {plan.cashApplied > 0
-              ? `. Following the plan below drops it to ${projectedLabel}.`
-              : "."}
+            Aggregate utilization now. Highest card is{" "}
+            {highestUtilizationCard
+              ? `${highestUtilizationCard.name}${highestUtilizationCard.mask ? ` · ${highestUtilizationCard.mask}` : ""} at ${formatUtilization(highestUtilizationCard.utilizationPercent)}`
+              : "unknown"}
+            .
+          </p>
+          <p className={styles.liabilityHint}>
+            Paying before statement close may lower the balance that gets reported; this is not a score prediction.
           </p>
         </div>
       </div>
+
+      <div className={styles.payoffMetrics} aria-label="Utilization summary">
+        <div>
+          <span>Aggregate now</span>
+          <strong className={payoffTierClass(plan.aggregateTier)}>{aggregateLabel}</strong>
+        </div>
+        <div>
+          <span>After suggested payments</span>
+          <strong className={payoffTierClass(plan.projectedTier)}>{projectedLabel}</strong>
+        </div>
+        <div>
+          <span>Highest card</span>
+          <strong className={highestUtilizationCard ? payoffTierClass(highestUtilizationCard.tier) : undefined}>
+            {highestUtilizationCard ? formatUtilization(highestUtilizationCard.utilizationPercent) : "—"}
+          </strong>
+        </div>
+        <div>
+          <span>Next estimated report</span>
+          <strong>
+            {upcomingReportingDate
+              ? `${formatDate(upcomingReportingDate)}${
+                  typeof upcomingReportingDays === "number" ? ` · ${upcomingReportingDays}d` : ""
+                }`
+              : "—"}
+          </strong>
+        </div>
+      </div>
+
+      <p className={styles.payoffFootnote}>
+        Due-date payments protect payment history and avoid late fees. Reported-balance payments are earlier timing moves before the statement snapshot.
+      </p>
 
       {plan.topPick && plan.topPick.actionText ? (
         <div className={styles.payoffCallout}>
@@ -2154,8 +2291,11 @@ function PayoffPlanPanel({
           </div>
           <div className={styles.payoffCalloutAmount}>
             <strong>{formatMoney(plan.topPick.suggestedPayment)}</strong>
-            {plan.topPick.statementCloseDate ? (
-              <span>by {formatDate(plan.topPick.statementCloseDate)}</span>
+            {plan.topPick.dueDate ? (
+              <span>pay by due date {formatDate(plan.topPick.dueDate)}</span>
+            ) : null}
+            {topPickReportingDate ? (
+              <span>before est. report {formatDate(topPickReportingDate)}</span>
             ) : null}
           </div>
         </div>
@@ -2166,6 +2306,11 @@ function PayoffPlanPanel({
           const utilLabel =
             card.utilizationPercent !== null ? `${card.utilizationPercent.toFixed(0)}% used` : "No limit";
           const isTopPick = plan.topPick?.accountId === card.accountId;
+          const row = rowByAccountId.get(card.accountId);
+          const reportingConfidence = payoffReportingConfidenceLabel(card, row);
+          const reportingSource = payoffReportingSourceLabel(card, row);
+          const reportingDate = payoffReportingDate(card, row);
+          const dueSource = payoffDueSourceLabel(card, row);
           return (
             <div className={styles.payoffRow} key={card.accountId}>
               <div className={styles.payoffRowMain}>
@@ -2198,15 +2343,25 @@ function PayoffPlanPanel({
               {!isTopPick && card.actionText ? (
                 <p className={styles.payoffActionText}>{card.actionText}</p>
               ) : null}
+              <div className={styles.payoffMetaGrid}>
+                <span>Due: {payoffDateWithFallback(card.dueDate)} · {dueSource}</span>
+                <span>
+                  Est. report: {payoffDateWithFallback(reportingDate)} · {reportingConfidence} · {reportingSource}
+                </span>
+                {card.payToReachThirty > 0 ? (
+                  <span>To under 30%: {formatMoney(card.payToReachThirty)}</span>
+                ) : null}
+                {card.payToReachTen > 0 ? (
+                  <span>To under 10%: {formatMoney(card.payToReachTen)}</span>
+                ) : null}
+              </div>
             </div>
           );
         })}
       </div>
 
       <p className={styles.payoffFootnote}>
-        Your card snapshots your balance once per cycle on its statement closing date — that&rsquo;s
-        what credit bureaus see. Paying by the due date above lands well before the next snapshot,
-        so the lower balance gets reported. Score updates 30–45 days after that.
+        Estimates use Plaid liability dates when present, then billing-cycle assumptions. Paying by the due date is still the safety deadline.
       </p>
     </section>
   );
