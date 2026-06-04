@@ -33,7 +33,8 @@ update public.review_items
 set resolution_kind = case
   when status = 'dismissed' then 'dismissed'::public.review_resolution_kind
   when resolution_note ilike '%auto-applied%'
-    or resolution_note ilike '%auto-resolved%' then 'auto_resolved'::public.review_resolution_kind
+    or resolution_note ilike '%auto-resolved%'
+    or resolution_note ilike '%auto-linked exact category match%' then 'auto_resolved'::public.review_resolution_kind
   when resolution_note ilike '%edit%' then 'edited'::public.review_resolution_kind
   when resolution_note ilike '%peer-to-peer%' then 'accepted_manual'::public.review_resolution_kind
   when resolution_note ilike '%accept%' then 'accepted_ai'::public.review_resolution_kind

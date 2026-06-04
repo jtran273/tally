@@ -68,6 +68,11 @@ export interface OpenClawReimbursementsResponse {
   generatedAt: string;
   items: OpenClawReimbursementItem[];
   limit: number;
+  pageSummary: {
+    expectedAmount: number;
+    outstandingAmount: number;
+    receivedAmount: number;
+  };
   summary: {
     expectedAmount: number;
     outstandingAmount: number;
@@ -218,26 +223,35 @@ export function buildOpenClawReimbursementsResponse(
   options: { generatedAt?: string; limit?: number } = {}
 ): OpenClawReimbursementsResponse {
   const limit = Math.max(0, Math.min(options.limit ?? DEFAULT_LIMIT, MAX_LIMIT));
-  const items = transactions
+  const reimbursableItems = transactions
     .map((transaction) => ({
       transaction,
       reimbursement: summarizeTransactionReimbursement(transaction)
     }))
     .filter(({ reimbursement }) => reimbursement.state !== "none")
-    .sort((left, right) => right.reimbursement.outstandingAmount - left.reimbursement.outstandingAmount)
-    .slice(0, limit)
-    .map(({ transaction, reimbursement }) => ({
-      transactionId: transaction.id,
-      amount: transaction.amount,
-      date: transaction.date,
-      expectedAmount: reimbursement.expectedAmount,
-      merchant: transaction.merchant,
-      outstandingAmount: reimbursement.outstandingAmount,
-      receivedAmount: reimbursement.receivedAmount,
-      state: reimbursement.state
-    }));
+    .sort((left, right) => right.reimbursement.outstandingAmount - left.reimbursement.outstandingAmount);
 
-  const summary = items.reduce(
+  const summary = reimbursableItems.reduce(
+    (totals, { reimbursement }) => ({
+      expectedAmount: roundMoney(totals.expectedAmount + reimbursement.expectedAmount),
+      outstandingAmount: roundMoney(totals.outstandingAmount + reimbursement.outstandingAmount),
+      receivedAmount: roundMoney(totals.receivedAmount + reimbursement.receivedAmount)
+    }),
+    { expectedAmount: 0, outstandingAmount: 0, receivedAmount: 0 }
+  );
+
+  const items = reimbursableItems.slice(0, limit).map(({ transaction, reimbursement }) => ({
+    transactionId: transaction.id,
+    amount: transaction.amount,
+    date: transaction.date,
+    expectedAmount: reimbursement.expectedAmount,
+    merchant: transaction.merchant,
+    outstandingAmount: reimbursement.outstandingAmount,
+    receivedAmount: reimbursement.receivedAmount,
+    state: reimbursement.state
+  }));
+
+  const pageSummary = items.reduce(
     (totals, item) => ({
       expectedAmount: roundMoney(totals.expectedAmount + item.expectedAmount),
       outstandingAmount: roundMoney(totals.outstandingAmount + item.outstandingAmount),
@@ -252,6 +266,7 @@ export function buildOpenClawReimbursementsResponse(
     items,
     limit,
     summary,
+    pageSummary,
     safety: openClawReadSafety()
   };
 

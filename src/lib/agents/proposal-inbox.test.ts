@@ -56,6 +56,7 @@ function reviewItem(input: {
     explanation: "Needs review.",
     id: input.id,
     reason: input.reason ?? "missing-category",
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

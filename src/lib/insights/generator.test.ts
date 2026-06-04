@@ -73,6 +73,7 @@ function reviewItem(id: string, reason: ReviewReason, tx: TransactionRecord): Re
     explanation: "Fixture review item",
     id,
     reason,
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

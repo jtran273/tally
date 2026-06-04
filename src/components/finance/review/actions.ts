@@ -320,6 +320,7 @@ async function listOpenReviewItemsForTransaction(
     explanation: row.explanation,
     id: row.id,
     reason: row.reason,
+    resolutionKind: row.resolution_kind,
     resolutionNote: row.resolution_note,
     resolvedAt: row.resolved_at,
     status: row.status,

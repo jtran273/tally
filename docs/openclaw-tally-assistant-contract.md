@@ -68,6 +68,7 @@ The outbox returns text-ready packets for:
 - `reimbursement_clarification`: a bounded question with a reply action pointing back to `/api/openclaw/replies`.
 - `reimbursement_alert`: a high-priority outstanding reimbursement summary.
 - `review_queue_alert`: a high-priority cleanup prompt for open review items.
+- `anomaly_alert`: a high-priority persisted anomaly alert for deterministic finance exceptions.
 - `budget_briefing`: a compact budget summary using weekly spending, upcoming bills, projected cash when available, open review count, and reimbursement outstanding amount.
 
 Outbox packets are delivery-neutral. They do not contain phone numbers, Twilio credentials, push tokens, provider payloads, Plaid ids, service-role keys, or direct write authority. OpenClaw can forward the `body` through its own notification channel, but finance mutations still require Tally-owned reply or approval endpoints.
@@ -121,4 +122,4 @@ The fixture pair demonstrates a shared dinner, an incoming payment, and a propos
 ## Follow-Ups
 
 1. Tally should add a persistent feedback table or audit-backed event shape for accepted, rejected, corrected, and ignored assistant suggestions. That storage should keep the original proposal id/context id, the final user action, and sanitized rationale without storing raw provider payloads.
-2. OpenClaw should keep its scheduled `/api/openclaw/outbox` client low-frequency, deduplicate message ids, and forward the body through the configured notification channel. Replies should post only to `/api/openclaw/replies` with the proposal id from `replyAction`.
+2. OpenClaw should keep its scheduled `/api/openclaw/outbox` client low-frequency, deduplicate message ids including `anomaly_alert` packets, and forward the body through the configured notification channel. Replies should post only to `/api/openclaw/replies` with the proposal id from `replyAction`.

@@ -54,6 +54,7 @@ function reviewItem(input: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     explanation: "Needs category confirmation.",
     reason: "low-confidence",
     resolutionNote: null,
+    resolutionKind: null,
     resolvedAt: null,
     status: "open",
     transaction: transaction(),
@@ -103,6 +104,30 @@ test("reimbursements response surfaces outstanding reimbursable transactions", (
   assert.equal(response.items.length, 1);
   assert.equal(response.items[0]?.outstandingAmount, 80);
   assert.equal(response.summary.outstandingAmount, 80);
+  assert.equal(response.pageSummary.outstandingAmount, 80);
+  assertAssistantContextSafe(response);
+});
+
+test("reimbursements response summary covers transactions beyond the page limit", () => {
+  const response = buildOpenClawReimbursementsResponse([
+    transaction({
+      id: "tx-large",
+      amount: -120,
+      intent: "reimbursable",
+      merchant: "Group Hotel"
+    }),
+    transaction({
+      id: "tx-small",
+      amount: -40,
+      intent: "reimbursable",
+      merchant: "Rideshare"
+    })
+  ], { limit: 1 });
+
+  assert.equal(response.items.length, 1);
+  assert.equal(response.items[0]?.transactionId, "tx-large");
+  assert.equal(response.pageSummary.outstandingAmount, 120);
+  assert.equal(response.summary.outstandingAmount, 160);
   assertAssistantContextSafe(response);
 });
 

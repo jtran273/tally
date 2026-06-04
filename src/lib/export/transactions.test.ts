@@ -16,6 +16,7 @@ function review(transactionId: string): ReviewItemRecord {
     explanation: "Low-confidence Plaid category.",
     id: "review-export",
     reason: "low-confidence",
+    resolutionKind: null,
     resolutionNote: null,
     resolvedAt: null,
     status: "open",

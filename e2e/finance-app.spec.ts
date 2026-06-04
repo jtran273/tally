@@ -911,7 +911,9 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expect(page.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
 
   await page.goto("/transactions/t25");
-  const editFormBox = await page.getByLabel("Edit transaction enrichment").boundingBox();
+  const editForm = page.locator("form[aria-label='Edit transaction enrichment']");
+  await expect(editForm).toBeVisible();
+  const editFormBox = await editForm.boundingBox();
   const reimbursementApproval = page.getByLabel("Reimbursement linking");
   await expect(reimbursementApproval).toContainText("Reimbursement approval");
   await expect(reimbursementApproval).toContainText("Link this positive inflow");

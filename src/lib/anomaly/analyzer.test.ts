@@ -123,6 +123,49 @@ test("detectors find duplicate, large, high-card, and stale-sync alerts with min
   assert.equal(detectStaleSync(input)[0]?.dedupeKey, "stale_sync:stale-account");
 });
 
+test("spending anomaly detectors ignore pending Plaid holds", () => {
+  const input = {
+    accounts: [],
+    transactions: [
+      transaction({ id: "pending-large", amount: -6000, merchant: "Hotel", status: "pending" }),
+      transaction({ id: "pending-dupe-1", amount: -120, merchant: "Rental Car", status: "pending" }),
+      transaction({ id: "pending-dupe-2", amount: -120, merchant: "Rental Car", date: "2026-06-02", status: "pending" })
+    ]
+  };
+
+  assert.deepEqual(detectLargeTransactions(input), []);
+  assert.deepEqual(detectDuplicateCharges(input), []);
+});
+
+test("stale sync detector ignores manual and app-open-disabled accounts", () => {
+  const input = {
+    accounts: [
+      account({
+        id: "manual-investment",
+        lastSyncedAt: null,
+        name: "Manual Fidelity",
+        plaidConnectionSource: "manual",
+        type: "investment"
+      }),
+      account({
+        id: "sync-disabled",
+        lastSyncedAt: "2026-05-30T08:00:00.000Z",
+        name: "Paused Checking",
+        plaidAutoSyncEnabled: false
+      }),
+      account({
+        id: "syncable-stale",
+        lastSyncedAt: "2026-05-30T08:00:00.000Z",
+        name: "Old Checking"
+      })
+    ],
+    now: new Date("2026-06-04T12:00:00.000Z"),
+    transactions: []
+  };
+
+  assert.deepEqual(detectStaleSync(input).map((draft) => draft.dedupeKey), ["stale_sync:syncable-stale"]);
+});
+
 test("analyzer de-duplicates and sorts drafts by severity", () => {
   const drafts = analyzeAnomalies({
     accounts: [],

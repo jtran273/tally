@@ -53,6 +53,7 @@ function review(
     explanation: "Fixture review item",
     id,
     reason,
+    resolutionKind: status === "open" ? null : "accepted_manual",
     resolutionNote: null,
     resolvedAt: null,
     status,
@@ -445,6 +446,7 @@ function fixtureReviewRow(
     explanation: "Fixture review item",
     id,
     reason,
+    resolution_kind: status === "open" ? null : "accepted_manual",
     resolution_note: null,
     resolved_at: status === "open" ? null : "2026-05-13T09:00:00.000Z",
     status,
@@ -938,11 +940,20 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
       const inserted = (Array.isArray(this.values) ? this.values : [this.values ?? {}]).map((value) => {
         const now = "2026-05-13T08:00:00.000Z";
         const rawValue = value as Record<string, unknown>;
-        const existing = this.operation === "upsert" && typeof rawValue.source_context_id === "string"
+        const existing = this.operation === "upsert"
           ? this.rows.find((row) =>
             row["user_id"] === rawValue.user_id &&
-            row["source_agent"] === rawValue.source_agent &&
-            row["source_context_id"] === rawValue.source_context_id
+            (
+              (
+                typeof rawValue.source_context_id === "string" &&
+                row["source_agent"] === rawValue.source_agent &&
+                row["source_context_id"] === rawValue.source_context_id
+              ) ||
+              (
+                typeof rawValue.dedupe_key === "string" &&
+                row["dedupe_key"] === rawValue.dedupe_key
+              )
+            )
           )
           : null;
         if (existing) {
@@ -1178,6 +1189,60 @@ test("anomaly alerts insert, list pending, refresh, and update status", async ()
   assert.deepEqual(pending.map((alert) => alert.id), [created!.id]);
   assert.equal(dismissed.status, "dismissed");
   assert.equal(dismissed.dismissedAt, "2026-06-04T13:00:00.000Z");
+});
+
+test("anomaly alert listing can page by first seen instead of refresh updates", async () => {
+  const client = new FakeFinanceClient();
+  client.anomalyAlerts.push(
+    anomalyAlertRow({
+      id: "old-refreshed",
+      first_seen_at: "2026-06-04T08:00:00.000Z",
+      updated_at: "2026-06-04T13:00:00.000Z"
+    }),
+    anomalyAlertRow({
+      dedupe_key: "large_transaction:new",
+      id: "new-alert",
+      first_seen_at: "2026-06-04T12:30:00.000Z",
+      reason_code: "large_transaction",
+      updated_at: "2026-06-04T12:30:00.000Z"
+    })
+  );
+
+  const updatedAlerts = await listAnomalyAlerts(client.asClient(), userId, {
+    since: "2026-06-04T12:00:00.000Z",
+    status: "pending"
+  });
+  const firstSeenAlerts = await listAnomalyAlerts(client.asClient(), userId, {
+    since: "2026-06-04T12:00:00.000Z",
+    sinceColumn: "first_seen_at",
+    status: "pending"
+  });
+
+  assert.deepEqual(updatedAlerts.map((alert) => alert.id).sort(), ["new-alert", "old-refreshed"]);
+  assert.deepEqual(firstSeenAlerts.map((alert) => alert.id), ["new-alert"]);
+});
+
+test("anomaly alert creation is duplicate-safe by dedupe key", async () => {
+  const client = new FakeFinanceClient();
+  client.anomalyAlerts.push(anomalyAlertRow({
+    dedupe_key: "large_transaction:tx-1",
+    id: "existing-alert"
+  }));
+
+  await createAnomalyAlerts(client.asClient(), userId, [
+    {
+      body: "A large charge posted on 2026-06-04.",
+      dedupeKey: "large_transaction:tx-1",
+      evidence: { amount: 1800 },
+      reasonCode: "large_transaction",
+      severity: "warning",
+      title: "Large charge"
+    }
+  ], {
+    now: new Date("2026-06-04T12:00:00.000Z")
+  });
+
+  assert.deepEqual(client.anomalyAlerts.map((alert) => alert.id), ["existing-alert"]);
 });
 
 test("anomaly alert safety rejects forbidden evidence before insert", async () => {
