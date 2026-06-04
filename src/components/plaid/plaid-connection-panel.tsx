@@ -61,6 +61,7 @@ interface SyncItemSummary {
   errorMessage?: string;
   id: string;
   lastSuccessfulSyncAt: string | null;
+  pendingTransactionsReplaced: number;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   transactionsRemoved: number;
@@ -73,6 +74,7 @@ interface SyncRunSummary {
   enrichedTransactionsUpdated: number;
   failed: number;
   items: SyncItemSummary[];
+  pendingTransactionsReplaced: number;
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   runId: string | null;
@@ -160,7 +162,9 @@ function getEnrichedTransactionCount(summary: SyncItemSummary) {
 function formatSyncItemMessage(summary: SyncItemSummary) {
   const rawTransactionsSkipped = safeCount(summary.rawTransactionsSkipped);
   const skipped = rawTransactionsSkipped > 0 ? `, ${rawTransactionsSkipped} skipped` : "";
-  return `Sync result: ${safeCount(summary.accountsUpserted)} accounts, ${safeCount(summary.rawTransactionsUpserted)} raw transactions${skipped}, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
+  const pendingReplaced = safeCount(summary.pendingTransactionsReplaced);
+  const replaced = pendingReplaced > 0 ? `, ${pendingReplaced} pending→posted` : "";
+  return `Sync result: ${safeCount(summary.accountsUpserted)} accounts, ${safeCount(summary.rawTransactionsUpserted)} raw transactions${skipped}${replaced}, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -204,6 +208,7 @@ function asSyncRunSummary(value: unknown): SyncRunSummary | null {
     enrichedTransactionsUpdated: safeCount(candidate.enrichedTransactionsUpdated),
     failed: safeCount(candidate.failed),
     items: Array.isArray(candidate.items) ? candidate.items : [],
+    pendingTransactionsReplaced: safeCount(candidate.pendingTransactionsReplaced),
     rawTransactionsSkipped: safeCount(candidate.rawTransactionsSkipped),
     rawTransactionsUpserted: safeCount(candidate.rawTransactionsUpserted),
     succeeded: safeCount(candidate.succeeded),

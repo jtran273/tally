@@ -159,6 +159,7 @@ export interface PlaidSyncRunRow {
   enriched_transactions_inserted: number;
   enriched_transactions_updated: number;
   transactions_removed: number;
+  pending_transactions_replaced: number;
   safe_error_code: string | null;
   safe_error_message: string | null;
   created_at: string;
@@ -180,6 +181,7 @@ export interface PlaidSyncRunItemRow {
   enriched_transactions_inserted: number;
   enriched_transactions_updated: number;
   transactions_removed: number;
+  pending_transactions_replaced: number;
   safe_error_code: string | null;
   safe_error_message: string | null;
   last_successful_sync_at: string | null;
