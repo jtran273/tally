@@ -67,6 +67,7 @@ Server-only secrets:
 - `OPENAI_API_KEY`
 - `CRON_SECRET`
 - `OPENCLAW_TOKEN`
+- `OPENCLAW_PLAID_REFRESH_TOKEN`
 - `OPENCLAW_USER_ID`
 - `PROACTIVE_SCAN_ENABLED`
 - `PROACTIVE_SCAN_USER_ID`
@@ -182,7 +183,7 @@ Protected handlers include:
 - `/login/demo`
 - `/login/logout`
 
-The scheduled sync route `/api/plaid/sync/scheduled`, proactive scan route `/api/agents/proactive-scan/scheduled`, and scheduled OpenClaw briefing route `/api/openclaw/briefing/scheduled` are the exceptions: they are intended for trusted server-to-server callers and require `Authorization: Bearer <CRON_SECRET>`.
+The scheduled sync route `/api/plaid/sync/scheduled`, proactive scan route `/api/agents/proactive-scan/scheduled`, and scheduled OpenClaw briefing route `/api/openclaw/briefing/scheduled` are the exceptions: they are intended for trusted server-to-server callers and require `Authorization: Bearer <CRON_SECRET>`. The OpenClaw Plaid refresh route `/api/openclaw/plaid-refresh` is a narrower server-to-server exception that requires `Authorization: Bearer <OPENCLAW_PLAID_REFRESH_TOKEN>`, resolves the configured `OPENCLAW_USER_ID` on the server, and returns only sanitized aggregate refresh status.
 
 The Google Calendar OAuth callback is a browser redirect and uses a short-lived HTTP-only OAuth state cookie plus Supabase session verification instead of the same-origin POST guard.
 

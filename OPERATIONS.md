@@ -352,6 +352,7 @@ If `OPENAI_API_KEY` is set:
 Tally exposes server-to-server OpenClaw routes only when all of these server environment variables are set:
 
 - `OPENCLAW_TOKEN`,
+- `OPENCLAW_PLAID_REFRESH_TOKEN` for Plaid refresh requests,
 - `OPENCLAW_USER_ID`,
 - `SUPABASE_SERVICE_ROLE_KEY`.
 
@@ -364,6 +365,7 @@ GET /api/openclaw/recent-transactions?limit=<n>
 GET /api/openclaw/review-items?limit=<n>
 GET /api/openclaw/reimbursements?limit=<n>
 GET /api/openclaw/safe-to-spend?amount=<number>
+POST /api/openclaw/plaid-refresh
 POST /api/openclaw/query
 POST /api/openclaw/replies
 GET|POST /api/openclaw/anomaly-alerts/scheduled
@@ -373,6 +375,7 @@ GET|POST /api/openclaw/briefing/scheduled
 Expected:
 
 - requests must include `Authorization: Bearer <OPENCLAW_TOKEN>`,
+- Plaid refresh requests must include `Authorization: Bearer <OPENCLAW_PLAID_REFRESH_TOKEN>`,
 - scheduled briefing requests must include `Authorization: Bearer <CRON_SECRET>`,
 - responses return `Cache-Control: no-store`,
 - `/api/openclaw/signals` returns pending proposal summaries, open clarification questions, weekly planning context, and a minimized `calendarContext` when Google Calendar is connected,
@@ -381,6 +384,7 @@ Expected:
 - `/api/openclaw/review-items` returns a bounded open cleanup inbox,
 - `/api/openclaw/reimbursements` returns outstanding reimbursable transaction summaries,
 - `/api/openclaw/safe-to-spend` returns a green/yellow/red answer with upcoming bills, projected cash, review count, reimbursement outstanding, and weekly pace,
+- `/api/openclaw/plaid-refresh` triggers the existing Tally-owned user-scoped opportunistic Plaid sync for `OPENCLAW_USER_ID` and returns only sanitized status, duration, item counts, changed-row counts, and safe error summaries,
 - `/api/openclaw/query` accepts only structured intents: `recent_transactions`, `review_items`, `reimbursements`, or `safe_to_spend`,
 - `/api/openclaw/replies` accepts `{ "proposal_id": "...", "raw_text": "..." }` and records clarification answers for any pending Tally proposal carrying a question,
 - `/api/openclaw/anomaly-alerts/scheduled` persists deterministic alert rows with minimized evidence for later outbox delivery,
@@ -431,7 +435,19 @@ Expected response:
 
 ### OpenClaw read APIs
 
-These endpoints are read-only and share the same `OPENCLAW_TOKEN` bearer auth and server-owned `OPENCLAW_USER_ID` scope. They must not return raw Plaid payloads, Plaid transaction ids, account masks, service-role keys, notes, phone numbers, or direct write authority. OpenClaw-facing readers should also avoid hydrating raw Plaid context when building these DTOs, and should push caller limits into the database query where possible so the API is bounded in output and work.
+The read endpoints share the same `OPENCLAW_TOKEN` bearer auth and server-owned `OPENCLAW_USER_ID` scope. They must not return raw Plaid payloads, Plaid transaction ids, account masks, service-role keys, notes, phone numbers, or direct write authority. OpenClaw-facing readers should also avoid hydrating raw Plaid context when building these DTOs, and should push caller limits into the database query where possible so the API is bounded in output and work.
+
+The refresh endpoint uses `OPENCLAW_PLAID_REFRESH_TOKEN`, not `OPENCLAW_TOKEN` or `CRON_SECRET`. OpenClaw should call it before asking for latest transactions, then call the recent transactions reader:
+
+```bash
+curl -X POST -H "Authorization: Bearer $OPENCLAW_PLAID_REFRESH_TOKEN" \
+  "https://<tally-host>/api/openclaw/plaid-refresh"
+
+curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
+  "https://<tally-host>/api/openclaw/recent-transactions?limit=5"
+```
+
+The refresh response must stay limited to `status`, `startedAt`, `finishedAt`, `durationMs`, aggregate item counts, changed-row counts, safe error codes/messages, and a safety block. It must not include Plaid access tokens, transaction cursors, raw provider payloads, provider item ids, account masks/numbers, `CRON_SECRET`, `OPENCLAW_TOKEN`, service-role keys, database URLs, request auth headers, or caller-selected user/account ids.
 
 Examples:
 

@@ -20,8 +20,16 @@ function configuredOpenClawToken() {
   return process.env.OPENCLAW_TOKEN?.trim() || null;
 }
 
+function configuredOpenClawPlaidRefreshToken() {
+  return process.env.OPENCLAW_PLAID_REFRESH_TOKEN?.trim() || null;
+}
+
 export function isAuthorizedOpenClawRequest(headers: Headers) {
   return isAuthorizedBearerToken(headers, configuredOpenClawToken());
+}
+
+export function isAuthorizedOpenClawPlaidRefreshRequest(headers: Headers) {
+  return isAuthorizedBearerToken(headers, configuredOpenClawPlaidRefreshToken());
 }
 
 export function requireOpenClawAuth(request: NextRequest) {
@@ -30,16 +38,35 @@ export function requireOpenClawAuth(request: NextRequest) {
     : jsonNoStore({ error: "OpenClaw request is not authorized." }, { status: 401 });
 }
 
+export function requireOpenClawPlaidRefreshAuth(request: NextRequest) {
+  if (!configuredOpenClawPlaidRefreshToken()) {
+    return jsonNoStore({ error: "OpenClaw Plaid refresh is not configured." }, { status: 503 });
+  }
+
+  return isAuthorizedOpenClawPlaidRefreshRequest(request.headers)
+    ? null
+    : jsonNoStore({ error: "OpenClaw Plaid refresh is not authorized." }, { status: 401 });
+}
+
+export function getConfiguredOpenClawUserId() {
+  const userId = process.env.OPENCLAW_USER_ID?.trim();
+  if (!userId) {
+    throw new OpenClawRouteConfigurationError("Missing OpenClaw user configuration.");
+  }
+  return userId;
+}
+
 export function createOpenClawServiceContext(): OpenClawServiceContext {
   const config = getSupabaseConfig();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const userId = process.env.OPENCLAW_USER_ID?.trim();
 
-  if (!config || !serviceRoleKey || !userId) {
+  if (!config || !serviceRoleKey) {
     throw new OpenClawRouteConfigurationError(
       "Missing OpenClaw server configuration. Set OPENCLAW_TOKEN, OPENCLAW_USER_ID, and SUPABASE_SERVICE_ROLE_KEY."
     );
   }
+
+  const userId = getConfiguredOpenClawUserId();
 
   return {
     client: createClient<Database>(config.url, serviceRoleKey, {

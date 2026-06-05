@@ -101,7 +101,7 @@ Actual deletion requires `--execute --confirm DELETE_PLAID_ITEM_DATA`.
 
 The app also performs a throttled opportunistic Plaid sync on app open through `/api/plaid/sync/opportunistic`. It skips items synced successfully in the last 24 hours and no-ops if another sync is already running.
 
-Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, `/api/openclaw/anomaly-alerts/scheduled`, which persists deterministic anomaly alerts for OpenClaw delivery, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
+Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, `/api/openclaw/anomaly-alerts/scheduled`, which persists deterministic anomaly alerts for OpenClaw delivery, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal. OpenClaw can request a user-scoped cached Plaid refresh through `POST /api/openclaw/plaid-refresh` with `OPENCLAW_PLAID_REFRESH_TOKEN`; that route does not expose Plaid tokens, provider payloads, account masks, provider ids, `CRON_SECRET`, or service-role credentials.
 
 ### Review Transactions
 
@@ -260,6 +260,7 @@ ENABLE_OPENAI_AUTO_REVIEW=false
 ENABLE_DEMO_MODE=true
 CRON_SECRET=
 OPENCLAW_TOKEN=
+OPENCLAW_PLAID_REFRESH_TOKEN=
 OPENCLAW_USER_ID=
 OPENCLAW_BRIEFING_CADENCE=weekly
 PROACTIVE_SCAN_ENABLED=false

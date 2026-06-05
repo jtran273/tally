@@ -15,6 +15,7 @@ const SESSION_BYPASS_PATHS = [
   "/api/openclaw/anomaly-alerts/scheduled",
   "/api/openclaw/briefing/scheduled",
   "/api/openclaw/outbox",
+  "/api/openclaw/plaid-refresh",
   "/api/openclaw/query",
   "/api/openclaw/recent-transactions",
   "/api/openclaw/reimbursements",

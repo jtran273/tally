@@ -197,6 +197,7 @@ const RAW_TRANSACTION_COLUMNS = [
 const SYNC_PAGE_SIZE = 500;
 const UPSERT_CHUNK_SIZE = 100;
 const OPPORTUNISTIC_SYNC_RUNNING_STALE_MS = 30 * 60 * 1000;
+const OPPORTUNISTIC_SYNC_RECENT_SUCCESS_MS = 24 * 60 * 60 * 1000;
 const TERMINAL_ITEM_REMOVE_ERROR_CODES = new Set(["INVALID_ACCESS_TOKEN", "ITEM_NOT_FOUND"]);
 const RETIREMENT_SUBTYPES = new Set([
   "401a",
@@ -350,7 +351,7 @@ export interface PlaidScheduledSyncSummary {
 
 export interface PlaidOpportunisticSyncSummary {
   checkedAt: string;
-  reason: "in_progress" | "no_items" | "synced";
+  reason: "in_progress" | "no_items" | "recently_synced" | "synced";
   sync: PlaidSyncRunSummary | null;
 }
 
@@ -407,6 +408,18 @@ export function isRecentRunningPlaidSync(
   if (Number.isNaN(startedAt)) return true;
 
   return now.getTime() - startedAt < OPPORTUNISTIC_SYNC_RUNNING_STALE_MS;
+}
+
+export function isRecentSuccessfulPlaidSync(
+  lastSuccessfulSyncAt: string | null | undefined,
+  now = new Date()
+) {
+  if (!lastSuccessfulSyncAt) return false;
+
+  const syncedAt = Date.parse(lastSuccessfulSyncAt);
+  if (Number.isNaN(syncedAt)) return false;
+
+  return now.getTime() - syncedAt < OPPORTUNISTIC_SYNC_RECENT_SUCCESS_MS;
 }
 
 function byId(rows: InstitutionRow[]) {
@@ -2531,11 +2544,20 @@ export async function syncOpportunisticPlaidConnections(
     };
   }
 
-  const items = await listPlaidItemsForAutoSync(client, userId);
-  if (items.length === 0) {
+  const syncableItems = await listPlaidItemsForAutoSync(client, userId);
+  if (syncableItems.length === 0) {
     return {
       checkedAt,
       reason: "no_items",
+      sync: null
+    };
+  }
+
+  const items = syncableItems.filter((item) => !isRecentSuccessfulPlaidSync(item.last_successful_sync_at, now));
+  if (items.length === 0) {
+    return {
+      checkedAt,
+      reason: "recently_synced",
       sync: null
     };
   }

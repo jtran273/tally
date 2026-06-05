@@ -7,6 +7,7 @@ test("OpenClaw API routes bypass Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/openclaw/signals"), true);
   assert.equal(isSessionBypassPath("/api/openclaw/replies"), true);
   assert.equal(isSessionBypassPath("/api/openclaw/query"), true);
+  assert.equal(isSessionBypassPath("/api/openclaw/plaid-refresh"), true);
   assert.equal(isSessionBypassPath("/api/openclaw/briefing/scheduled"), true);
 });
 

@@ -9,6 +9,7 @@ import {
   getRemovedPlaidTransactionIdsToDelete,
   isPlaidRealtimeBalanceAuthorized,
   isRecentRunningPlaidSync,
+  isRecentSuccessfulPlaidSync,
   isSkippablePlaidTransactionsError,
   listPlaidConnections,
   mergePlaidAccountSourcesForSync,
@@ -809,6 +810,38 @@ test("opportunistic Plaid sync running helper ignores stale runs", () => {
   assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:00:00.000Z", status: "running" }, now), false);
   assert.equal(isRecentRunningPlaidSync({ started_at: "not-a-date", status: "running" }, now), true);
   assert.equal(isRecentRunningPlaidSync({ started_at: "2026-05-16T11:45:00.000Z", status: "succeeded" }, now), false);
+});
+
+test("opportunistic Plaid sync success helper throttles recent item syncs", () => {
+  const now = new Date("2026-05-16T12:00:00.000Z");
+
+  assert.equal(isRecentSuccessfulPlaidSync(null, now), false);
+  assert.equal(isRecentSuccessfulPlaidSync("not-a-date", now), false);
+  assert.equal(isRecentSuccessfulPlaidSync("2026-05-16T11:00:00.000Z", now), true);
+  assert.equal(isRecentSuccessfulPlaidSync("2026-05-15T10:00:00.000Z", now), false);
+});
+
+test("opportunistic Plaid sync skips recently successful auto-sync items", async () => {
+  const client = new PurgeFinanceClient({
+    plaid_items: [
+      {
+        ...plaidItemRow("unsupported-ciphertext"),
+        auto_sync_enabled: true,
+        last_successful_sync_at: "2026-05-17T11:00:00.000Z"
+      }
+    ],
+    plaid_sync_runs: []
+  });
+
+  const result = await syncOpportunisticPlaidConnections(
+    client.asClient(),
+    userId,
+    new Date("2026-05-17T12:00:00.000Z")
+  );
+
+  assert.equal(result.reason, "recently_synced");
+  assert.equal(result.sync, null);
+  assert.deepEqual(client.ids("plaid_sync_runs"), []);
 });
 
 test("opportunistic Plaid sync skips when app-open sync is disabled", async () => {

@@ -77,6 +77,7 @@ Plaid API
 | `/api/openclaw/review-items` | `GET` | Return bounded OpenClaw-safe open review items without raw Plaid context |
 | `/api/openclaw/reimbursements` | `GET` | Return outstanding reimbursement summaries and bounded reimbursement items |
 | `/api/openclaw/safe-to-spend` | `GET` | Return a bounded green/yellow/red spend answer from existing planning context |
+| `/api/openclaw/plaid-refresh` | `POST` | Trigger a user-scoped cached Plaid refresh for the configured OpenClaw user when authorized with `OPENCLAW_PLAID_REFRESH_TOKEN` |
 | `/api/openclaw/query` | `POST` | Route allowlisted structured OpenClaw read intents to safe read endpoints |
 | `/api/openclaw/replies` | `POST` | Record bearer-auth OpenClaw clarification answers |
 | `/api/openclaw/briefing/scheduled` | `GET`/`POST` | Compile or update the current OpenClaw briefing proposal when authorized with `CRON_SECRET` |
@@ -84,7 +85,7 @@ Plaid API
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
 
-Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. The CSV export route is a credentialed read and rejects cross-site browser reads. Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
+Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. The CSV export route is a credentialed read and rejects cross-site browser reads. Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks. The OpenClaw Plaid refresh route is separately bearer-authorized with `OPENCLAW_PLAID_REFRESH_TOKEN`, resolves `OPENCLAW_USER_ID` server-side, and returns only sanitized aggregate sync counts.
 
 ## Data Model
 
