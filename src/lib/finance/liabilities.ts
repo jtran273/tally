@@ -205,12 +205,7 @@ export function buildLiabilitiesDueSummary({
       const amountOwed = Math.max(0, Math.abs(account.balance));
       const lastPayment = findLastPayment(account.id, sortedTransactions);
       const actualDueDate = account.nextPaymentDueDate ?? null;
-      const fallbackDueDate = amountOwed > 0
-        ? lastPayment
-          ? addDays(lastPayment.date, DEFAULT_BILLING_CYCLE_DAYS)
-          : addDays(today, DEFAULT_BILLING_CYCLE_DAYS)
-        : null;
-      const estimatedDueDate = actualDueDate ?? fallbackDueDate;
+      const estimatedDueDate = actualDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
       const utilizationPercent = account.creditLimit && account.creditLimit > 0
         ? Math.round((amountOwed / account.creditLimit) * 1000) / 10

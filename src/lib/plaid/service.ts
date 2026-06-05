@@ -1182,6 +1182,11 @@ export function isSkippablePlaidTransactionsError(error: unknown) {
   return code === "INVALID_PRODUCT" || code === "PRODUCT_NOT_ENABLED" || code === "PRODUCT_NOT_READY";
 }
 
+export function isSkippablePlaidLiabilitiesError(error: unknown) {
+  const code = getSafePlaidError(error).code;
+  return code === "INVALID_PRODUCT" || code === "PRODUCT_NOT_ENABLED" || code === "PRODUCT_NOT_READY";
+}
+
 async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initialCursor: string | null) {
   try {
     return await fetchTransactionSyncUpdates(accessToken, initialCursor);
@@ -1247,9 +1252,13 @@ async function fetchItemLiabilities(
         .filter((row): row is CreditCardLiability & { account_id: string } => Boolean(row.account_id))
         .map((row) => [row.account_id, row])
     );
-  } catch {
+  } catch (error) {
     // Liabilities product may not be enabled for this item, or the institution
-    // doesn't support it. Fall back to estimation in liabilities.ts.
+    // doesn't support it. Do not hide configuration or credential failures.
+    if (!isSkippablePlaidLiabilitiesError(error)) {
+      throw error;
+    }
+
     return new Map();
   }
 }

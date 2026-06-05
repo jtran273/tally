@@ -7,6 +7,7 @@ import {
   deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
+  isSkippablePlaidLiabilitiesError,
   isPlaidRealtimeBalanceAuthorized,
   isRecentRunningPlaidSync,
   isSkippablePlaidTransactionsError,
@@ -20,6 +21,7 @@ import {
   syncOpportunisticPlaidConnections,
   summarizeSyncRun
 } from "./service";
+import { PlaidConfigurationError } from "./config";
 import { encryptPlaidAccessToken } from "./token-vault";
 
 function account(accountId: string, name: string, current: number): AccountBase {
@@ -295,6 +297,16 @@ test("transactions product availability errors can be skipped while importing ac
     }),
     false
   );
+});
+
+test("liabilities availability errors can be skipped but configuration failures cannot", () => {
+  assert.equal(isSkippablePlaidLiabilitiesError({
+    response: { data: { error_code: "PRODUCT_NOT_ENABLED" } }
+  }), true);
+  assert.equal(isSkippablePlaidLiabilitiesError({
+    response: { data: { error_code: "PRODUCT_NOT_READY" } }
+  }), true);
+  assert.equal(isSkippablePlaidLiabilitiesError(new PlaidConfigurationError("missing env")), false);
 });
 
 test("Plaid fallback category confidence stays reviewable when provider confidence is absent", () => {

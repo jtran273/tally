@@ -75,8 +75,20 @@ function transaction(input: { id: string; accountId: string; amount: number; dat
 test("buildLiabilitiesDueSummary flags overdue cards and computes coverage", () => {
   const accounts: AccountRecord[] = [
     account({ id: "checking", type: "depository", balance: 1500 }),
-    account({ id: "card-a", type: "credit", balance: 600, creditLimit: 5000 }),
-    account({ id: "card-b", type: "credit", balance: 1200, creditLimit: 3000 })
+    account({
+      id: "card-a",
+      type: "credit",
+      balance: 600,
+      creditLimit: 5000,
+      nextPaymentDueDate: "2026-04-01"
+    }),
+    account({
+      id: "card-b",
+      type: "credit",
+      balance: 1200,
+      creditLimit: 3000,
+      nextPaymentDueDate: "2026-05-15"
+    })
   ];
 
   const transactions: TransactionRecord[] = [
@@ -98,7 +110,7 @@ test("buildLiabilitiesDueSummary flags overdue cards and computes coverage", () 
 
   const cardA = summary.rows.find((row) => row.accountId === "card-a");
   assert.ok(cardA);
-  assert.equal(cardA?.status, "overdue", "March payment + 30d cycle should be overdue by May 11");
+  assert.equal(cardA?.status, "overdue", "actual issuer due date should be overdue by May 11");
   assert.equal(cardA?.lastPaymentDate, "2026-03-01");
   assert.equal(cardA?.utilizationPercent, 12);
 });
@@ -232,6 +244,42 @@ test("buildLiabilitiesDueSummary falls back to a weaker reporting estimate from 
   assert.equal(row?.reportingDateConfidence, "low");
 });
 
+test("buildLiabilitiesDueSummary preserves actual issuer due dates from Plaid liabilities", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "amex-blue-cash",
+        type: "credit",
+        balance: 440.35,
+        creditLimit: 6000,
+        minimumPaymentAmount: 40,
+        nextPaymentDueDate: "2026-06-20"
+      }),
+      account({
+        id: "chase-sapphire",
+        type: "credit",
+        balance: 2925.74,
+        creditLimit: 15000,
+        minimumPaymentAmount: 40,
+        nextPaymentDueDate: "2026-06-18"
+      })
+    ],
+    asOfDate: "2026-06-05",
+    cashAvailable: 5000,
+    transactions: []
+  });
+
+  const amex = summary.rows.find((row) => row.accountId === "amex-blue-cash");
+  const chase = summary.rows.find((row) => row.accountId === "chase-sapphire");
+
+  assert.equal(amex?.estimatedDueDate, "2026-06-20");
+  assert.equal(amex?.dueDateIsActual, true);
+  assert.equal(amex?.minimumPaymentAmount, 40);
+  assert.equal(chase?.estimatedDueDate, "2026-06-18");
+  assert.equal(chase?.dueDateIsActual, true);
+  assert.equal(chase?.minimumPaymentAmount, 40);
+});
+
 test("buildLiabilitiesDueSummary advances stale due-date reporting estimates", () => {
   const summary = buildLiabilitiesDueSummary({
     accounts: [
@@ -256,7 +304,7 @@ test("buildLiabilitiesDueSummary advances stale due-date reporting estimates", (
   assert.equal(row?.status, "overdue", "due-date safety should still use the stale due date");
 });
 
-test("buildLiabilitiesDueSummary keeps due-date fallback when Plaid liabilities are unavailable", () => {
+test("buildLiabilitiesDueSummary leaves due dates unknown when Plaid liabilities are unavailable", () => {
   const summary = buildLiabilitiesDueSummary({
     accounts: [
       account({
@@ -272,7 +320,8 @@ test("buildLiabilitiesDueSummary keeps due-date fallback when Plaid liabilities 
   });
 
   const row = summary.rows[0];
-  assert.equal(row?.estimatedDueDate, "2026-05-31");
+  assert.equal(row?.estimatedDueDate, null);
+  assert.equal(row?.daysUntilDue, null);
   assert.equal(row?.dueDateIsActual, false);
   assert.equal(row?.reportingDate, null);
   assert.equal(row?.reportingDateSource, "unknown");
