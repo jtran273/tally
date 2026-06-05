@@ -8,6 +8,7 @@ export type CreditHealthConfidence = "high" | "medium" | "low" | "none";
 
 export interface CreditScoreSnapshotInput {
   asOfDate: string;
+  createdAt?: string;
   model: CreditScoreModel;
   score: number;
   source: CreditScoreSource;
@@ -53,8 +54,23 @@ const WATCH_UTILIZATION_PERCENT = 30;
 const IDEAL_UTILIZATION_PERCENT = 10;
 
 function parseIsoDate(value: string) {
-  const time = Date.parse(`${value}T12:00:00.000Z`);
-  return Number.isFinite(time) ? time : null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date.getTime();
 }
 
 function confidenceForScoreSource(source: CreditScoreSource): CreditHealthConfidence {
@@ -74,6 +90,7 @@ export function normalizeCreditScoreSnapshot(input: CreditScoreSnapshotInput): C
   return {
     asOfDate: input.asOfDate,
     confidence: confidenceForScoreSource(input.source),
+    createdAt: input.createdAt,
     model: input.model,
     score,
     source: input.source
@@ -82,12 +99,20 @@ export function normalizeCreditScoreSnapshot(input: CreditScoreSnapshotInput): C
 
 function sortSnapshots(snapshots: readonly CreditScoreSnapshotInput[]) {
   return snapshots
-    .map(normalizeCreditScoreSnapshot)
+    .map((snapshot, index) => ({
+      index,
+      snapshot: normalizeCreditScoreSnapshot(snapshot)
+    }))
     .sort((a, b) => {
-      const dateDiff = b.asOfDate.localeCompare(a.asOfDate);
+      const dateDiff = b.snapshot.asOfDate.localeCompare(a.snapshot.asOfDate);
       if (dateDiff !== 0) return dateDiff;
-      return b.score - a.score;
-    });
+      if (a.snapshot.createdAt && b.snapshot.createdAt) {
+        const createdDiff = b.snapshot.createdAt.localeCompare(a.snapshot.createdAt);
+        if (createdDiff !== 0) return createdDiff;
+      }
+      return a.index - b.index;
+    })
+    .map(({ snapshot }) => snapshot);
 }
 
 function trendForDelta(delta: number | null): CreditScoreTrendDirection {

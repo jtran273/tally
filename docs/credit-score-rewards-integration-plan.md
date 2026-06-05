@@ -111,6 +111,7 @@ The next safe MVP adds a persisted manual score surface without adding live bure
 
 - `credit_score_snapshots` stores user-entered score, source, model, and as-of date.
 - `/credit-health` shows the current manually entered score, source, model, trend, and recent history.
+- If multiple snapshots share an as-of date, the newest saved entry is treated as the current manual snapshot; trend still compares against the most recent prior date, not another entry from the same day.
 - The page uses existing connected-account liabilities for payment-history, utilization, and statement-timing guidance.
 - The page labels that Tally is not connected to a live credit bureau score provider.
 - Rewards and benefits remain explicit unsupported/deferred data: no points, cashback, miles, reward multipliers, or unused-benefits detection is inferred from Plaid.
