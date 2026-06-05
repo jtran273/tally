@@ -72,6 +72,20 @@ order by grantee, privilege_type;
 
 ## 4. Verify a live signed-in Plaid sync
 
+If OpenClaw is configured for this deployment, first run the bounded refresh
+probe from a trusted operator shell:
+
+```bash
+export OPENCLAW_TALLY_BASE_URL="https://<tally-host>"
+export OPENCLAW_PLAID_REFRESH_TOKEN="<refresh token>"
+npm run openclaw:plaid-refresh
+```
+
+If it returns `OpenClaw Plaid refresh is not configured.`, set
+`OPENCLAW_PLAID_REFRESH_TOKEN` on the deployed Tally server before using
+OpenClaw to trigger refreshes. That error happens before any Plaid item or
+Supabase schema diagnosis starts.
+
 1. Sign in to production as a real user with a linked Plaid item.
 2. Open **Settings → bank connections** and trigger a manual sync.
 3. Expected outcomes (acceptance criteria 4–5):

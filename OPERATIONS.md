@@ -449,12 +449,16 @@ The read endpoints share the same `OPENCLAW_TOKEN` bearer auth and server-owned 
 The refresh endpoint uses `OPENCLAW_PLAID_REFRESH_TOKEN`, not `OPENCLAW_TOKEN` or `CRON_SECRET`. OpenClaw should call it before asking for latest transactions, then call the recent transactions reader:
 
 ```bash
+npm run openclaw:plaid-refresh
+
 curl -X POST -H "Authorization: Bearer $OPENCLAW_PLAID_REFRESH_TOKEN" \
   "https://<tally-host>/api/openclaw/plaid-refresh"
 
 curl -H "Authorization: Bearer $OPENCLAW_TOKEN" \
   "https://<tally-host>/api/openclaw/recent-transactions?limit=5"
 ```
+
+`npm run openclaw:plaid-refresh` expects `OPENCLAW_TALLY_BASE_URL` and `OPENCLAW_PLAID_REFRESH_TOKEN` in the operator environment. A `503` with `OpenClaw Plaid refresh is not configured.` means the deployed Tally server is missing `OPENCLAW_PLAID_REFRESH_TOKEN`, before any user-scoped Plaid or Supabase sync work can start.
 
 The refresh response must stay limited to `status`, `startedAt`, `finishedAt`, `durationMs`, aggregate item counts, changed-row counts, safe error codes/messages, and a safety block. It must not include Plaid access tokens, transaction cursors, raw provider payloads, provider item ids, account masks/numbers, `CRON_SECRET`, `OPENCLAW_TOKEN`, service-role keys, database URLs, request auth headers, or caller-selected user/account ids.
 
