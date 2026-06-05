@@ -249,6 +249,55 @@ test("detectReimbursementCandidateProposals returns safe proposal payloads from 
   assert.deepEqual((detections[0].proposedPatch as { suggestedInflowIds?: string[] }).suggestedInflowIds, ["tx-zelle"]);
 });
 
+test("detectReimbursementCandidateProposals keeps suggested inflows scoped to candidate inflows", async () => {
+  const expense = transaction({
+    amount: -240,
+    category: "Travel / Hotel",
+    date: "2026-05-01",
+    id: "tx-hotel",
+    merchant: "Ace Hotel"
+  });
+  const inflow = transaction({
+    amount: 120,
+    category: "Uncategorized",
+    date: "2026-05-05",
+    id: "tx-zelle",
+    merchant: "Zelle Transfer Alex"
+  });
+  const noisyProvider = {
+    async suggestReimbursementCandidate(
+      request: ReimbursementCandidateAiRequest
+    ) {
+      return {
+        confidence: 0.72,
+        provider: {
+          id: "test-provider",
+          kind: "mock" as const,
+          label: "Test provider",
+          version: "test"
+        },
+        question: `Was ${request.transaction.merchant} shared?`,
+        reason: "Test provider response.",
+        signals: ["test"],
+        suggestedInflowIds: ["tx-zelle", "tx-not-in-request", "tx-zelle"],
+        suggestedIntent: "shared" as const,
+        suggestionId: `test-${request.transaction.id}`,
+        targetTransactionId: request.transaction.id
+      };
+    }
+  };
+
+  const detections = await detectReimbursementCandidateProposals({
+    inflows: [inflow],
+    suggestionService: noisyProvider,
+    transactions: [expense]
+  });
+
+  assert.equal(detections.length, 1);
+  assert.deepEqual(detections[0].aiSuggestion.suggestedInflowIds, ["tx-zelle"]);
+  assert.deepEqual((detections[0].proposedPatch as { suggestedInflowIds?: string[] }).suggestedInflowIds, ["tx-zelle"]);
+});
+
 test("createDetectedReimbursementCandidateProposals upserts by source context for overlapping scans", async () => {
   const { client, rows } = proposalUpsertClient();
   const expense = transaction({

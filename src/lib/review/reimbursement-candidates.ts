@@ -248,43 +248,66 @@ function buildAiRequest(
   };
 }
 
+function normalizeAiSuggestionForCandidate(
+  candidate: ReimbursementCandidateHeuristic,
+  aiSuggestion: ReimbursementCandidateAiSuggestion
+): ReimbursementCandidateAiSuggestion {
+  if (aiSuggestion.targetTransactionId !== candidate.transaction.id) {
+    throw new Error("Reimbursement candidate suggestion target does not match the candidate transaction.");
+  }
+
+  const allowedInflowIds = new Set(candidate.candidateInflows.map((inflow) => inflow.id));
+  const seen = new Set<string>();
+  const suggestedInflowIds = aiSuggestion.suggestedInflowIds.filter((id) => {
+    if (!allowedInflowIds.has(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  return {
+    ...aiSuggestion,
+    suggestedInflowIds
+  };
+}
+
 function buildDetection(
   candidate: ReimbursementCandidateHeuristic,
   aiSuggestion: ReimbursementCandidateAiSuggestion,
   expiresAt: string | null | undefined
 ): ReimbursementCandidateDetection {
+  const normalizedSuggestion = normalizeAiSuggestionForCandidate(candidate, aiSuggestion);
   const evidence = safeJson({
-    aiProvider: aiSuggestion.provider,
+    aiProvider: normalizedSuggestion.provider,
     candidateInflows: candidate.candidateInflows,
     heuristicConfidence: candidate.confidence,
     heuristicReasons: candidate.reasons,
-    question: aiSuggestion.question,
-    signals: aiSuggestion.signals,
+    question: normalizedSuggestion.question,
+    signals: normalizedSuggestion.signals,
     transaction: candidate.transaction
   });
   const proposedPatch = safeJson({
-    question: aiSuggestion.question,
-    reason: aiSuggestion.reason,
-    suggestedInflowIds: aiSuggestion.suggestedInflowIds,
-    suggestedIntent: aiSuggestion.suggestedIntent
+    question: normalizedSuggestion.question,
+    reason: normalizedSuggestion.reason,
+    suggestedInflowIds: normalizedSuggestion.suggestedInflowIds,
+    suggestedIntent: normalizedSuggestion.suggestedIntent
   });
 
   assertAgentProposalPayloadSafe(evidence, proposedPatch);
 
   return {
-    aiSuggestion,
+    aiSuggestion: normalizedSuggestion,
     candidateInflows: candidate.candidateInflows,
     evidence,
     proposal: {
-      clarificationQuestion: aiSuggestion.question,
-      confidence: aiSuggestion.confidence,
+      clarificationQuestion: normalizedSuggestion.question,
+      confidence: normalizedSuggestion.confidence,
       evidence,
       expiresAt: expiresAt ?? null,
       proposedPatch,
       proposalType: "reimbursement_candidate",
       questionFingerprint: stableFingerprint(candidate),
       sourceAgent: SOURCE_AGENT,
-      sourceCandidateId: aiSuggestion.suggestionId,
+      sourceCandidateId: normalizedSuggestion.suggestionId,
       sourceContextId: stableSourceContextId(candidate),
       targetId: candidate.transaction.id,
       targetKind: "enriched_transaction"
