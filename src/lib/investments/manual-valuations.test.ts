@@ -131,3 +131,61 @@ test("parseManualInvestmentHoldings drops invalid tickers and non-positive share
   assert.deepEqual(configs[0]?.holdings, [{ shares: 195.867, symbol: "FZROX" }]);
   assert.equal(configs[0]?.cash, 0);
 });
+
+test("parseManualInvestmentHoldings merges duplicate symbols after normalization", () => {
+  const configs = parseManualInvestmentHoldings({
+    FIDELITY_HOLDINGS: " aapl : 1, AAPL:2.5, nvda:3, cash:10"
+  });
+
+  assert.equal(configs.length, 1);
+  assert.deepEqual(configs[0]?.holdings, [
+    { shares: 3.5, symbol: "AAPL" },
+    { shares: 3, symbol: "NVDA" }
+  ]);
+});
+
+test("parseManualInvestmentHoldings merges duplicate JSON holdings", () => {
+  const configs = parseManualInvestmentHoldings({
+    MANUAL_INVESTMENT_HOLDINGS: JSON.stringify({
+      accountId: "account-fidelity",
+      cash: "5",
+      holdings: [
+        { shares: 1, symbol: "FZROX" },
+        { quantity: "2.25", ticker: "fzrox" },
+        { shares: 4, symbol: "FSKAX" }
+      ]
+    })
+  });
+
+  assert.equal(configs.length, 1);
+  assert.deepEqual(configs[0]?.holdings, [
+    { shares: 3.25, symbol: "FZROX" },
+    { shares: 4, symbol: "FSKAX" }
+  ]);
+});
+
+test("applyManualInvestmentValuations prices merged duplicate symbols once", async () => {
+  const requestedSymbols: string[] = [];
+  const accounts = await applyManualInvestmentValuations([fidelityAccount], {
+    env: {
+      FIDELITY_HOLDINGS: "AAPL:1,aapl:2,cash:10"
+    },
+    quoteProvider: async (symbol) => {
+      requestedSymbols.push(symbol);
+      return {
+        asOf: "2026-05-15T12:00:00.000Z",
+        price: 100,
+        symbol
+      };
+    }
+  });
+
+  assert.deepEqual(requestedSymbols, ["AAPL"]);
+  assert.equal(accounts[0]?.manualValuation?.totalValue, 310);
+  assert.deepEqual(accounts[0]?.manualValuation?.holdings, [{
+    price: 100,
+    shares: 3,
+    symbol: "AAPL",
+    value: 300
+  }]);
+});

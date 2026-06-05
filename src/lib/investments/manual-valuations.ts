@@ -43,6 +43,22 @@ function normalizeSymbol(value: unknown) {
   return /^[A-Z0-9.-]{1,15}$/.test(symbol) ? symbol : null;
 }
 
+function mergeDuplicateHoldings(holdings: HoldingConfig["holdings"]) {
+  const merged = new Map<string, HoldingConfig["holdings"][number]>();
+
+  for (const holding of holdings) {
+    const current = merged.get(holding.symbol);
+    if (current) {
+      current.shares += holding.shares;
+      continue;
+    }
+
+    merged.set(holding.symbol, { ...holding });
+  }
+
+  return [...merged.values()];
+}
+
 function parseJsonHoldingConfig(value: string): HoldingConfig[] {
   let parsed: unknown;
   try {
@@ -63,14 +79,15 @@ function parseJsonHoldingConfig(value: string): HoldingConfig[] {
       const shares = parseNumber(holdingData.shares ?? holdingData.quantity);
       return symbol && shares !== null && shares > 0 ? [{ shares, symbol }] : [];
     });
+    const mergedHoldings = mergeDuplicateHoldings(holdings);
 
-    if (holdings.length === 0) return [];
+    if (mergedHoldings.length === 0) return [];
 
     return [{
       accountId: typeof data.accountId === "string" ? data.accountId : undefined,
       accountName: typeof data.accountName === "string" ? data.accountName : undefined,
       cash: parseNumber(data.cash) ?? 0,
-      holdings,
+      holdings: mergedHoldings,
       institutionName: typeof data.institutionName === "string" ? data.institutionName : undefined
     }];
   });
@@ -99,7 +116,7 @@ function parseFidelityHoldingConfig(value: string): HoldingConfig[] {
   }
 
   return holdings.length > 0
-    ? [{ cash, holdings, institutionName: "Fidelity" }]
+    ? [{ cash, holdings: mergeDuplicateHoldings(holdings), institutionName: "Fidelity" }]
     : [];
 }
 
