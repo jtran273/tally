@@ -9,12 +9,36 @@ function firstHeaderValue(value: string | null) {
   return value?.split(",")[0]?.trim() || null;
 }
 
-function addOrigin(origins: Set<string>, value: string | null | undefined) {
-  if (!value) return;
+function normalizeOrigin(value: string | null | undefined) {
+  if (!value) return null;
 
   try {
-    origins.add(new URL(value).origin);
+    return new URL(value).origin;
   } catch {
+    return null;
+  }
+}
+
+function normalizeRequestOrigin(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+      return null;
+    }
+
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function addOrigin(origins: Set<string>, value: string | null | undefined) {
+  const origin = normalizeOrigin(value);
+  if (origin) {
+    origins.add(origin);
+  } else {
     // Ignore invalid environment values here. Dedicated config validation handles them.
   }
 }
@@ -73,13 +97,16 @@ export function isAuthorizedBearerToken(headers: Headers, token: string | null |
 }
 
 export function requireSameOriginRequest(request: NextRequest) {
-  const origin = request.headers.get("origin");
+  const originHeader = request.headers.get("origin");
 
-  if (!origin) {
+  if (!originHeader) {
     return isProductionRuntime()
       ? jsonNoStore({ error: "Invalid request origin." }, { status: 403 })
       : null;
   }
+
+  const origin = normalizeRequestOrigin(originHeader);
+  if (!origin) return jsonNoStore({ error: "Invalid request origin." }, { status: 403 });
 
   return getAllowedOrigins(request).has(origin)
     ? null

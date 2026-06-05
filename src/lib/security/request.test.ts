@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import {
   getRequestOrigin,
   isAuthorizedBearerToken,
+  requireSameOriginRequest,
   requireSameOriginReadRequest
 } from "./request";
 
@@ -39,6 +40,28 @@ test("same-origin read helper rejects cross-site fetches", async () => {
   const response = requireSameOriginReadRequest(new NextRequest("https://ledger.example/api/export/transactions", {
     headers: {
       "sec-fetch-site": "cross-site"
+    }
+  }));
+
+  assert(response);
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "Invalid request origin." });
+});
+
+test("same-origin helper normalizes origin casing and default ports", () => {
+  const response = requireSameOriginRequest(new NextRequest("https://ledger.example/api/export/transactions", {
+    headers: {
+      origin: "HTTPS://LEDGER.EXAMPLE:443"
+    }
+  }));
+
+  assert.equal(response, null);
+});
+
+test("same-origin helper rejects invalid origin headers", async () => {
+  const response = requireSameOriginRequest(new NextRequest("https://ledger.example/api/export/transactions", {
+    headers: {
+      origin: "https://ledger.example/path"
     }
   }));
 
