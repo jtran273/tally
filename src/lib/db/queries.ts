@@ -222,16 +222,24 @@ type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
 type MerchantRuleInsert = Database["public"]["Tables"]["merchant_rules"]["Insert"];
 type RecurringExpenseInsert = Database["public"]["Tables"]["recurring_expenses"]["Insert"];
 type RecurringExpenseUpdate = Database["public"]["Tables"]["recurring_expenses"]["Update"];
+type ReimbursementRecordInsert = Database["public"]["Tables"]["reimbursement_records"]["Insert"];
 type ReimbursementRecordUpdate = Database["public"]["Tables"]["reimbursement_records"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
+type TransactionSplitUpdate = Database["public"]["Tables"]["transaction_splits"]["Update"];
 type TransactionSplitInsert = Database["public"]["Tables"]["transaction_splits"]["Insert"];
 
 export interface TransactionSplitMutationInput {
   amount: number;
   categoryId: string | null;
+  id?: string | null;
   intent: TransactionIntent;
   label: string;
   notes?: string | null;
+}
+
+export interface ReimbursementSplitSyncOptions {
+  actorId?: string | null;
+  source?: string;
 }
 
 export interface LinkReimbursementInput {
@@ -2327,39 +2335,337 @@ export async function resolveReviewItem(
   return toReviewItemRecord(expectData(result, "Resolve review item"));
 }
 
-export async function replaceTransactionSplits(
+async function listTransactionSplitRows(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string
+): Promise<TransactionSplitRow[]> {
+  const result = await client
+    .from("transaction_splits")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("enriched_transaction_id", transactionId);
+
+  return expectData(result, "Load transaction splits for replacement");
+}
+
+async function listReimbursementRowsByTransactionId(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string
+): Promise<ReimbursementRecordRow[]> {
+  const result = await client
+    .from("reimbursement_records")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("enriched_transaction_id", transactionId);
+
+  return expectData(result, "Load reimbursement records for transaction");
+}
+
+function splitMutationChanged(row: TransactionSplitRow, split: TransactionSplitMutationInput) {
+  return (
+    row.amount !== roundMoney(split.amount) ||
+    row.category_id !== split.categoryId ||
+    row.intent !== split.intent ||
+    row.label !== split.label ||
+    row.notes !== (split.notes ?? null)
+  );
+}
+
+function reimbursementCanBeReplaced(row: ReimbursementRecordRow) {
+  return (
+    row.status === "expected" &&
+    !row.received_transaction_id &&
+    row.received_amount <= 0 &&
+    !row.received_at
+  );
+}
+
+function reimbursementExpectedNotes(split: TransactionSplitRecord) {
+  return split.notes ?? "Expected reimbursement from reimbursable review split.";
+}
+
+function reimbursementCounterparty(split: TransactionSplitRecord) {
+  return reimbursementCounterpartyFromLabel(split.label);
+}
+
+function reimbursementCounterpartyFromLabel(label: string) {
+  const counterparty = label.replace(/^covered for\s+/i, "").trim();
+  return counterparty || null;
+}
+
+function reimbursementExpectedUpdate(split: TransactionSplitRecord): ReimbursementRecordUpdate {
+  return {
+    counterparty: reimbursementCounterparty(split),
+    expected_amount: roundMoney(Math.abs(split.amount)),
+    notes: reimbursementExpectedNotes(split),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function reimbursementExpectedChanged(row: ReimbursementRecordRow, update: ReimbursementRecordUpdate) {
+  return (
+    row.counterparty !== update.counterparty ||
+    row.expected_amount !== update.expected_amount ||
+    row.notes !== update.notes
+  );
+}
+
+function assertReimbursementCanFollowSplitChange(row: ReimbursementRecordRow) {
+  if (reimbursementCanBeReplaced(row)) return;
+  throw new FinanceDbError("Sync split reimbursements", {
+    message: "This split already has reimbursement history. Unlink or resolve that reimbursement before changing the split."
+  });
+}
+
+function splitMutationChangesReimbursementFields(row: TransactionSplitRow, split: TransactionSplitMutationInput) {
+  return (
+    row.amount !== roundMoney(split.amount) ||
+    row.intent !== split.intent ||
+    row.label !== split.label ||
+    row.notes !== (split.notes ?? null)
+  );
+}
+
+function assertUniqueSubmittedSplitIds(splits: TransactionSplitMutationInput[]) {
+  const seen = new Set<string>();
+  for (const split of splits) {
+    if (!split.id) continue;
+    if (seen.has(split.id)) {
+      throw new FinanceDbError("Replace transaction splits", {
+        message: "Split rows cannot reuse the same split id."
+      });
+    }
+    seen.add(split.id);
+  }
+}
+
+async function recordReimbursementAuditEvent(
+  client: FinanceSupabaseClient,
+  userId: string,
+  action: "reimbursement.expected_created" | "reimbursement.expected_updated" | "reimbursement.expected_removed",
+  input: {
+    after?: ReimbursementRecordRow | null;
+    before?: ReimbursementRecordRow | null;
+    options: ReimbursementSplitSyncOptions;
+    split?: TransactionSplitRecord | null;
+    transactionId: string;
+  }
+) {
+  const row = input.after ?? input.before;
+  await recordAuditEvent(client, userId, {
+    action,
+    actorId: input.options.actorId ?? userId,
+    afterData: input.after ? reimbursementAuditSnapshot(input.after) : null,
+    beforeData: input.before ? reimbursementAuditSnapshot(input.before) : null,
+    entityId: row?.id ?? null,
+    entityTable: "reimbursement_records",
+    metadata: {
+      source: input.options.source ?? "review_peer_to_peer_split_resolution",
+      splitId: input.split?.id ?? row?.split_id ?? null,
+      splitLabel: input.split?.label ?? null,
+      transactionId: input.transactionId
+    }
+  });
+}
+
+async function removeExpectedSplitReimbursement(
+  client: FinanceSupabaseClient,
+  userId: string,
+  row: ReimbursementRecordRow,
+  input: {
+    options: ReimbursementSplitSyncOptions;
+    split?: TransactionSplitRecord | null;
+    transactionId: string;
+  }
+) {
+  assertReimbursementCanFollowSplitChange(row);
+
+  const result = await client
+    .from("reimbursement_records")
+    .delete()
+    .eq("user_id", userId)
+    .eq("id", row.id);
+
+  if (result.error) {
+    throw new FinanceDbError("Remove expected split reimbursement", result.error);
+  }
+
+  await recordReimbursementAuditEvent(client, userId, "reimbursement.expected_removed", {
+    before: row,
+    options: input.options,
+    split: input.split ?? null,
+    transactionId: input.transactionId
+  });
+}
+
+async function syncExpectedSplitReimbursements(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitRecord[],
+  options: ReimbursementSplitSyncOptions
+) {
+  const rows = await listReimbursementRowsByTransactionId(client, userId, transactionId);
+  const rowBySplitId = new Map(rows.flatMap((row) => (row.split_id ? [[row.split_id, row]] : [])));
+  const savedSplitIds = new Set(splits.map((split) => split.id));
+
+  for (const row of rows) {
+    if (!row.split_id || savedSplitIds.has(row.split_id)) continue;
+    await removeExpectedSplitReimbursement(client, userId, row, {
+      options,
+      split: null,
+      transactionId
+    });
+  }
+
+  for (const split of splits) {
+    const existing = rowBySplitId.get(split.id);
+    if (split.intent !== "reimbursable") {
+      if (existing) {
+        await removeExpectedSplitReimbursement(client, userId, existing, {
+          options,
+          split,
+          transactionId
+        });
+      }
+      continue;
+    }
+
+    if (existing) {
+      const update = reimbursementExpectedUpdate(split);
+      if (!reimbursementExpectedChanged(existing, update)) continue;
+      if (!reimbursementCanBeReplaced(existing)) continue;
+
+      const result = await client
+        .from("reimbursement_records")
+        .update(update)
+        .eq("user_id", userId)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      const after = expectData(result, "Update expected split reimbursement");
+
+      await recordReimbursementAuditEvent(client, userId, "reimbursement.expected_updated", {
+        after,
+        before: existing,
+        options,
+        split,
+        transactionId
+      });
+      continue;
+    }
+
+    const insert: ReimbursementRecordInsert = {
+      counterparty: reimbursementCounterparty(split),
+      enriched_transaction_id: transactionId,
+      expected_amount: roundMoney(Math.abs(split.amount)),
+      notes: reimbursementExpectedNotes(split),
+      received_amount: 0,
+      split_id: split.id,
+      status: "expected",
+      user_id: userId
+    };
+    const result = await client
+      .from("reimbursement_records")
+      .insert(insert)
+      .select("*")
+      .single();
+    const after = expectData(result, "Create expected split reimbursement");
+
+    await recordReimbursementAuditEvent(client, userId, "reimbursement.expected_created", {
+      after,
+      options,
+      split,
+      transactionId
+    });
+  }
+}
+
+async function replaceTransactionSplitRows(
   client: FinanceSupabaseClient,
   userId: string,
   transactionId: string,
   splits: TransactionSplitMutationInput[]
-): Promise<TransactionSplitRecord[]> {
-  const deleteResult = await client
-    .from("transaction_splits")
-    .delete()
-    .eq("user_id", userId)
-    .eq("enriched_transaction_id", transactionId);
+): Promise<TransactionSplitRow[]> {
+  const existingRows = await listTransactionSplitRows(client, userId, transactionId);
+  const existingById = byId(existingRows);
+  const submittedExistingIds = new Set(
+    splits
+      .map((split) => split.id)
+      .filter((id): id is string => Boolean(id && existingById.has(id)))
+  );
 
-  if (deleteResult.error) {
-    throw new FinanceDbError("Replace transaction splits", deleteResult.error);
+  for (const row of existingRows) {
+    if (submittedExistingIds.has(row.id)) continue;
+    const deleteResult = await client
+      .from("transaction_splits")
+      .delete()
+      .eq("user_id", userId)
+      .eq("enriched_transaction_id", transactionId)
+      .eq("id", row.id);
+
+    if (deleteResult.error) {
+      throw new FinanceDbError("Delete removed transaction split", deleteResult.error);
+    }
   }
 
-  if (splits.length === 0) return [];
+  const rows: TransactionSplitRow[] = [];
 
-  const inserts: TransactionSplitInsert[] = splits.map((split) => ({
-    amount: roundMoney(split.amount),
-    category_id: split.categoryId,
-    enriched_transaction_id: transactionId,
-    intent: split.intent,
-    label: split.label,
-    notes: split.notes ?? null,
-    user_id: userId
-  }));
+  for (const split of splits) {
+    const existing = split.id ? existingById.get(split.id) : undefined;
+    if (existing) {
+      if (!splitMutationChanged(existing, split)) {
+        rows.push(existing);
+        continue;
+      }
 
-  const result = await client
-    .from("transaction_splits")
-    .insert(inserts)
-    .select("*");
-  const rows = expectData(result, "Insert transaction splits");
+      const update: TransactionSplitUpdate = {
+        amount: roundMoney(split.amount),
+        category_id: split.categoryId,
+        intent: split.intent,
+        label: split.label,
+        notes: split.notes ?? null,
+        updated_at: new Date().toISOString()
+      };
+      const result = await client
+        .from("transaction_splits")
+        .update(update)
+        .eq("user_id", userId)
+        .eq("enriched_transaction_id", transactionId)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      rows.push(expectData(result, "Update transaction split"));
+      continue;
+    }
+
+    const insert: TransactionSplitInsert = {
+      amount: roundMoney(split.amount),
+      category_id: split.categoryId,
+      enriched_transaction_id: transactionId,
+      intent: split.intent,
+      label: split.label,
+      notes: split.notes ?? null,
+      user_id: userId
+    };
+    const result = await client
+      .from("transaction_splits")
+      .insert(insert)
+      .select("*")
+      .single();
+    rows.push(expectData(result, "Insert transaction split"));
+  }
+
+  return rows;
+}
+
+async function hydrateSplitRows(
+  client: FinanceSupabaseClient,
+  userId: string,
+  rows: TransactionSplitRow[]
+): Promise<TransactionSplitRecord[]> {
   const categoryIds = unique(rows.map((row) => row.category_id));
   const categoryRows = categoryIds.length > 0
     ? expectData(
@@ -2370,6 +2676,100 @@ export async function replaceTransactionSplits(
   const categoryById = byId(categoryRows);
 
   return rows.map((row) => toSplitRecord(row, row.category_id ? categoryById.get(row.category_id) : undefined));
+}
+
+async function guardRemovedSplitReimbursements(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitMutationInput[],
+  options: ReimbursementSplitSyncOptions
+) {
+  const existingRows = await listTransactionSplitRows(client, userId, transactionId);
+  const existingById = byId(existingRows);
+  const submittedExistingIds = new Set(
+    splits
+      .map((split) => split.id)
+      .filter((id): id is string => Boolean(id && existingById.has(id)))
+  );
+  const removedRows = existingRows.filter((row) => !submittedExistingIds.has(row.id));
+  if (removedRows.length === 0) return;
+
+  const reimbursements = await listReimbursementRowsByTransactionId(client, userId, transactionId);
+  const reimbursementBySplitId = new Map(
+    reimbursements.flatMap((row) => (row.split_id ? [[row.split_id, row]] : []))
+  );
+  const removals = removedRows
+    .map((row) => ({
+      reimbursement: reimbursementBySplitId.get(row.id),
+      split: toSplitRecord(row)
+    }))
+    .filter((item): item is { reimbursement: ReimbursementRecordRow; split: TransactionSplitRecord } =>
+      item.reimbursement !== undefined
+    );
+
+  removals.forEach(({ reimbursement }) => assertReimbursementCanFollowSplitChange(reimbursement));
+
+  for (const { reimbursement, split } of removals) {
+    await removeExpectedSplitReimbursement(client, userId, reimbursement, {
+      options,
+      split,
+      transactionId
+    });
+  }
+}
+
+async function guardChangedSplitReimbursements(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitMutationInput[]
+) {
+  const submittedIds = unique(splits.map((split) => split.id));
+  if (submittedIds.length === 0) return;
+
+  const existingRows = await listTransactionSplitRows(client, userId, transactionId);
+  const existingById = byId(existingRows);
+  const reimbursements = await listReimbursementRowsByTransactionId(client, userId, transactionId);
+  const reimbursementBySplitId = new Map(
+    reimbursements.flatMap((row) => (row.split_id ? [[row.split_id, row]] : []))
+  );
+
+  for (const split of splits) {
+    if (!split.id) continue;
+    const existingSplit = existingById.get(split.id);
+    if (!existingSplit || !splitMutationChangesReimbursementFields(existingSplit, split)) continue;
+    const reimbursement = reimbursementBySplitId.get(split.id);
+    if (!reimbursement || reimbursementCanBeReplaced(reimbursement)) continue;
+    assertReimbursementCanFollowSplitChange(reimbursement);
+  }
+}
+
+export async function replaceTransactionSplits(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitMutationInput[]
+): Promise<TransactionSplitRecord[]> {
+  assertUniqueSubmittedSplitIds(splits);
+  const rows = await replaceTransactionSplitRows(client, userId, transactionId, splits);
+  return hydrateSplitRows(client, userId, rows);
+}
+
+export async function replaceTransactionSplitsAndSyncReimbursements(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string,
+  splits: TransactionSplitMutationInput[],
+  options: ReimbursementSplitSyncOptions = {}
+): Promise<TransactionSplitRecord[]> {
+  assertUniqueSubmittedSplitIds(splits);
+  await guardChangedSplitReimbursements(client, userId, transactionId, splits);
+  await guardRemovedSplitReimbursements(client, userId, transactionId, splits, options);
+  const rows = await replaceTransactionSplitRows(client, userId, transactionId, splits);
+  const savedSplits = await hydrateSplitRows(client, userId, rows);
+  await syncExpectedSplitReimbursements(client, userId, transactionId, savedSplits, options);
+  return savedSplits;
 }
 
 export function asJsonObject(value: Json): Record<string, Json | undefined> {

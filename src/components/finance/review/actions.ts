@@ -7,7 +7,7 @@ import {
   listCategories,
   listMerchantRules,
   recordAuditEvent,
-  replaceTransactionSplits,
+  replaceTransactionSplitsAndSyncReimbursements,
   resolveReviewItem,
   updateTransactionEnrichment,
   upsertMerchantRule,
@@ -126,7 +126,8 @@ function parseSplitRows(formData: FormData, categories: CategoryRecord[], totalC
   const categoryIds = formData.getAll("splitCategoryId");
   const intents = formData.getAll("splitIntent");
   const notes = formData.getAll("splitNotes");
-  const rowCount = Math.max(labels.length, amounts.length, categoryIds.length, intents.length, notes.length);
+  const splitIds = formData.getAll("splitId");
+  const rowCount = Math.max(labels.length, amounts.length, categoryIds.length, intents.length, notes.length, splitIds.length);
 
   if (rowCount === 0) throw new Error("Add at least one split row.");
   if (rowCount > splitRowLimit) throw new Error(`Use ${splitRowLimit} or fewer split rows.`);
@@ -137,13 +138,15 @@ function parseSplitRows(formData: FormData, categories: CategoryRecord[], totalC
   for (let index = 0; index < rowCount; index += 1) {
     const rawCategoryId = categoryIds[index] ?? null;
     const rawIntent = intents[index] ?? null;
+    const rawSplitId = splitIds[index] ?? null;
     const categoryId = cleanOptionalUuid(rawCategoryId);
     const label = cleanString(labels[index] ?? null, 80);
     const amountCents = parseMoneyCents(amounts[index] ?? null);
     const intent = cleanString(rawIntent, 24) as TransactionIntent;
     const note = cleanString(notes[index] ?? null, 240);
+    const splitId = cleanOptionalUuid(rawSplitId);
 
-    if (!label && amountCents === null && !cleanString(rawCategoryId, 80) && !cleanString(rawIntent, 24) && !note) {
+    if (!label && amountCents === null && !cleanString(rawCategoryId, 80) && !cleanString(rawIntent, 24) && !note && !cleanString(rawSplitId, 80)) {
       continue;
     }
 
@@ -157,6 +160,9 @@ function parseSplitRows(formData: FormData, categories: CategoryRecord[], totalC
     if (!transactionIntents.has(intent)) {
       throw new Error(`Split row ${index + 1} needs a valid intent.`);
     }
+    if (splitId === undefined) {
+      throw new Error(`Split row ${index + 1} has an invalid split id.`);
+    }
 
     const category = categoryById.get(categoryId);
     if (!category) throw new Error(`Split row ${index + 1} needs one of your categories.`);
@@ -167,6 +173,7 @@ function parseSplitRows(formData: FormData, categories: CategoryRecord[], totalC
       input: {
         amount: amountCents / 100,
         categoryId,
+        id: splitId,
         intent,
         label,
         notes: note || null
@@ -894,11 +901,15 @@ export async function resolvePeerToPeerReviewAction(
       source: "manual" as const
     };
 
-    const savedSplits = await replaceTransactionSplits(
+    const savedSplits = await replaceTransactionSplitsAndSyncReimbursements(
       client,
       userId,
       item.transaction.id,
-      parsedSplits.map((split) => split.input)
+      parsedSplits.map((split) => split.input),
+      {
+        actorId: userId,
+        source: "review_peer_to_peer_split_resolution"
+      }
     );
     await updateTransactionEnrichment(client, userId, item.transaction.id, transactionPatch);
 

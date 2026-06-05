@@ -13,6 +13,7 @@ import {
   listReviewItems,
   listTransactions,
   recordClarificationAnswer,
+  replaceTransactionSplitsAndSyncReimbursements,
   transactionMatchesSearch,
   updateAnomalyAlertStatus,
   upsertAgentProposalBySourceContext
@@ -455,6 +456,57 @@ function fixtureReviewRow(
   };
 }
 
+function fixtureCategory(input: Partial<CategoryRow> = {}): CategoryRow {
+  return {
+    color: null,
+    created_at: "2026-05-13T08:00:00.000Z",
+    icon: null,
+    id: "category-food",
+    is_system: false,
+    name: "Food / Restaurants",
+    parent_id: null,
+    updated_at: "2026-05-13T08:00:00.000Z",
+    user_id: userId,
+    ...input
+  };
+}
+
+function fixtureTransactionSplitRow(input: Partial<TransactionSplitRow> = {}): TransactionSplitRow {
+  return {
+    amount: 75,
+    category_id: "category-food",
+    created_at: "2026-05-13T08:00:00.000Z",
+    enriched_transaction_id: "tx-middle",
+    id: "split-friends",
+    intent: "reimbursable",
+    label: "Covered for Chris",
+    notes: null,
+    updated_at: "2026-05-13T08:00:00.000Z",
+    user_id: userId,
+    ...input
+  };
+}
+
+function fixtureReimbursementRecordRow(input: Partial<ReimbursementRecordRow> = {}): ReimbursementRecordRow {
+  return {
+    counterparty: "Chris",
+    created_at: "2026-05-13T08:00:00.000Z",
+    due_date: null,
+    enriched_transaction_id: "tx-middle",
+    expected_amount: 75,
+    id: "reimbursement-friends",
+    notes: "Expected reimbursement from reimbursable review split.",
+    received_amount: 0,
+    received_at: null,
+    received_transaction_id: null,
+    split_id: "split-friends",
+    status: "expected",
+    updated_at: "2026-05-13T08:00:00.000Z",
+    user_id: userId,
+    ...input
+  };
+}
+
 function seedTransactionRows(client: FakeFinanceClient) {
   client.institutions.push(fixtureInstitution());
   client.plaidItems.push(fixturePlaidItem());
@@ -847,6 +899,349 @@ test("listTransactions pushes transfer filters before hydration limits", async (
   );
 });
 
+test("replaceTransactionSplitsAndSyncReimbursements creates expected reimbursements for reimbursable splits", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory(), fixtureCategory({ id: "category-personal", name: "Personal" }));
+
+  const savedSplits = await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 45,
+        categoryId: "category-personal",
+        intent: "personal",
+        label: "My share"
+      },
+      {
+        amount: 75,
+        categoryId: "category-food",
+        intent: "reimbursable",
+        label: "Covered for Chris",
+        notes: "Dinner split"
+      }
+    ]
+  );
+
+  const reimbursableSplit = savedSplits.find((split) => split.intent === "reimbursable");
+  assert.ok(reimbursableSplit);
+  assert.equal(client.reimbursementRecords.length, 1);
+  assert.equal(client.reimbursementRecords[0]?.split_id, reimbursableSplit.id);
+  assert.equal(client.reimbursementRecords[0]?.enriched_transaction_id, "tx-middle");
+  assert.equal(client.reimbursementRecords[0]?.expected_amount, 75);
+  assert.equal(client.reimbursementRecords[0]?.received_amount, 0);
+  assert.equal(client.reimbursementRecords[0]?.status, "expected");
+  assert.equal(client.reimbursementRecords[0]?.counterparty, "Chris");
+  assert.deepEqual(
+    client.auditEvents.map((event) => event.action),
+    ["reimbursement.expected_created"]
+  );
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements updates existing expected reimbursements idempotently", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow());
+
+  const savedSplits = await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 80,
+        categoryId: "category-food",
+        id: "split-friends",
+        intent: "reimbursable",
+        label: "Covered for Alex",
+        notes: "Updated split"
+      }
+    ]
+  );
+
+  assert.deepEqual(savedSplits.map((split) => split.id), ["split-friends"]);
+  assert.equal(client.transactionSplits.length, 1);
+  assert.equal(client.transactionSplits[0]?.amount, 80);
+  assert.equal(client.reimbursementRecords.length, 1);
+  assert.equal(client.reimbursementRecords[0]?.id, "reimbursement-friends");
+  assert.equal(client.reimbursementRecords[0]?.expected_amount, 80);
+  assert.equal(client.reimbursementRecords[0]?.counterparty, "Alex");
+  assert.equal(client.reimbursementRecords[0]?.notes, "Updated split");
+  assert.deepEqual(
+    client.auditEvents.map((event) => event.action),
+    ["reimbursement.expected_updated"]
+  );
+
+  await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 80,
+        categoryId: "category-food",
+        id: "split-friends",
+        intent: "reimbursable",
+        label: "Covered for Alex",
+        notes: "Updated split"
+      }
+    ]
+  );
+
+  assert.equal(client.reimbursementRecords.length, 1);
+  assert.deepEqual(
+    client.auditEvents.map((event) => event.action),
+    ["reimbursement.expected_updated"]
+  );
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements leaves non-reimbursable splits without reimbursement records", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory({ id: "category-personal", name: "Personal" }));
+
+  await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 120,
+        categoryId: "category-personal",
+        intent: "personal",
+        label: "My share"
+      }
+    ]
+  );
+
+  assert.equal(client.transactionSplits.length, 1);
+  assert.equal(client.reimbursementRecords.length, 0);
+  assert.equal(client.auditEvents.length, 0);
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements removes simple expected records when splits stop being reimbursable", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory({ id: "category-personal", name: "Personal" }));
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow());
+
+  await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 75,
+        categoryId: "category-personal",
+        id: "split-friends",
+        intent: "personal",
+        label: "My share"
+      }
+    ]
+  );
+
+  assert.equal(client.transactionSplits.length, 1);
+  assert.equal(client.transactionSplits[0]?.intent, "personal");
+  assert.equal(client.reimbursementRecords.length, 0);
+  assert.deepEqual(
+    client.auditEvents.map((event) => event.action),
+    ["reimbursement.expected_removed"]
+  );
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements rejects changes to splits with received reimbursement history", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow({
+    received_amount: 25,
+    received_at: "2026-05-14",
+    received_transaction_id: "tx-received",
+    status: "received"
+  }));
+
+  await assert.rejects(
+    () => replaceTransactionSplitsAndSyncReimbursements(
+      client.asClient(),
+      userId,
+      "tx-middle",
+      [
+        {
+          amount: 80,
+          categoryId: "category-food",
+          id: "split-friends",
+          intent: "reimbursable",
+          label: "Covered for Chris"
+        }
+      ]
+    ),
+    /already has reimbursement history/i
+  );
+
+  assert.equal(client.transactionSplits[0]?.amount, 75);
+  assert.equal(client.reimbursementRecords[0]?.expected_amount, 75);
+  assert.equal(client.auditEvents.length, 0);
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements validates protected changes before deleting removable reimbursements", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(
+    fixtureTransactionSplitRow({
+      id: "split-remove",
+      label: "Covered for Sam"
+    }),
+    fixtureTransactionSplitRow({
+      amount: 25,
+      id: "split-received",
+      label: "Covered for Chris"
+    })
+  );
+  client.reimbursementRecords.push(
+    fixtureReimbursementRecordRow({
+      id: "reimbursement-remove",
+      split_id: "split-remove",
+      counterparty: "Sam"
+    }),
+    fixtureReimbursementRecordRow({
+      expected_amount: 25,
+      id: "reimbursement-received",
+      received_amount: 25,
+      received_at: "2026-05-14",
+      received_transaction_id: "tx-received",
+      split_id: "split-received",
+      status: "received"
+    })
+  );
+
+  await assert.rejects(
+    () => replaceTransactionSplitsAndSyncReimbursements(
+      client.asClient(),
+      userId,
+      "tx-middle",
+      [
+        {
+          amount: 30,
+          categoryId: "category-food",
+          id: "split-received",
+          intent: "reimbursable",
+          label: "Covered for Chris"
+        }
+      ]
+    ),
+    /already has reimbursement history/i
+  );
+
+  assert.deepEqual(client.transactionSplits.map((split) => split.id), ["split-remove", "split-received"]);
+  assert.deepEqual(client.reimbursementRecords.map((reimbursement) => reimbursement.id), [
+    "reimbursement-remove",
+    "reimbursement-received"
+  ]);
+  assert.equal(client.auditEvents.length, 0);
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements allows unchanged splits with received reimbursement history", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow({
+    received_amount: 75,
+    received_at: "2026-05-14",
+    received_transaction_id: "tx-received",
+    status: "received"
+  }));
+
+  await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 75,
+        categoryId: "category-food",
+        id: "split-friends",
+        intent: "reimbursable",
+        label: "Covered for Chris"
+      }
+    ]
+  );
+
+  assert.equal(client.transactionSplits[0]?.amount, 75);
+  assert.equal(client.reimbursementRecords[0]?.status, "received");
+  assert.equal(client.auditEvents.length, 0);
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements allows unchanged protected reimbursements with custom metadata", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow({
+    counterparty: "Chris L.",
+    notes: "Marked paid from a manual Venmo match.",
+    received_amount: 75,
+    received_at: "2026-05-14",
+    received_transaction_id: "tx-received",
+    status: "received"
+  }));
+
+  await replaceTransactionSplitsAndSyncReimbursements(
+    client.asClient(),
+    userId,
+    "tx-middle",
+    [
+      {
+        amount: 75,
+        categoryId: "category-food",
+        id: "split-friends",
+        intent: "reimbursable",
+        label: "Covered for Chris"
+      }
+    ]
+  );
+
+  assert.equal(client.reimbursementRecords[0]?.counterparty, "Chris L.");
+  assert.equal(client.reimbursementRecords[0]?.notes, "Marked paid from a manual Venmo match.");
+  assert.equal(client.auditEvents.length, 0);
+});
+
+test("replaceTransactionSplitsAndSyncReimbursements rejects duplicate submitted split ids before writes", async () => {
+  const client = new FakeFinanceClient();
+  client.categories.push(fixtureCategory());
+  client.transactionSplits.push(fixtureTransactionSplitRow());
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow());
+
+  await assert.rejects(
+    () => replaceTransactionSplitsAndSyncReimbursements(
+      client.asClient(),
+      userId,
+      "tx-middle",
+      [
+        {
+          amount: 40,
+          categoryId: "category-food",
+          id: "split-friends",
+          intent: "reimbursable",
+          label: "Covered for Chris"
+        },
+        {
+          amount: 35,
+          categoryId: "category-food",
+          id: "split-friends",
+          intent: "personal",
+          label: "My share"
+        }
+      ]
+    ),
+    /cannot reuse the same split id/i
+  );
+
+  assert.equal(client.transactionSplits.length, 1);
+  assert.equal(client.transactionSplits[0]?.amount, 75);
+  assert.equal(client.reimbursementRecords.length, 1);
+  assert.equal(client.auditEvents.length, 0);
+});
+
 type FakeTableName =
   | "accounts"
   | "agent_proposals"
@@ -979,6 +1374,14 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
       this.gteFilters.every((filter) => filter(row)) &&
       this.lteFilters.every((filter) => filter(row))
     );
+
+    if (this.operation === "delete") {
+      const deleted = new Set(matches);
+      for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+        if (deleted.has(this.rows[index]!)) this.rows.splice(index, 1);
+      }
+      return { data: this.singleResult ? matches[0] ?? null : matches, error: null };
+    }
 
     if (this.operation === "update") {
       matches.forEach((row) => Object.assign(row, this.values));

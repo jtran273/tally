@@ -38,6 +38,7 @@ interface SplitRowState {
   id: string;
   label: string;
   notes: string;
+  splitId: string | null;
   tag: TransactionTag;
 }
 
@@ -111,6 +112,7 @@ function buildInitialRows({
       id: split.id,
       label: split.label,
       notes: split.notes ?? "",
+      splitId: split.id,
       tag: transactionTagFromIntent(split.intent)
     }));
   }
@@ -123,6 +125,7 @@ function buildInitialRows({
       id: "split-initial",
       label: "My share",
       notes: "",
+      splitId: null,
       tag: defaultTag(suggestion, transaction)
     }
   ];
@@ -167,6 +170,7 @@ export function PeerToPeerSplitForm({
         baseIntent: "personal",
         label: "New portion",
         notes: "",
+        splitId: null,
         tag: "none"
       }
     ]);
@@ -229,6 +233,7 @@ export function PeerToPeerSplitForm({
       <div className={styles.splitRows}>
         {rows.map((row, index) => (
           <div className={styles.splitRow} key={row.id}>
+            <input name="splitId" type="hidden" value={row.splitId ?? ""} />
             <label className={styles.splitLabelField}>
               <span>Label</span>
               <input
