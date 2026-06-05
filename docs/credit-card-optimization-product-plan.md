@@ -2,6 +2,12 @@
 
 This is the repo-facing supplement for the credit-card optimization source-of-truth doc James shared on 2026-06-04. It translates the broader research into a minimal, Tally-specific roadmap.
 
+For the bounded credit score and card rewards/benefits integration read, see
+`docs/credit-score-rewards-integration-plan.md`. That plan keeps score snapshots
+manual/demo-only until a real provider exists and documents that the current
+Plaid integration does not return issuer rewards balances, points, cashback
+balances, or unused benefits.
+
 ## Product Read
 
 Tally should not become a generic credit-score simulator. The useful wedge is narrower:

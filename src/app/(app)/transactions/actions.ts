@@ -33,6 +33,7 @@ import {
   type UserTransactionIntent
 } from "@/lib/finance/classification";
 import { isReimbursementManualStatus } from "@/lib/finance/reimbursement-linking";
+import { isUnmatchedReimbursementIncome } from "@/lib/finance/reimbursements";
 import { isManualTransactionEditResolvableReview } from "@/lib/review/reasons";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -181,6 +182,12 @@ function reimbursementStatusMessage(status: ReimbursementStatus): string {
   }
 }
 
+function unmatchedReimbursementActionMessage(marked: boolean) {
+  return marked
+    ? "Inflow marked as unmatched reimbursement income."
+    : "Unmatched reimbursement mark cleared.";
+}
+
 function expectRows<T>(
   result: { data: T[] | null; error: { message: string } | null },
   label: string
@@ -261,6 +268,104 @@ async function listResolvableReviewItemsForTransaction(
   );
 
   return rows.filter((row) => canResolveReviewWithManualTransactionEdit(row, edit));
+}
+
+async function hasReceivedReimbursementLink(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transactionId: string
+) {
+  const rows = expectRows<{ id: string }>(
+    await client
+      .from("reimbursement_records")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("received_transaction_id", transactionId),
+    "Load reimbursement links for received inflow"
+  );
+
+  return rows.length > 0;
+}
+
+export async function markUnmatchedReimbursementIncomeAction(
+  _state: ReimbursementLinkActionState,
+  formData: FormData
+): Promise<ReimbursementLinkActionState> {
+  try {
+    const transactionId = cleanString(formData.get("transactionId"), 80);
+    if (!uuidPattern.test(transactionId)) return { error: "Invalid transaction id." };
+
+    const requestedIntentValue = cleanString(formData.get("restoredIntent"), 24) as TransactionIntent;
+    const restoredIntent = requestedIntentValue || "personal";
+    if (restoredIntent !== "personal" && restoredIntent !== "business") {
+      return { error: "Choose Personal or Business income." };
+    }
+
+    const shouldMark = formData.get("marked") === "1";
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to update reimbursements." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to update real reimbursements." };
+
+    const before = await getEnrichedTransactionRow(context.client, context.userId, transactionId);
+    if (!before) return { error: "Transaction was not found." };
+    if (before.amount <= 0) return { error: "Only positive inflows can be marked as unmatched reimbursement income." };
+
+    const hasReceivedLink = await hasReceivedReimbursementLink(context.client, context.userId, transactionId);
+    if (hasReceivedLink) {
+      return { error: "Use the linked reimbursement unlink action before changing this inflow." };
+    }
+
+    const beforeIntent = before.intent;
+    const afterIntent: TransactionIntent = shouldMark ? "reimbursable" : restoredIntent;
+    const isAlreadyUnmatched = isUnmatchedReimbursementIncome({
+      amount: before.amount,
+      intent: before.intent,
+      reimbursements: []
+    });
+
+    if (shouldMark && isAlreadyUnmatched) {
+      return { message: unmatchedReimbursementActionMessage(true) };
+    }
+    if (!shouldMark && !isAlreadyUnmatched) {
+      return { message: unmatchedReimbursementActionMessage(false) };
+    }
+
+    const updated = await updateTransactionEnrichment(context.client, context.userId, transactionId, {
+      intent: afterIntent,
+      source: "manual"
+    });
+
+    await recordAuditEvent(context.client, context.userId, {
+      action: shouldMark
+        ? "reimbursement.unmatched_inflow_marked"
+        : "reimbursement.unmatched_inflow_cleared",
+      actorId: context.userId,
+      afterData: {
+        intent: updated.intent,
+        isUnmatchedReimbursementIncome: shouldMark
+      },
+      beforeData: {
+        intent: beforeIntent,
+        isUnmatchedReimbursementIncome: isAlreadyUnmatched
+      },
+      entityId: transactionId,
+      entityTable: "enriched_transactions",
+      metadata: {
+        amount: before.amount,
+        source: "transactions_unmatched_reimbursement_action",
+        transactionId
+      }
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transactions");
+    revalidatePath(`/transactions/${transactionId}`);
+
+    return { message: unmatchedReimbursementActionMessage(shouldMark) };
+  } catch (error) {
+    return reimbursementLinkErrorState(error);
+  }
 }
 
 async function resolveManualEditReviewItemsForTransaction({

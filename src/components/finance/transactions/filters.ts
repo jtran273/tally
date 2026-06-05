@@ -9,6 +9,7 @@ import type {
   TransactionQualityFilter
 } from "@/lib/db";
 import { categoryIdsFromFilterValue, categoryOptionGroups } from "@/lib/finance/classification";
+import type { SpendingReportingMode } from "@/lib/finance/spending";
 
 export type TransactionSearchParamValue = string | string[] | undefined;
 export type TransactionSearchParams = Record<string, TransactionSearchParamValue>;
@@ -70,6 +71,7 @@ export interface TransactionFilterState {
   effectiveFromDate?: string;
   effectiveToDate?: string;
   excludeTransfers: boolean;
+  spendingReportingMode: SpendingReportingMode;
   limit: number;
   isDateRangeInverted: boolean;
   hasActiveFilters: boolean;
@@ -200,6 +202,7 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
   const requestedMonth = cleanText(params.month, 7);
   const requestedFromDate = cleanText(params.from, 10);
   const requestedToDate = cleanText(params.to, 10);
+  const requestedBasis = cleanText(params.basis, 32);
   const month = isIsoMonth(requestedMonth) ? requestedMonth : "";
   const fromDate = isIsoDate(requestedFromDate) ? requestedFromDate : "";
   const toDate = isIsoDate(requestedToDate) ? requestedToDate : "";
@@ -232,6 +235,7 @@ export function parseTransactionFilters(params: TransactionSearchParams): Transa
     effectiveFromDate,
     effectiveToDate,
     excludeTransfers: firstParam(params.exclude_transfers) === "1",
+    spendingReportingMode: requestedBasis === "gross" ? "gross" : "net-after-reimbursement",
     limit: parseLimit(params.limit)
   });
 }
@@ -310,6 +314,7 @@ export function transactionFiltersToSearchParams(filters: TransactionFilterState
   if (filters.reviewReason !== "all") params.set("reason", filters.reviewReason);
   if (filters.quality !== "all") params.set("quality", filters.quality);
   if (filters.excludeTransfers) params.set("exclude_transfers", "1");
+  if (filters.spendingReportingMode === "gross") params.set("basis", "gross");
   params.set("limit", String(filters.limit));
 
   return params;

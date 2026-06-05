@@ -1,5 +1,6 @@
 import {
   buildReimbursementReportingSummary,
+  isUnmatchedReimbursementIncome,
   summarizeTransactionReimbursement
 } from "./reimbursements";
 import type { ReimbursementRecord, TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
@@ -82,17 +83,33 @@ function assertReimbursementFixtures(): true {
     throw new Error("Expected fully received reimbursements to be marked reimbursed.");
   }
 
+  const unmatchedIncome = tx(75, "reimbursable");
+  const unmatchedIncomeSummary = summarizeTransactionReimbursement(unmatchedIncome);
+
+  if (
+    !isUnmatchedReimbursementIncome(unmatchedIncome) ||
+    unmatchedIncomeSummary.state !== "unmatched-income" ||
+    unmatchedIncomeSummary.receivedAmount !== 75 ||
+    unmatchedIncomeSummary.outstandingAmount !== 0 ||
+    unmatchedIncomeSummary.reimbursableAmount !== 0
+  ) {
+    throw new Error("Expected positive reimbursable inflows without a reimbursement link to be unmatched income.");
+  }
+
   const reporting = buildReimbursementReportingSummary([
     tx(-121.35, "shared", [split("split-friends", 75, "reimbursable")]),
-    tx(-80, "reimbursable", [], [reimbursement({ expectedAmount: 80, receivedAmount: 80, status: "received" })])
+    tx(-80, "reimbursable", [], [reimbursement({ expectedAmount: 80, receivedAmount: 80, status: "received" })]),
+    tx(25, "reimbursable")
   ]);
 
   if (
     reporting.reimbursableAmount !== 155 ||
     reporting.outstandingAmount !== 75 ||
-    reporting.receivedAmount !== 80 ||
+    reporting.receivedAmount !== 105 ||
     reporting.reimbursableCount !== 2 ||
-    reporting.reimbursedCount !== 1
+    reporting.reimbursedCount !== 1 ||
+    reporting.unmatchedIncomeAmount !== 25 ||
+    reporting.unmatchedIncomeCount !== 1
   ) {
     throw new Error("Expected reimbursement reporting summary to separate reimbursable, received, and outstanding totals.");
   }

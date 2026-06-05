@@ -2,6 +2,7 @@
 
 import {
   ClipboardList,
+  Activity,
   History,
   Home,
   Inbox,
@@ -27,7 +28,7 @@ import {
   useState
 } from "react";
 
-type RouteKey = "dashboard" | "transactions" | "agentInbox" | "review" | "recurring" | "accounts" | "audit" | "settings";
+type RouteKey = "dashboard" | "transactions" | "creditHealth" | "agentInbox" | "review" | "recurring" | "accounts" | "audit" | "settings";
 
 type RouteMeta = {
   eyebrow: string;
@@ -48,6 +49,7 @@ const routeHref: Record<RouteKey, string> = {
   accounts: "/accounts",
   agentInbox: "/agent-inbox",
   audit: "/audit",
+  creditHealth: "/credit-health",
   dashboard: "/dashboard",
   recurring: "/recurring",
   review: "/review",
@@ -67,6 +69,12 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
     icon: List,
     label: "Transactions",
     title: "Transactions"
+  },
+  creditHealth: {
+    eyebrow: "Manual score and card health",
+    icon: Activity,
+    label: "Credit health",
+    title: "Credit health"
   },
   agentInbox: {
     eyebrow: "Proposed finance changes",
@@ -106,8 +114,8 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
   }
 };
 
-const navigation: RouteKey[] = ["dashboard", "transactions", "agentInbox", "review", "recurring", "accounts", "audit", "settings"];
-const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
+const navigation: RouteKey[] = ["dashboard", "transactions", "creditHealth", "agentInbox", "review", "recurring", "accounts", "audit", "settings"];
+const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "creditHealth", "review", "recurring", "accounts", "settings"];
 
 function currentRoute(pathname: string): RouteKey {
   const match = navigation.find((route) => pathname === routeHref[route] || pathname.startsWith(`${routeHref[route]}/`));

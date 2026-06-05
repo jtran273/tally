@@ -63,7 +63,9 @@ function weeklyContext(input: {
       receivedAmount: 0,
       reimbursableAmount: 0,
       reimbursableCount: 0,
-      reimbursedCount: 0
+      reimbursedCount: 0,
+      unmatchedIncomeAmount: 0,
+      unmatchedIncomeCount: 0
     },
     review: {
       action: "read.review_queue_summary",

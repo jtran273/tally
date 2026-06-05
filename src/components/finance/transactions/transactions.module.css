@@ -106,6 +106,39 @@
   text-transform: uppercase;
 }
 
+.reportingControls {
+  display: inline-flex;
+  grid-column: 2;
+  justify-self: end;
+  max-width: 100%;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 3px;
+  background: var(--surface-2);
+}
+
+.reportingControls a {
+  min-width: 56px;
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reportingControls a:hover,
+.reportingControls a:focus-visible,
+.reportingControls .reportingControlActive {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  outline: none;
+}
+
 .filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
@@ -1228,6 +1261,11 @@
     grid-template-columns: 1fr;
   }
 
+  .reportingControls {
+    grid-column: 1;
+    justify-self: start;
+  }
+
   .summaryMetrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1240,6 +1278,11 @@
 @media (max-width: 900px) {
   .headerPanel {
     grid-template-columns: 1fr;
+  }
+
+  .reportingControls {
+    grid-column: 1;
+    justify-self: start;
   }
 
   .summaryCard {

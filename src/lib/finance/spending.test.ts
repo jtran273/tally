@@ -130,6 +130,43 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected confirmed reimbursements to net against spending reports.");
   }
 
+  if (transactionSpendingAmount(partiallyReimbursedDinner, { reportingMode: "gross" }) !== 100) {
+    throw new Error("Expected gross spending reports to ignore confirmed reimbursement receipts.");
+  }
+
+  const pendingDinnerReimbursement = transaction({
+    amount: -100,
+    category: "Food",
+    categoryId: "category-food",
+    date: "2026-05-04",
+    id: "tx-dinner-pending",
+    merchant: "Group dinner",
+    reimbursements: [reimbursement({
+      expectedAmount: 70,
+      receivedAmount: 0,
+      receivedTransactionId: null,
+      status: "expected",
+      transactionId: "tx-dinner-pending"
+    })]
+  });
+  const unmatchedReimbursementInflow = transaction({
+    amount: 70,
+    category: "Uncategorized",
+    categoryId: null,
+    date: "2026-05-05",
+    id: "tx-unmatched-reimbursement-inflow",
+    intent: "reimbursable",
+    merchant: "Venmo - Chris"
+  });
+
+  if (transactionSpendingAmount(pendingDinnerReimbursement) !== 100) {
+    throw new Error("Expected unlinked expected reimbursements to leave net spending unchanged.");
+  }
+
+  if (transactionSpendingAmount(unmatchedReimbursementInflow) !== 0) {
+    throw new Error("Expected unmatched reimbursement income not to count as spending.");
+  }
+
   const summary = buildSpendingInsightSummary([
     transaction({
       amount: -400,
@@ -267,6 +304,27 @@ function assertSpendingFixtures(): true {
 
   if (summary.currentWeek.spending !== 582 || summary.currentWeek.income !== 3000 || summary.currentWeek.netCashflow !== 2418) {
     throw new Error("Expected current week cashflow to count net spend, income, transfer exclusions, and reimbursement inflow exclusions deterministically.");
+  }
+
+  const grossSummary = buildSpendingInsightSummary([
+    partiallyReimbursedDinner,
+    transaction({
+      amount: -80,
+      category: "Groceries",
+      categoryId: "category-groceries",
+      date: "2026-05-05",
+      id: "tx-groceries-gross",
+      merchant: "Whole Foods"
+    })
+  ], { asOfDate: "2026-05-06", reportingMode: "gross" });
+
+  if (grossSummary.currentWeek.spending !== 180 || grossSummary.currentWeek.netCashflow !== -180) {
+    throw new Error("Expected gross spending summaries to preserve pre-reimbursement outflow totals.");
+  }
+
+  const grossFood = grossSummary.currentMonth.topCategories.find((category) => category.label === "Food");
+  if (grossFood?.amount !== 100) {
+    throw new Error("Expected gross spending mode to flow through category summaries.");
   }
 
   if (summary.currentWeek.reimbursable !== 145 || summary.currentWeek.reimbursementOutstanding !== 105) {

@@ -916,7 +916,7 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   const editFormBox = await editForm.boundingBox();
   const reimbursementApproval = page.getByLabel("Reimbursement linking");
   await expect(reimbursementApproval).toContainText("Reimbursement approval");
-  await expect(reimbursementApproval).toContainText("Link this positive inflow");
+  await expect(reimbursementApproval).toContainText("Link or mark this positive inflow");
   await expect(reimbursementApproval).toContainText("$60.00 outstanding");
   await expect(reimbursementApproval).toContainText("preview-only");
   await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();

@@ -2,6 +2,7 @@ import type { ReimbursementRecord, TransactionRecord, TransactionSplitRecord } f
 
 export type TransactionReimbursementState =
   | "none"
+  | "unmatched-income"
   | "reimbursable"
   | "partially-reimbursed"
   | "reimbursed"
@@ -24,6 +25,8 @@ export interface ReimbursementReportingSummary {
   reimbursableAmount: number;
   reimbursableCount: number;
   reimbursedCount: number;
+  unmatchedIncomeAmount: number;
+  unmatchedIncomeCount: number;
 }
 
 function roundMoney(value: number) {
@@ -43,6 +46,14 @@ function fallbackReimbursableAmount(transaction: Pick<TransactionRecord, "amount
   return transaction.intent === "reimbursable" ? Math.abs(transaction.amount) : 0;
 }
 
+export function isUnmatchedReimbursementIncome(
+  transaction: Pick<TransactionRecord, "amount" | "intent" | "reimbursements"> & { id?: string }
+) {
+  return transaction.amount > 0 &&
+    transaction.intent === "reimbursable" &&
+    transaction.reimbursements.every((record) => record.receivedTransactionId !== transaction.id);
+}
+
 function reimbursementState(
   reimbursements: readonly ReimbursementRecord[],
   reimbursableAmount: number,
@@ -58,6 +69,20 @@ function reimbursementState(
 export function summarizeTransactionReimbursement(
   transaction: Pick<TransactionRecord, "amount" | "intent" | "reimbursements" | "splits">
 ): TransactionReimbursementSummary {
+  if (isUnmatchedReimbursementIncome(transaction)) {
+    const receivedAmount = roundMoney(transaction.amount);
+
+    return {
+      expectedAmount: 0,
+      outstandingAmount: 0,
+      receivedAmount,
+      reimbursableAmount: 0,
+      recordCount: 0,
+      splitCount: 0,
+      state: "unmatched-income"
+    };
+  }
+
   const recordExpected = transaction.reimbursements.reduce((sum, record) => sum + record.expectedAmount, 0);
   const receivedAmount = transaction.reimbursements.reduce((sum, record) => sum + record.receivedAmount, 0);
   const fallbackAmount = fallbackReimbursableAmount(transaction);
@@ -86,7 +111,13 @@ export function buildReimbursementReportingSummary(
       summary.outstandingAmount = roundMoney(summary.outstandingAmount + reimbursement.outstandingAmount);
       summary.receivedAmount = roundMoney(summary.receivedAmount + reimbursement.receivedAmount);
       summary.reimbursableAmount = roundMoney(summary.reimbursableAmount + reimbursement.reimbursableAmount);
-      if (reimbursement.state !== "none") summary.reimbursableCount += 1;
+      if (reimbursement.state === "unmatched-income") {
+        summary.unmatchedIncomeAmount = roundMoney(summary.unmatchedIncomeAmount + reimbursement.receivedAmount);
+        summary.unmatchedIncomeCount += 1;
+      }
+      if (reimbursement.state !== "none" && reimbursement.state !== "unmatched-income") {
+        summary.reimbursableCount += 1;
+      }
       if (reimbursement.state === "reimbursed" || reimbursement.state === "partially-reimbursed") {
         summary.reimbursedCount += 1;
       }
@@ -98,7 +129,9 @@ export function buildReimbursementReportingSummary(
       receivedAmount: 0,
       reimbursableAmount: 0,
       reimbursableCount: 0,
-      reimbursedCount: 0
+      reimbursedCount: 0,
+      unmatchedIncomeAmount: 0,
+      unmatchedIncomeCount: 0
     }
   );
 }

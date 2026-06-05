@@ -57,6 +57,7 @@ const reviewReasonLabels: Record<ReviewReason, string> = {
 
 const reimbursementLabels: Record<TransactionReimbursementState, string> = {
   none: "",
+  "unmatched-income": "Unmatched reimbursement",
   reimbursable: "Reimbursable",
   "partially-reimbursed": "Partially reimbursed",
   reimbursed: "Reimbursed",
@@ -333,7 +334,9 @@ export function TransactionTable({
                       </div>
                       {reimbursement.state !== "none" ? (
                         <div className={styles.reimbursementLine}>
-                          {formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from {formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable
+                          {reimbursement.state === "unmatched-income"
+                            ? `${formatUnsignedMoney(reimbursement.receivedAmount)} unmatched reimbursement income`
+                            : `${formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from ${formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable`}
                         </div>
                       ) : null}
                       {transaction.note ? (

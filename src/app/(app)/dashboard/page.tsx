@@ -98,6 +98,11 @@ export default async function DashboardPage() {
     intent: transaction.intent,
     merchant: transaction.merchant,
     plaidName: transaction.plaidName,
+    reimbursements: transaction.reimbursements.map((reimbursement) => ({
+      receivedAmount: reimbursement.receivedAmount,
+      receivedTransactionId: reimbursement.receivedTransactionId,
+      status: reimbursement.status
+    })),
     reviewItems: transaction.reviewItems.map((review) => ({
       reason: review.reason,
       status: review.status
