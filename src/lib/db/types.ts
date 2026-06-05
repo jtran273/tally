@@ -14,6 +14,8 @@ export type PlaidSyncRunSource = "initial" | "manual" | "opportunistic" | "sched
 export type PlaidSyncRunStatus = "running" | "succeeded" | "partial" | "failed";
 export type TransactionStatus = "pending" | "posted";
 export type TransactionIntent = "personal" | "business" | "shared" | "reimbursable" | "transfer";
+export type CreditScoreSource = "manual_bureau" | "manual_issuer" | "demo";
+export type CreditScoreModel = "fico" | "vantagescore" | "unknown";
 export type ReviewReason =
   | "venmo"
   | "large"
@@ -205,6 +207,17 @@ export interface BalanceSnapshotRow {
   iso_currency_code: string;
   source: string;
   created_at: string;
+}
+
+export interface CreditScoreSnapshotRow {
+  id: string;
+  user_id: string;
+  score: number;
+  source: CreditScoreSource;
+  model: CreditScoreModel;
+  as_of_date: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CategoryRow {
@@ -433,6 +446,7 @@ export type Database = {
       plaid_sync_run_items: TableDefinition<PlaidSyncRunItemRow>;
       accounts: TableDefinition<AccountRow>;
       balance_snapshots: TableDefinition<BalanceSnapshotRow>;
+      credit_score_snapshots: TableDefinition<CreditScoreSnapshotRow>;
       categories: TableDefinition<CategoryRow>;
       raw_transactions: TableDefinition<RawTransactionRow>;
       enriched_transactions: TableDefinition<EnrichedTransactionRow>;
@@ -670,6 +684,17 @@ export interface BalanceSnapshotRecord {
   creditLimit: number | null;
   currency: string;
   source: string;
+}
+
+export interface CreditScoreSnapshotRecord {
+  asOfDate: string;
+  createdAt: string;
+  id: string;
+  model: CreditScoreModel;
+  score: number;
+  source: CreditScoreSource;
+  updatedAt: string;
+  userId: string;
 }
 
 export interface InsightRecord {

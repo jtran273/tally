@@ -103,7 +103,17 @@ Added `src/lib/finance/credit-health.ts`:
   - what is unsupported now
   - what a future partner/provider review would need
 
-This is deliberately domain-only. It does not add a database table, Plaid API call, or visible score UI that could imply live provider data.
+This first planning slice was deliberately domain-only. It did not add a database table, Plaid API call, or visible score UI that could imply live provider data.
+
+## Manual Credit Health MVP
+
+The next safe MVP adds a persisted manual score surface without adding live bureau or rewards providers:
+
+- `credit_score_snapshots` stores user-entered score, source, model, and as-of date.
+- `/credit-health` shows the current manually entered score, source, model, trend, and recent history.
+- The page uses existing connected-account liabilities for payment-history, utilization, and statement-timing guidance.
+- The page labels that Tally is not connected to a live credit bureau score provider.
+- Rewards and benefits remain explicit unsupported/deferred data: no points, cashback, miles, reward multipliers, or unused-benefits detection is inferred from Plaid.
 
 ## Product UI Recommendation
 
@@ -130,11 +140,9 @@ Avoid:
 
 ## Future Slices
 
-1. Manual score snapshots table and UI.
-2. Credit Health page using the new domain module and existing liability summary.
-3. APR persistence from Plaid Liabilities, guarded by source/coverage labels.
-4. Manual card-benefit inventory for known credits and annual fees.
-5. Optional partner evaluation for rewards offers, with processor-token isolation and separate consent review.
+1. APR persistence from Plaid Liabilities, guarded by source/coverage labels.
+2. Manual card-benefit inventory for known credits and annual fees.
+3. Optional partner evaluation for rewards offers, with processor-token isolation and separate consent review.
 
 ## Blockers
 
