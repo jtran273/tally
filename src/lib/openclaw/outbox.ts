@@ -1,10 +1,12 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
+import type { CreditOptimizationPacket } from "./credit-nudges";
 import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
 
 export type OpenClawOutboxMessageKind =
   | "budget_briefing"
   | "anomaly_alert"
+  | "credit_optimization"
   | "reimbursement_alert"
   | "reimbursement_clarification"
   | "review_queue_alert";
@@ -167,6 +169,21 @@ function reimbursementAlert(signals: OpenClawSignalsResponse): OpenClawOutboxMes
   };
 }
 
+function creditOptimizationMessage(
+  packet: CreditOptimizationPacket,
+  generatedAt: string
+): OpenClawOutboxMessage {
+  return {
+    id: packet.id,
+    body: compact(`Tally credit: ${packet.rationale}`, MAX_MESSAGE_LENGTH),
+    createdAt: generatedAt,
+    kind: "credit_optimization",
+    priority: packet.priority,
+    replyAction: null,
+    target: "openclaw"
+  };
+}
+
 function anomalyAlertMessage(packet: OpenClawAnomalyPacket): OpenClawOutboxMessage {
   return {
     id: `openclaw-outbox:anomaly:${packet.id}`,
@@ -183,6 +200,7 @@ export function buildOpenClawOutboxResponse(
   signals: OpenClawSignalsResponse,
   options: {
     anomalyPackets?: readonly OpenClawAnomalyPacket[];
+    creditOptimizationPackets?: readonly CreditOptimizationPacket[];
     includeBudgetBriefing?: boolean;
     messageLimit?: number;
     minPriority?: OpenClawOutboxMinimumPriority;
@@ -193,6 +211,9 @@ export function buildOpenClawOutboxResponse(
   const minPriority = options.minPriority ?? "normal";
   const messages = [
     ...(options.anomalyPackets ?? []).map(anomalyAlertMessage),
+    ...(options.creditOptimizationPackets ?? []).map((packet) =>
+      creditOptimizationMessage(packet, signals.generatedAt)
+    ),
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
     reimbursementAlert(signals),
     reviewQueueAlert(signals),

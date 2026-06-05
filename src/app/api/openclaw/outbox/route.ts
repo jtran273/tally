@@ -6,7 +6,10 @@ import {
 } from "@/lib/openclaw/route-helpers";
 import { buildOpenClawAnomalyPackets } from "@/lib/anomaly/packet";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
-import { FinanceDbError, listAnomalyAlerts } from "@/lib/db";
+import { FinanceDbError, listAccounts, listAnomalyAlerts, listTransactions } from "@/lib/db";
+import { calculateAccountTotals } from "@/lib/finance/balances";
+import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
+import { buildCreditOptimizationPackets } from "@/lib/openclaw/credit-nudges";
 import { buildOpenClawOutboxResponse } from "@/lib/openclaw/outbox";
 import {
   loadOpenClawSignals,
@@ -91,8 +94,30 @@ export async function GET(request: NextRequest) {
       anomalyPackets = [];
     }
 
+    let creditOptimizationPackets: ReturnType<typeof buildCreditOptimizationPackets> = [];
+    try {
+      const accounts = await listAccounts(client, userId);
+      const asOfDate = signals.generatedAt.slice(0, 10);
+      const transactions = await listTransactions(client, userId, {
+        includeRawContext: false,
+        limit: 1000
+      });
+      const totals = calculateAccountTotals(accounts);
+      const liabilitiesSummary = buildLiabilitiesDueSummary({
+        accounts,
+        asOfDate,
+        cashAvailable: totals.cash,
+        transactions
+      });
+      creditOptimizationPackets = buildCreditOptimizationPackets(liabilitiesSummary);
+    } catch (error) {
+      logSafeError("openclaw_outbox_credit_nudges_failed", error);
+      creditOptimizationPackets = [];
+    }
+
     return jsonNoStore(buildOpenClawOutboxResponse(signals, {
       anomalyPackets,
+      creditOptimizationPackets,
       includeBudgetBriefing,
       messageLimit,
       minPriority
