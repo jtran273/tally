@@ -1,12 +1,18 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { excludeMatchedRefundReversalTransactions } from "@/lib/finance/refund-reversals";
-import { transactionSpendingAmount } from "@/lib/finance/spending";
+import { transactionSpendingAmount, type SpendingReportingMode } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
 import { MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
 import type { PlaidConnectionSummary } from "@/lib/plaid/service";
 import { isRecurringReview } from "@/lib/review/reasons";
 import { Database, Inbox, WalletCards } from "lucide-react";
-import { hasOnlyAccountFilter, transactionPeriodTitle, type TransactionFilterState } from "./filters";
+import Link from "next/link";
+import {
+  hasOnlyAccountFilter,
+  transactionFiltersHref,
+  transactionPeriodTitle,
+  type TransactionFilterState
+} from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
@@ -35,11 +41,11 @@ function formatMoney(value: number) {
   return moneyFormatter.format(value);
 }
 
-function summarize(transactions: TransactionRecord[]) {
+function summarize(transactions: TransactionRecord[], reportingMode: SpendingReportingMode) {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const transactionSummary = reportableTransactions.reduce(
     (summary, transaction) => {
-      summary.spending += transactionSpendingAmount(transaction);
+      summary.spending += transactionSpendingAmount(transaction, { reportingMode });
 
       if (transaction.status === "pending") summary.pending += 1;
       if (transaction.reviewItems.some((review) => review.status === "open" && !isRecurringReview(review.reason))) {
@@ -68,7 +74,8 @@ export function TransactionsView({
   plaidConnections,
   transactions
 }: TransactionsViewProps) {
-  const summary = summarize(transactions);
+  const reportingMode = filters.spendingReportingMode;
+  const summary = summarize(transactions, reportingMode);
   const selectedAccount = filters.accountId === "all"
     ? null
     : accounts.find((account) => account.id === filters.accountId) ?? null;
@@ -84,6 +91,19 @@ export function TransactionsView({
   const reimbursementDetail = summary.reimbursements.outstandingAmount > 0
     ? `${formatMoney(summary.reimbursements.outstandingAmount)} reimbursement outstanding`
     : "Owned outflow";
+  const netHref = transactionFiltersHref("/transactions", {
+    ...filters,
+    spendingReportingMode: "net-after-reimbursement"
+  });
+  const grossHref = transactionFiltersHref("/transactions", {
+    ...filters,
+    spendingReportingMode: "gross"
+  });
+  const spendingDetail = reportingMode === "gross"
+    ? summary.reimbursements.receivedAmount > 0
+      ? `${formatMoney(summary.reimbursements.receivedAmount)} received reimbursements not netted`
+      : "Gross outflow"
+    : reimbursementDetail;
 
   return (
     <div className={styles.shell}>
@@ -100,11 +120,11 @@ export function TransactionsView({
 
         <MetricGrid className={styles.summaryMetrics}>
           <MetricCard
-            detail={reimbursementDetail}
+            detail={spendingDetail}
             label={(
               <>
               <WalletCards size={13} aria-hidden />
-              Spending
+              {reportingMode === "gross" ? "Gross spending" : "Net spending"}
               </>
             )}
             value={formatMoney(summary.spending)}
@@ -130,6 +150,22 @@ export function TransactionsView({
             value={summary.needsReview.toLocaleString("en-US")}
           />
         </MetricGrid>
+        <div className={styles.reportingControls} aria-label="Spending reporting basis">
+          <Link
+            aria-current={reportingMode === "net-after-reimbursement" ? "true" : undefined}
+            className={reportingMode === "net-after-reimbursement" ? styles.reportingControlActive : undefined}
+            href={netHref}
+          >
+            Net
+          </Link>
+          <Link
+            aria-current={reportingMode === "gross" ? "true" : undefined}
+            className={reportingMode === "gross" ? styles.reportingControlActive : undefined}
+            href={grossHref}
+          >
+            Gross
+          </Link>
+        </div>
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />

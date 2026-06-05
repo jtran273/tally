@@ -1,4 +1,4 @@
-import type { TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
+import type { ReimbursementRecord, TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
 import { isRecurringReview } from "@/lib/review/reasons";
 import { displayCategoryName } from "./classification";
 import { excludeMatchedRefundReversalTransactions } from "./refund-reversals";
@@ -7,6 +7,17 @@ import { summarizeTransactionReimbursement } from "./reimbursements";
 
 const SPENDING_INTENTS = new Set<TransactionIntent>(["business", "personal", "shared"]);
 const DAY_MS = 86_400_000;
+
+export type SpendingReportingMode = "gross" | "net-after-reimbursement";
+
+interface SpendingReportingOptions {
+  reportingMode?: SpendingReportingMode;
+}
+
+type SpendingTransactionInput = Pick<TransactionRecord, "amount" | "intent"> & {
+  reimbursements: readonly Pick<ReimbursementRecord, "receivedAmount" | "receivedTransactionId" | "status">[];
+  splits: readonly Pick<TransactionSplitRecord, "amount" | "intent">[];
+};
 
 export interface SpendingGroupSummary {
   id: string | null;
@@ -132,14 +143,15 @@ function categoryIdsValue(categoryIds: Set<string>) {
 function groupSpending(
   transactions: readonly TransactionRecord[],
   group: "category" | "merchant",
-  previousTransactions: readonly TransactionRecord[] = []
+  previousTransactions: readonly TransactionRecord[] = [],
+  options: SpendingReportingOptions = {}
 ): SpendingGroupSummary[] {
   type InternalGroup = SpendingGroupSummary & { categoryIds: Set<string> };
   const grouped = new Map<string, InternalGroup>();
   const previousGrouped = new Map<string, number>();
 
   previousTransactions.forEach((transaction) => {
-    const amount = transactionSpendingAmount(transaction);
+    const amount = transactionSpendingAmount(transaction, options);
     if (amount <= 0) return;
 
     const key = group === "category" ? groupedCategoryKey(transaction) : transaction.merchant;
@@ -147,7 +159,7 @@ function groupSpending(
   });
 
   transactions.forEach((transaction) => {
-    const amount = transactionSpendingAmount(transaction);
+    const amount = transactionSpendingAmount(transaction, options);
     if (amount <= 0) return;
 
     const id = group === "category" ? null : transaction.merchant;
@@ -202,13 +214,14 @@ function summarizeWindow(
   transactions: readonly TransactionRecord[],
   fromDate: string,
   toDate: string,
-  previousTransactions: readonly TransactionRecord[] = []
+  previousTransactions: readonly TransactionRecord[] = [],
+  options: SpendingReportingOptions = {}
 ): SpendingWindowSummary {
   const windowTransactions = transactions.filter((transaction) => inDateRange(transaction, fromDate, toDate));
   const totals = windowTransactions.reduce(
     (summary, transaction) => {
       const reimbursement = summarizeTransactionReimbursement(transaction);
-      const spendingAmount = transactionSpendingAmount(transaction);
+      const spendingAmount = transactionSpendingAmount(transaction, options);
       summary.spending += spendingAmount;
       summary.reimbursable += reimbursement.reimbursableAmount;
       summary.reimbursementOutstanding += reimbursement.outstandingAmount;
@@ -245,14 +258,17 @@ function summarizeWindow(
     spending,
     trustedSpending: roundMoney(totals.trustedSpending),
     toDate,
-    topCategories: groupSpending(windowTransactions, "category", previousTransactions),
-    topMerchants: groupSpending(windowTransactions, "merchant", previousTransactions),
+    topCategories: groupSpending(windowTransactions, "category", previousTransactions, options),
+    topMerchants: groupSpending(windowTransactions, "merchant", previousTransactions, options),
     transactionCount: windowTransactions.length,
     unresolvedReviewSpending: roundMoney(totals.unresolvedReviewSpending)
   };
 }
 
-function summarizeConfidence(transactions: readonly TransactionRecord[]): SpendingConfidenceSummary {
+function summarizeConfidence(
+  transactions: readonly TransactionRecord[],
+  options: SpendingReportingOptions = {}
+): SpendingConfidenceSummary {
   const cleanupGroups = new Map<string, CategoryCleanupAction>();
   let cleanupCandidateAmount = 0;
   let cleanupCandidateCount = 0;
@@ -263,7 +279,7 @@ function summarizeConfidence(transactions: readonly TransactionRecord[]): Spendi
   let uncategorizedCount = 0;
 
   transactions.forEach((transaction) => {
-    const spendingAmount = transactionSpendingAmount(transaction);
+    const spendingAmount = transactionSpendingAmount(transaction, options);
     if (spendingAmount <= 0) return;
 
     spendingTransactionCount += 1;
@@ -341,11 +357,12 @@ function summarizeConfidence(transactions: readonly TransactionRecord[]): Spendi
 
 function findUnusualSpend(
   transactions: readonly TransactionRecord[],
-  currentWeek: SpendingWindowSummary
+  currentWeek: SpendingWindowSummary,
+  options: SpendingReportingOptions = {}
 ): UnusualSpendSummary | null {
   const weekTransactions = transactions
     .filter((transaction) => inDateRange(transaction, currentWeek.fromDate, currentWeek.toDate))
-    .map((transaction) => ({ amount: transactionSpendingAmount(transaction), transaction }))
+    .map((transaction) => ({ amount: transactionSpendingAmount(transaction, options), transaction }))
     .filter((item) => item.amount > 0)
     .sort((left, right) => right.amount - left.amount);
 
@@ -354,9 +371,9 @@ function findUnusualSpend(
       .filter((candidate) => (
         candidate.date < currentWeek.fromDate &&
         candidate.merchant === transaction.merchant &&
-        transactionSpendingAmount(candidate) > 0
+        transactionSpendingAmount(candidate, options) > 0
       ))
-      .map(transactionSpendingAmount);
+      .map((candidate) => transactionSpendingAmount(candidate, options));
 
     const baseline = history.length > 0
       ? roundMoney(history.reduce((sum, value) => sum + value, 0) / history.length)
@@ -387,7 +404,8 @@ export function splitSpendingAmount(split: Pick<TransactionSplitRecord, "amount"
 }
 
 export function transactionSpendingAmount(
-  transaction: Pick<TransactionRecord, "amount" | "intent" | "reimbursements" | "splits">
+  transaction: SpendingTransactionInput,
+  options: SpendingReportingOptions = {}
 ) {
   if (transaction.amount >= 0) return 0;
 
@@ -397,6 +415,7 @@ export function transactionSpendingAmount(
       ? Math.abs(transaction.amount)
       : 0;
   if (grossSpending <= 0) return 0;
+  if (options.reportingMode === "gross") return roundMoney(grossSpending);
 
   const confirmedReimbursements = transaction.reimbursements.reduce((sum, reimbursement) => {
     if (reimbursement.receivedTransactionId && reimbursement.status === "received") {
@@ -457,7 +476,8 @@ function buildCategoryBreakdownForRange(
   fromDate: string,
   toDate: string,
   previousFrom: string,
-  previousTo: string
+  previousTo: string,
+  options: SpendingReportingOptions = {}
 ): CategoryBreakdownSummary {
   const currentRows = new Map<string, {
     amount: number;
@@ -471,7 +491,7 @@ function buildCategoryBreakdownForRange(
 
   transactions.forEach((transaction) => {
     if (transaction.date < previousFrom || transaction.date > toDate) return;
-    const amount = transactionSpendingAmount(transaction);
+    const amount = transactionSpendingAmount(transaction, options);
     if (amount <= 0) return;
 
     const label = groupedCategoryLabel(transaction);
@@ -531,7 +551,7 @@ function monthBoundsFor(asOfDate: string, monthOffset: number) {
 
 export function buildCategoryBreakdown(
   transactions: readonly TransactionRecord[],
-  options: { asOfDate?: string } = {}
+  options: { asOfDate?: string; reportingMode?: SpendingReportingMode } = {}
 ): CategoryBreakdownSummary {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
@@ -542,7 +562,7 @@ export function buildCategoryBreakdown(
   const previousFrom = previousMonthStart(asOfDate);
   const previousTo = previousMonthEnd(asOfDate);
 
-  return buildCategoryBreakdownForRange(reportableTransactions, fromDate, asOfDate, previousFrom, previousTo);
+  return buildCategoryBreakdownForRange(reportableTransactions, fromDate, asOfDate, previousFrom, previousTo, options);
 }
 
 /**
@@ -551,7 +571,7 @@ export function buildCategoryBreakdown(
  */
 export function buildCategoryBreakdownsByMonth(
   transactions: readonly TransactionRecord[],
-  options: { asOfDate?: string; monthCount?: number } = {}
+  options: { asOfDate?: string; monthCount?: number; reportingMode?: SpendingReportingMode } = {}
 ): CategoryBreakdownSummary[] {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
@@ -569,7 +589,8 @@ export function buildCategoryBreakdownsByMonth(
       bounds.fromDate,
       toDate,
       bounds.previousFrom,
-      bounds.previousTo
+      bounds.previousTo,
+      options
     ));
   }
   return results;
@@ -577,7 +598,7 @@ export function buildCategoryBreakdownsByMonth(
 
 export function buildSpendingInsightSummary(
   transactions: readonly TransactionRecord[],
-  options: { asOfDate?: string } = {}
+  options: { asOfDate?: string; reportingMode?: SpendingReportingMode } = {}
 ): SpendingInsightSummary {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const asOfDate = options.asOfDate ?? reportableTransactions.reduce(
@@ -594,15 +615,15 @@ export function buildSpendingInsightSummary(
 
   const previousWeekTransactions = reportableTransactions.filter((transaction) => inDateRange(transaction, previousWeekFrom, previousWeekTo));
   const previousMonthTransactions = reportableTransactions.filter((transaction) => inDateRange(transaction, previousMonthFrom, previousMonthTo));
-  const currentWeek = summarizeWindow(reportableTransactions, currentWeekFrom, asOfDate, previousWeekTransactions);
+  const currentWeek = summarizeWindow(reportableTransactions, currentWeekFrom, asOfDate, previousWeekTransactions, options);
 
   return {
     asOfDate,
-    confidence: summarizeConfidence(reportableTransactions.filter((transaction) => transaction.date >= currentMonthFrom && transaction.date <= asOfDate)),
-    currentMonth: summarizeWindow(reportableTransactions, currentMonthFrom, asOfDate, previousMonthTransactions),
+    confidence: summarizeConfidence(reportableTransactions.filter((transaction) => transaction.date >= currentMonthFrom && transaction.date <= asOfDate), options),
+    currentMonth: summarizeWindow(reportableTransactions, currentMonthFrom, asOfDate, previousMonthTransactions, options),
     currentWeek,
-    previousMonth: summarizeWindow(reportableTransactions, previousMonthFrom, previousMonthTo),
-    previousWeek: summarizeWindow(reportableTransactions, previousWeekFrom, previousWeekTo),
-    unusualSpend: findUnusualSpend(reportableTransactions, currentWeek)
+    previousMonth: summarizeWindow(reportableTransactions, previousMonthFrom, previousMonthTo, [], options),
+    previousWeek: summarizeWindow(reportableTransactions, previousWeekFrom, previousWeekTo, [], options),
+    unusualSpend: findUnusualSpend(reportableTransactions, currentWeek, options)
   };
 }

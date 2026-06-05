@@ -42,8 +42,9 @@ const category = {
 
 test("parseTransactionFilters sanitizes input and combines month/date bounds", () => {
   const filters = parseTransactionFilters({
-	    account: account.id,
-	    category: category.id,
+    account: account.id,
+    basis: "gross",
+    category: category.id,
 	    direction: "income",
 	    exclude_transfers: "1",
     from: "2026-05-12",
@@ -68,6 +69,7 @@ test("parseTransactionFilters sanitizes input and combines month/date bounds", (
   assert.equal(filters.effectiveFromDate, "2026-05-12");
   assert.equal(filters.effectiveToDate, "2026-05-20");
   assert.equal(filters.excludeTransfers, true);
+  assert.equal(filters.spendingReportingMode, "gross");
   assert.equal(filters.limit, 500);
   assert.equal(filters.hasActiveFilters, true);
 });
@@ -169,6 +171,18 @@ test("toTransactionListFilters and export href preserve the same filter fields",
 	    transactionFiltersHref("/api/export/transactions", filters),
 	    "/api/export/transactions?q=ride+shares&from=2026-05-01&to=2026-05-31&account=account-schools-first&category=category-food&direction=spending&intent=personal&review=open&reason=low-confidence&quality=low-confidence&exclude_transfers=1&limit=100"
 	  );
+});
+
+test("transactionFiltersHref preserves gross spending basis", () => {
+  const filters = parseTransactionFilters({
+    basis: "gross",
+    direction: "spending"
+  });
+
+  assert.equal(
+    transactionFiltersHref("/transactions", filters),
+    "/transactions?direction=spending&basis=gross&limit=250"
+  );
 });
 
 test("transactionPeriodTitle describes month and open-ended ranges", () => {

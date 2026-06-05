@@ -2,6 +2,7 @@
 
 import type {
   AccountRecord,
+  ReimbursementRecord,
   ReviewReason,
   ReviewStatus,
   TransactionIntent,
@@ -25,7 +26,12 @@ import {
   excludeMatchedRefundReversalTransactions,
   filterReportableInflowTransactions
 } from "@/lib/finance/refund-reversals";
-import { hasOpenReview, isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
+import {
+  hasOpenReview,
+  transactionSpendingAmount,
+  type CategoryBreakdownSummary,
+  type SpendingReportingMode
+} from "@/lib/finance/spending";
 import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   Clock3,
@@ -55,6 +61,7 @@ export interface DashboardBalanceTransaction {
   intent: TransactionIntent;
   merchant: string;
   plaidName: string | null;
+  reimbursements: Pick<ReimbursementRecord, "receivedAmount" | "receivedTransactionId" | "status">[];
   reviewItems: { reason: ReviewReason; status: ReviewStatus }[];
   reviewStatus: ReviewStatus | null;
   splits: { amount: number; intent: TransactionIntent }[];
@@ -529,16 +536,11 @@ function sortTransactionsByDate(transactions: DashboardBalanceTransaction[]) {
   });
 }
 
-function dashboardTransactionSpendingAmount(transaction: DashboardBalanceTransaction) {
-  if (transaction.amount >= 0) return 0;
-
-  if (transaction.splits.length > 0) {
-    return roundMoney(transaction.splits.reduce((sum, split) => (
-      isSpendingIntent(split.intent) ? sum + Math.abs(split.amount) : sum
-    ), 0));
-  }
-
-  return isSpendingIntent(transaction.intent) ? Math.abs(transaction.amount) : 0;
+function dashboardTransactionSpendingAmount(
+  transaction: DashboardBalanceTransaction,
+  reportingMode: SpendingReportingMode
+) {
+  return transactionSpendingAmount(transaction, { reportingMode });
 }
 
 function TransactionRows({
@@ -1217,7 +1219,8 @@ function buildDashboardCategoryBreakdownForRange(
   fromDate: string,
   toDate: string,
   previousFrom: string,
-  previousTo: string
+  previousTo: string,
+  reportingMode: SpendingReportingMode
 ): CategoryBreakdownSummary {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const currentRows = new Map<string, {
@@ -1233,7 +1236,7 @@ function buildDashboardCategoryBreakdownForRange(
   reportableTransactions.forEach((transaction) => {
     if (transaction.date < previousFrom || transaction.date > toDate) return;
 
-    const amount = dashboardTransactionSpendingAmount(transaction);
+    const amount = dashboardTransactionSpendingAmount(transaction, reportingMode);
     if (amount <= 0) return;
 
     const label = displayCategoryName(transaction.category);
@@ -1281,6 +1284,7 @@ function buildDashboardCategoryBreakdownForRange(
 function buildDashboardCategoryBreakdownsByMonth(
   transactions: readonly DashboardBalanceTransaction[],
   asOfDate: string,
+  reportingMode: SpendingReportingMode,
   monthCount = 6
 ) {
   const results: CategoryBreakdownSummary[] = [];
@@ -1292,7 +1296,8 @@ function buildDashboardCategoryBreakdownsByMonth(
       bounds.fromDate,
       offset === 0 ? asOfDate : bounds.toDate,
       bounds.previousFrom,
-      bounds.previousTo
+      bounds.previousTo,
+      reportingMode
     ));
   }
 
@@ -1302,7 +1307,8 @@ function buildDashboardCategoryBreakdownsByMonth(
 function categoryRangeBounds(
   transactions: readonly DashboardBalanceTransaction[],
   rangeKey: TrendRangeKey,
-  anchorDate: string
+  anchorDate: string,
+  reportingMode: SpendingReportingMode
 ) {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const range = rangeOptionForKey(rangeKey);
@@ -1315,7 +1321,7 @@ function categoryRangeBounds(
 
   const firstTransactionDate = reportableTransactions.reduce<string | null>(
     (earliest, transaction) => {
-      if (dashboardTransactionSpendingAmount(transaction) <= 0) return earliest;
+      if (dashboardTransactionSpendingAmount(transaction, reportingMode) <= 0) return earliest;
       return earliest === null || transaction.date < earliest ? transaction.date : earliest;
     },
     null
@@ -1330,7 +1336,8 @@ function categoryRangeBounds(
 function buildCategoryTrend(
   transactions: readonly DashboardBalanceTransaction[],
   fromDate: string,
-  toDate: string
+  toDate: string,
+  reportingMode: SpendingReportingMode
 ) {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const grouped = new Map<string, {
@@ -1352,7 +1359,7 @@ function buildCategoryTrend(
   reportableTransactions.forEach((transaction) => {
     if (transaction.date < fromDate || transaction.date > toDate) return;
 
-    const amount = dashboardTransactionSpendingAmount(transaction);
+    const amount = dashboardTransactionSpendingAmount(transaction, reportingMode);
     if (amount <= 0) return;
 
     const label = displayCategoryName(transaction.category);
@@ -1549,19 +1556,21 @@ function CategorySpendingPanel({
   transactions: DashboardBalanceTransaction[];
 }) {
   const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
+  const [reportingMode, setReportingMode] = useState<SpendingReportingMode>("net-after-reimbursement");
   const [monthIndex, setMonthIndex] = useState(0);
   const breakdowns = useMemo(
-    () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate),
-    [asOfDate, transactions]
+    () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate, reportingMode),
+    [asOfDate, reportingMode, transactions]
   );
   const { fromDate, toDate } = useMemo(
-    () => categoryRangeBounds(transactions, rangeKey, asOfDate),
-    [asOfDate, rangeKey, transactions]
+    () => categoryRangeBounds(transactions, rangeKey, asOfDate, reportingMode),
+    [asOfDate, rangeKey, reportingMode, transactions]
   );
   const trend = useMemo(
-    () => buildCategoryTrend(transactions, fromDate, toDate),
-    [fromDate, toDate, transactions]
+    () => buildCategoryTrend(transactions, fromDate, toDate, reportingMode),
+    [fromDate, reportingMode, toDate, transactions]
   );
+  const reportingLabel = reportingMode === "gross" ? "Gross" : "Net after reimbursements";
   const width = 560;
   const height = 220;
   const padding = { bottom: 28, left: 34, right: 18, top: 16 };
@@ -1593,11 +1602,12 @@ function CategorySpendingPanel({
     : "No monthly period";
   const panelAmount = viewMode === "trend" ? trend.totalAmount : breakdown.totalAmount;
   const panelSubtitle = viewMode === "trend"
-    ? `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
-    : `${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
+    ? `${reportingLabel} - ${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
+    : `${reportingLabel} - ${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
+  const basisParam = reportingMode === "gross" ? "gross" : undefined;
   const openTransactionsHref = viewMode === "trend"
-    ? transactionsHref({ direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
-    : transactionsHref({ direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
+    ? transactionsHref({ basis: basisParam, direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
+    : transactionsHref({ basis: basisParam, direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
@@ -1608,6 +1618,24 @@ function CategorySpendingPanel({
           <p className={styles.categorySubtitle}>{panelSubtitle}</p>
         </div>
         <div className={styles.categoryPanelActions}>
+          <div className={styles.categoryModeControls} aria-label="Spending reporting basis">
+            <button
+              aria-pressed={reportingMode === "net-after-reimbursement"}
+              className={reportingMode === "net-after-reimbursement" ? styles.categoryModeActive : undefined}
+              onClick={() => setReportingMode("net-after-reimbursement")}
+              type="button"
+            >
+              Net
+            </button>
+            <button
+              aria-pressed={reportingMode === "gross"}
+              className={reportingMode === "gross" ? styles.categoryModeActive : undefined}
+              onClick={() => setReportingMode("gross")}
+              type="button"
+            >
+              Gross
+            </button>
+          </div>
           <div className={styles.categoryModeControls} aria-label="Category spending view">
             <button
               aria-pressed={viewMode === "month"}
@@ -1707,6 +1735,7 @@ function CategorySpendingPanel({
                   className={styles.categoryRow}
                   href={transactionsHref({
                     category: row.id ?? undefined,
+                    basis: basisParam,
                     direction: "spending",
                     exclude_transfers: true,
                     from: fromDate,
@@ -1771,6 +1800,7 @@ function CategorySpendingPanel({
                     className={styles.categoryRow}
                     href={transactionsHref({
                       category: row.id ?? undefined,
+                      basis: basisParam,
                       direction: "spending",
                       exclude_transfers: true,
                       from: breakdown.fromDate,
