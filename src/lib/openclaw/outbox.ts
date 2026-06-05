@@ -1,5 +1,6 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
+import type { AccountLifecycleHint } from "@/lib/finance/account-lifecycle";
 import type { CreditOptimizationPacket } from "./credit-nudges";
 import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
 
@@ -7,9 +8,12 @@ export type OpenClawOutboxMessageKind =
   | "budget_briefing"
   | "anomaly_alert"
   | "credit_optimization"
+  | "lifecycle_guidance"
   | "reimbursement_alert"
   | "reimbursement_clarification"
   | "review_queue_alert";
+
+const LIFECYCLE_HINT_LIMIT = 1;
 export type OpenClawOutboxMessagePriority = "normal" | "high";
 export type OpenClawOutboxMinimumPriority = OpenClawOutboxMessagePriority;
 
@@ -184,6 +188,18 @@ function creditOptimizationMessage(
   };
 }
 
+function lifecycleHintMessage(hint: AccountLifecycleHint, generatedAt: string): OpenClawOutboxMessage {
+  return {
+    id: hint.id,
+    body: compact(`Tally heads-up: ${hint.rationale}`, MAX_MESSAGE_LENGTH),
+    createdAt: generatedAt,
+    kind: "lifecycle_guidance",
+    priority: "normal",
+    replyAction: null,
+    target: "openclaw"
+  };
+}
+
 function anomalyAlertMessage(packet: OpenClawAnomalyPacket): OpenClawOutboxMessage {
   return {
     id: `openclaw-outbox:anomaly:${packet.id}`,
@@ -201,6 +217,7 @@ export function buildOpenClawOutboxResponse(
   options: {
     anomalyPackets?: readonly OpenClawAnomalyPacket[];
     creditOptimizationPackets?: readonly CreditOptimizationPacket[];
+    lifecycleHints?: readonly AccountLifecycleHint[];
     includeBudgetBriefing?: boolean;
     messageLimit?: number;
     minPriority?: OpenClawOutboxMinimumPriority;
@@ -214,6 +231,9 @@ export function buildOpenClawOutboxResponse(
     ...(options.creditOptimizationPackets ?? []).map((packet) =>
       creditOptimizationMessage(packet, signals.generatedAt)
     ),
+    ...(options.lifecycleHints ?? [])
+      .slice(0, LIFECYCLE_HINT_LIMIT)
+      .map((hint) => lifecycleHintMessage(hint, signals.generatedAt)),
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
     reimbursementAlert(signals),
     reviewQueueAlert(signals),

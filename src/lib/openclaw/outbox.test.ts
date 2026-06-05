@@ -87,3 +87,52 @@ test("OpenClaw outbox creates specific high-priority review and reimbursement al
   assert.match(outbox.messages[1]?.body ?? "", /2 open items/);
   assertAssistantContextSafe(outbox);
 });
+
+test("OpenClaw outbox includes at most one lifecycle hint per response", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    includeBudgetBriefing: false,
+    lifecycleHints: [
+      {
+        id: "account-lifecycle:inactivity:acct-A:2025-09-01",
+        accountId: "acct-A",
+        accountDisplayName: "Card A (…1111)",
+        kind: "inactivity_check",
+        priority: "low",
+        rationale: "Card A (…1111) has no recent activity (last transaction 2025-09-01, 200 days ago). Tally does not recommend closing this card."
+      },
+      {
+        id: "account-lifecycle:inactivity:acct-B:2025-09-15",
+        accountId: "acct-B",
+        accountDisplayName: "Card B (…2222)",
+        kind: "inactivity_check",
+        priority: "low",
+        rationale: "Card B (…2222) has no recent activity. Tally does not recommend closing this card."
+      }
+    ]
+  });
+
+  const lifecycleMessages = outbox.messages.filter((message) => message.kind === "lifecycle_guidance");
+  assert.equal(lifecycleMessages.length, 1);
+  assert.equal(lifecycleMessages[0]?.priority, "normal");
+  assert.match(lifecycleMessages[0]?.body ?? "", /Tally heads-up/);
+  assertAssistantContextSafe(outbox);
+});
+
+test("OpenClaw outbox filters lifecycle hints out when min priority is high", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    includeBudgetBriefing: false,
+    minPriority: "high",
+    lifecycleHints: [
+      {
+        id: "account-lifecycle:inactivity:acct-A:2025-09-01",
+        accountId: "acct-A",
+        accountDisplayName: "Card A",
+        kind: "inactivity_check",
+        priority: "low",
+        rationale: "Card A has no recent activity. Tally does not recommend closing this card."
+      }
+    ]
+  });
+
+  assert.equal(outbox.messages.find((message) => message.kind === "lifecycle_guidance"), undefined);
+});

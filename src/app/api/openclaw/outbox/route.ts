@@ -7,6 +7,7 @@ import {
 import { buildOpenClawAnomalyPackets } from "@/lib/anomaly/packet";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
 import { FinanceDbError, listAccounts, listAnomalyAlerts, listTransactions } from "@/lib/db";
+import { buildAccountLifecycleHints } from "@/lib/finance/account-lifecycle";
 import { calculateAccountTotals } from "@/lib/finance/balances";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { buildCreditOptimizationPackets } from "@/lib/openclaw/credit-nudges";
@@ -95,6 +96,7 @@ export async function GET(request: NextRequest) {
     }
 
     let creditOptimizationPackets: ReturnType<typeof buildCreditOptimizationPackets> = [];
+    let lifecycleHints: ReturnType<typeof buildAccountLifecycleHints> = [];
     try {
       const accounts = await listAccounts(client, userId);
       const asOfDate = signals.generatedAt.slice(0, 10);
@@ -110,14 +112,24 @@ export async function GET(request: NextRequest) {
         transactions
       });
       creditOptimizationPackets = buildCreditOptimizationPackets(liabilitiesSummary);
+      lifecycleHints = buildAccountLifecycleHints({
+        accounts,
+        asOfDate,
+        transactions: transactions.map((transaction) => ({
+          accountId: transaction.accountId,
+          date: transaction.date
+        }))
+      });
     } catch (error) {
       logSafeError("openclaw_outbox_credit_nudges_failed", error);
       creditOptimizationPackets = [];
+      lifecycleHints = [];
     }
 
     return jsonNoStore(buildOpenClawOutboxResponse(signals, {
       anomalyPackets,
       creditOptimizationPackets,
+      lifecycleHints,
       includeBudgetBriefing,
       messageLimit,
       minPriority
