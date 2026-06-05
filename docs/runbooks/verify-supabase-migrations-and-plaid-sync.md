@@ -86,6 +86,50 @@ If it returns `OpenClaw Plaid refresh is not configured.`, set
 OpenClaw to trigger refreshes. That error happens before any Plaid item or
 Supabase schema diagnosis starts.
 
+### 2026-06-05 OpenClaw refresh status
+
+The deployed refresh endpoint was checked before continuing SchoolsFirst
+diagnosis:
+
+- Latest production deployment discovered from GitHub Deployments:
+  `https://personal-finance-dwbw7xplg-jtran273s-projects.vercel.app`
+- #256 preview deployment discovered from GitHub Deployments:
+  `https://personal-finance-7xk5mqcvk-jtran273s-projects.vercel.app`
+- Safe no-token POST to `/api/openclaw/plaid-refresh` returned HTTP 503 with
+  `OpenClaw Plaid refresh is not configured.` on both deployments.
+
+This confirms the deployed server has not been configured with
+`OPENCLAW_PLAID_REFRESH_TOKEN` for these deployments. Do **not** infer a
+SchoolsFirst root cause yet. The refresh route stops before Plaid item repair,
+Transactions availability, Supabase schema, or internal save logic can be
+observed.
+
+Next unblock:
+
+1. Set `OPENCLAW_PLAID_REFRESH_TOKEN` in the deployed Tally server environment
+   for the deployment being tested.
+2. Re-deploy or otherwise restart the serverless environment so the route sees
+   the new variable.
+3. Re-run:
+
+   ```bash
+   export OPENCLAW_TALLY_BASE_URL="https://<deployed-tally-host>"
+   export OPENCLAW_PLAID_REFRESH_TOKEN="<same caller token>"
+   npm run openclaw:plaid-refresh
+   ```
+
+4. If the probe then returns a safe sync packet, classify the SchoolsFirst
+   failure from `status`, `reason`, and `sync.errorSummary` only:
+   - item repair/re-auth if the safe error indicates a Plaid item repair state
+   - Transactions availability if the safe error indicates product
+     unavailability
+   - Supabase schema if the safe error references missing expected columns or
+     tables
+   - internal save logic if Plaid succeeds but sanitized persistence counters or
+     save errors show a local write failure
+5. If it still returns `OpenClaw Plaid refresh is not configured.`, stop at
+   server env configuration; do not debug SchoolsFirst.
+
 1. Sign in to production as a real user with a linked Plaid item.
 2. Open **Settings → bank connections** and trigger a manual sync.
 3. Expected outcomes (acceptance criteria 4–5):
