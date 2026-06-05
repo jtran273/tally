@@ -440,10 +440,10 @@ function cardReportingDateDetail(row: LiabilityAccountSummary) {
   }
 
   if (row.reportingDateSource === "inferred_from_statement_cycle") {
-    return `Est. next statement date: ${formatDate(row.reportingDate)} from Plaid statement cycle.`;
+    return `Est. next statement date: ${formatDate(row.reportingDate)} from last Plaid statement date.`;
   }
 
-  return `Est. reporting date: ${formatDate(row.reportingDate)} from due date.`;
+  return `Estimated statement timing from due date: ${formatDate(row.reportingDate)}.`;
 }
 
 function cardUtilizationDetail(row: LiabilityAccountSummary) {
