@@ -5,6 +5,7 @@ import type {
   AuditEventRow,
   BalanceSnapshotRow,
   CategoryRow,
+  CreditScoreSnapshotRow,
   Database,
   EnrichedTransactionRow,
   FinanceSupabaseClient,
@@ -457,12 +458,36 @@ const auditEvents: AuditEventRow[] = [
   }
 ];
 
+const creditScoreSnapshots: CreditScoreSnapshotRow[] = [
+  {
+    as_of_date: isoDaysFromBase(-30),
+    created_at: isoDaysFromBase(-30),
+    id: "demo-credit-score-001",
+    model: "fico",
+    score: 718,
+    source: "demo",
+    updated_at: isoDaysFromBase(-30),
+    user_id: DEMO_USER_ID
+  },
+  {
+    as_of_date: isoDaysFromBase(-4),
+    created_at: isoDaysFromBase(-4),
+    id: "demo-credit-score-002",
+    model: "fico",
+    score: 724,
+    source: "demo",
+    updated_at: isoDaysFromBase(-4),
+    user_id: DEMO_USER_ID
+  }
+];
+
 const rows = {
   accounts,
   agent_proposals: [] as AgentProposalRow[],
   anomaly_alerts: [],
   audit_events: auditEvents,
   balance_snapshots: balanceSnapshots,
+  credit_score_snapshots: creditScoreSnapshots,
   categories,
   enriched_transactions: enrichedTransactions,
   google_calendar_connections: [] as GoogleCalendarConnectionRow[],

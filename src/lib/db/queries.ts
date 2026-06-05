@@ -17,6 +17,10 @@ import type {
   BalanceSnapshotRow,
   CategoryRecord,
   CategoryRow,
+  CreditScoreModel,
+  CreditScoreSnapshotRecord,
+  CreditScoreSnapshotRow,
+  CreditScoreSource,
   Database,
   EnrichedTransactionRow,
   FinanceDashboardData,
@@ -186,6 +190,13 @@ export interface BalanceSnapshotFilters {
   limit?: number;
 }
 
+export interface CreditScoreSnapshotMutationInput {
+  asOfDate: string;
+  model: CreditScoreModel;
+  score: number;
+  source: CreditScoreSource;
+}
+
 export interface TransactionEnrichmentPatch {
   merchantName?: string;
   categoryId?: string | null;
@@ -223,6 +234,7 @@ type AgentProposalUpdate = Database["public"]["Tables"]["agent_proposals"]["Upda
 type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
 type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
+type CreditScoreSnapshotInsert = Database["public"]["Tables"]["credit_score_snapshots"]["Insert"];
 type MerchantRuleInsert = Database["public"]["Tables"]["merchant_rules"]["Insert"];
 type RecurringExpenseInsert = Database["public"]["Tables"]["recurring_expenses"]["Insert"];
 type RecurringExpenseUpdate = Database["public"]["Tables"]["recurring_expenses"]["Update"];
@@ -429,6 +441,19 @@ function toCategoryRecord(row: CategoryRow): CategoryRecord {
     color: row.color,
     icon: row.icon,
     isSystem: row.is_system
+  };
+}
+
+function toCreditScoreSnapshotRecord(row: CreditScoreSnapshotRow): CreditScoreSnapshotRecord {
+  return {
+    asOfDate: row.as_of_date,
+    createdAt: row.created_at,
+    id: row.id,
+    model: row.model,
+    score: row.score,
+    source: row.source,
+    updatedAt: row.updated_at,
+    userId: row.user_id
   };
 }
 
@@ -1507,6 +1532,47 @@ export async function listBalanceSnapshots(
   }
 
   return expectData(await query, "List balance snapshots").map(toBalanceSnapshotRecord);
+}
+
+export async function listCreditScoreSnapshots(
+  client: FinanceSupabaseClient,
+  userId: string,
+  options: { limit?: number } = {}
+): Promise<CreditScoreSnapshotRecord[]> {
+  let query = client
+    .from("credit_score_snapshots")
+    .select("*")
+    .eq("user_id", userId)
+    .order("as_of_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (options.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+
+  return expectData(await query, "List credit score snapshots").map(toCreditScoreSnapshotRecord);
+}
+
+export async function createCreditScoreSnapshot(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: CreditScoreSnapshotMutationInput
+): Promise<CreditScoreSnapshotRecord> {
+  const insert: CreditScoreSnapshotInsert = {
+    as_of_date: input.asOfDate,
+    model: input.model,
+    score: input.score,
+    source: input.source,
+    user_id: userId
+  };
+
+  const result = await client
+    .from("credit_score_snapshots")
+    .insert(insert)
+    .select("*")
+    .single();
+
+  return toCreditScoreSnapshotRecord(expectData(result, "Create credit score snapshot"));
 }
 
 export async function listInsights(
