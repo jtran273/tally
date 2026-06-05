@@ -80,6 +80,10 @@ test("agent inbox turns accept-ready review suggestions into safe proposals", ()
   ]);
 
   assert.equal(proposal?.status, "accept-ready");
+  assert.equal(proposal?.action, "review-suggestion");
+  if (proposal?.action !== "review-suggestion") {
+    throw new Error("Expected a review suggestion proposal.");
+  }
   assert.equal(proposal?.recommendation.categoryName, "Groceries");
   assert.equal(proposal?.recommendation.confidence, 0.91);
   assert.equal(proposal?.context.accountLabel, "Checking ending 1234");

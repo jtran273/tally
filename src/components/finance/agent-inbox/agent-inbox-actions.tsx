@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ExternalLink, X } from "lucide-react";
+import { Check, ExternalLink, Link2, Tag, X } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
 import {
@@ -8,6 +8,12 @@ import {
   dismissReviewItemAction,
   type ReviewActionState
 } from "@/components/finance/review/actions";
+import {
+  dismissAgentProposalAction,
+  linkReimbursementMatchProposalAction,
+  markUnmatchedReimbursementProposalAction,
+  type AgentProposalActionState
+} from "./actions";
 import styles from "./agent-inbox.module.css";
 
 interface AgentInboxActionsProps {
@@ -19,6 +25,7 @@ interface AgentInboxActionsProps {
 }
 
 const initialState: ReviewActionState = {};
+const proposalInitialState: AgentProposalActionState = {};
 
 export function AgentInboxActions({
   canApprove,
@@ -88,6 +95,94 @@ export function AgentInboxActions({
       {isDemo && canApprove ? (
         <div className={styles.demoActionNote}>
           Demo proposal actions are read-only. Sign in to approve or dismiss real finance changes.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ReimbursementMatchActions({
+  isDemo,
+  proposalId,
+  transactionId
+}: {
+  isDemo: boolean;
+  proposalId: string;
+  transactionId: string;
+}) {
+  const [linkState, linkAction, linking] = useActionState(linkReimbursementMatchProposalAction, proposalInitialState);
+  const [markState, markAction, marking] = useActionState(markUnmatchedReimbursementProposalAction, proposalInitialState);
+  const [dismissState, dismissAction, dismissing] = useActionState(dismissAgentProposalAction, proposalInitialState);
+  const busy = linking || marking || dismissing;
+
+  return (
+    <div className={styles.actionRow} data-proposal-resolving={linking || marking ? "true" : undefined}>
+      {isDemo ? (
+        <>
+          <button className={styles.primaryButton} disabled type="button">
+            <Link2 size={14} aria-hidden />
+            Read-only demo
+          </button>
+          <button className={styles.secondaryButton} disabled type="button">
+            <Tag size={14} aria-hidden />
+            Read-only demo
+          </button>
+          <button className={styles.secondaryButton} disabled type="button">
+            <X size={14} aria-hidden />
+            Read-only demo
+          </button>
+        </>
+      ) : null}
+
+      {!isDemo ? (
+        <form action={linkAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <button className={styles.primaryButton} disabled={busy} type="submit">
+            <Link2 size={14} aria-hidden />
+            {linking ? "Linking..." : "Link"}
+          </button>
+        </form>
+      ) : null}
+
+      {!isDemo ? (
+        <form action={markAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <input name="transactionId" type="hidden" value={transactionId} />
+          <input name="restoredIntent" type="hidden" value="personal" />
+          <button className={styles.secondaryButton} disabled={busy} type="submit">
+            <Tag size={14} aria-hidden />
+            {marking ? "Marking..." : "Mark unmatched"}
+          </button>
+        </form>
+      ) : null}
+
+      {!isDemo ? (
+        <form action={dismissAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <button className={styles.secondaryButton} disabled={busy} type="submit">
+            <X size={14} aria-hidden />
+            {dismissing ? "Dismissing..." : "Dismiss"}
+          </button>
+        </form>
+      ) : null}
+
+      <Link
+        className={styles.iconLink}
+        href={`/transactions/${transactionId}`}
+        aria-label="Open reimbursement inflow transaction"
+      >
+        <ExternalLink size={14} aria-hidden />
+      </Link>
+
+      {linkState.error || markState.error || dismissState.error ? (
+        <div className={styles.inlineError} role="alert">
+          {linkState.error ?? markState.error ?? dismissState.error}
+        </div>
+      ) : null}
+
+      {isDemo ? (
+        <div className={styles.demoActionNote}>
+          Demo proposal actions are read-only. Sign in to link, mark, or dismiss real reimbursement matches.
         </div>
       ) : null}
     </div>

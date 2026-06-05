@@ -4,7 +4,7 @@ import {
   summarizeAgentInbox,
   type AgentInboxProposal
 } from "@/lib/agents/proposal-inbox";
-import { listReviewItems, type ReviewQueueItem } from "@/lib/db";
+import { listAgentProposals, listReviewItems, type AgentProposalRecord, type ReviewQueueItem } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export default async function AgentInboxPage() {
   let isDemo = false;
   let isSignedIn = false;
   let reviewItems: ReviewQueueItem[] = [];
+  let agentProposals: AgentProposalRecord[] = [];
   let proposals: AgentInboxProposal[] = [];
 
   const context = await getFinanceServerContext();
@@ -29,8 +30,13 @@ export default async function AgentInboxPage() {
 
   if (context.client && context.userId) {
     try {
-      reviewItems = await listReviewItems(context.client, context.userId, "open");
-      proposals = buildAgentInboxProposals(reviewItems);
+      [reviewItems, agentProposals] = await Promise.all([
+        listReviewItems(context.client, context.userId, "open"),
+        listAgentProposals(context.client, context.userId, {
+          status: "pending"
+        })
+      ]);
+      proposals = buildAgentInboxProposals(reviewItems, agentProposals);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
