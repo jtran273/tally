@@ -1157,6 +1157,30 @@
   background: var(--surface);
 }
 
+.reimbursementStatusCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--surface);
+}
+
+.reimbursementStatusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.reimbursementStatusActions form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .summaryCard,
   .filters,

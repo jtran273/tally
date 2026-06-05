@@ -14,6 +14,7 @@ import {
   listTransactions,
   recordClarificationAnswer,
   replaceTransactionSplitsAndSyncReimbursements,
+  setReimbursementStatus,
   transactionMatchesSearch,
   updateAnomalyAlertStatus,
   upsertAgentProposalBySourceContext
@@ -1048,6 +1049,47 @@ test("replaceTransactionSplitsAndSyncReimbursements removes simple expected reco
     client.auditEvents.map((event) => event.action),
     ["reimbursement.expected_removed"]
   );
+});
+
+test("setReimbursementStatus updates lifecycle status and records an audit event", async () => {
+  const client = new FakeFinanceClient();
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow());
+
+  const updated = await setReimbursementStatus(client.asClient(), userId, {
+    reimbursementId: "reimbursement-friends",
+    status: "requested"
+  });
+
+  assert.equal(updated.status, "requested");
+  assert.equal(client.reimbursementRecords[0]?.status, "requested");
+  assert.deepEqual(
+    client.auditEvents.map((event) => event.action),
+    ["reimbursement.status_changed"]
+  );
+  const metadata = client.auditEvents[0]?.metadata as { previousStatus?: string; status?: string } | undefined;
+  assert.equal(metadata?.previousStatus, "expected");
+  assert.equal(metadata?.status, "requested");
+});
+
+test("setReimbursementStatus refuses to change a record with a linked received inflow", async () => {
+  const client = new FakeFinanceClient();
+  client.reimbursementRecords.push(fixtureReimbursementRecordRow({
+    received_amount: 25,
+    received_at: "2026-05-14",
+    received_transaction_id: "tx-received",
+    status: "received"
+  }));
+
+  await assert.rejects(
+    () => setReimbursementStatus(client.asClient(), userId, {
+      reimbursementId: "reimbursement-friends",
+      status: "written-off"
+    }),
+    /Unlink the received inflow/
+  );
+
+  assert.equal(client.reimbursementRecords[0]?.status, "received");
+  assert.equal(client.auditEvents.length, 0);
 });
 
 test("replaceTransactionSplitsAndSyncReimbursements rejects changes to splits with received reimbursement history", async () => {

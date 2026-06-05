@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildReimbursementLinkDecision, isReportableIncomeIntent } from "./reimbursement-linking";
+import {
+  buildReimbursementLinkDecision,
+  buildReimbursementStatusTransition,
+  isReimbursementManualStatus,
+  isReportableIncomeIntent
+} from "./reimbursement-linking";
 
 test("buildReimbursementLinkDecision records partial reimbursement without clearing outstanding balance", () => {
   const decision = buildReimbursementLinkDecision(
@@ -74,6 +79,72 @@ test("buildReimbursementLinkDecision validates positive inflows and applied amou
     () => buildReimbursementLinkDecision({ expectedAmount: 75, receivedAmount: 75 }, { amount: 25, date: "2026-05-12" }),
     /fully received/
   );
+});
+
+test("buildReimbursementStatusTransition allows manual lifecycle moves on unlinked records", () => {
+  assert.deepEqual(
+    buildReimbursementStatusTransition(
+      { status: "expected", receivedTransactionId: null, receivedAmount: 0 },
+      "requested"
+    ),
+    { status: "requested" }
+  );
+  assert.deepEqual(
+    buildReimbursementStatusTransition(
+      { status: "requested", receivedTransactionId: null, receivedAmount: 0 },
+      "written-off"
+    ),
+    { status: "written-off" }
+  );
+  assert.deepEqual(
+    buildReimbursementStatusTransition(
+      { status: "written-off", receivedTransactionId: null, receivedAmount: 0 },
+      "expected"
+    ),
+    { status: "expected" }
+  );
+});
+
+test("buildReimbursementStatusTransition rejects changing linked or received reimbursements", () => {
+  assert.throws(
+    () => buildReimbursementStatusTransition(
+      { status: "requested", receivedTransactionId: "tx-1", receivedAmount: 25 },
+      "written-off"
+    ),
+    /Unlink the received inflow/
+  );
+  assert.throws(
+    () => buildReimbursementStatusTransition(
+      { status: "expected", receivedTransactionId: null, receivedAmount: 40 },
+      "requested"
+    ),
+    /Unlink the received inflow/
+  );
+  assert.throws(
+    () => buildReimbursementStatusTransition(
+      { status: "received", receivedTransactionId: null, receivedAmount: 0 },
+      "expected"
+    ),
+    /without unlinking/
+  );
+});
+
+test("buildReimbursementStatusTransition rejects no-op transitions", () => {
+  assert.throws(
+    () => buildReimbursementStatusTransition(
+      { status: "requested", receivedTransactionId: null, receivedAmount: 0 },
+      "requested"
+    ),
+    /already in that state/
+  );
+});
+
+test("isReimbursementManualStatus only accepts manual lifecycle statuses", () => {
+  assert.equal(isReimbursementManualStatus("expected"), true);
+  assert.equal(isReimbursementManualStatus("requested"), true);
+  assert.equal(isReimbursementManualStatus("written-off"), true);
+  assert.equal(isReimbursementManualStatus("received"), false);
+  assert.equal(isReimbursementManualStatus("nonsense"), false);
 });
 
 test("isReportableIncomeIntent excludes transfers and linked reimbursements from income", () => {
