@@ -84,6 +84,7 @@ function account(overrides: Partial<AccountRecord> = {}): AccountRecord {
 test("normalizes manual score snapshots and rejects out-of-range values", () => {
   const snapshot = normalizeCreditScoreSnapshot({
     asOfDate: "2026-06-01",
+    createdAt: "2026-06-01T18:00:00.000Z",
     model: "fico",
     score: 721.4,
     source: "manual_issuer"
@@ -91,6 +92,7 @@ test("normalizes manual score snapshots and rejects out-of-range values", () => 
 
   assert.equal(snapshot.score, 721);
   assert.equal(snapshot.confidence, "medium");
+  assert.equal(snapshot.createdAt, "2026-06-01T18:00:00.000Z");
   assert.throws(
     () => normalizeCreditScoreSnapshot({
       asOfDate: "2026-06-01",
@@ -99,6 +101,24 @@ test("normalizes manual score snapshots and rejects out-of-range values", () => 
       source: "manual_bureau"
     }),
     /between 300 and 850/
+  );
+  assert.throws(
+    () => normalizeCreditScoreSnapshot({
+      asOfDate: "2026-02-30",
+      model: "fico",
+      score: 720,
+      source: "manual_bureau"
+    }),
+    /ISO date/
+  );
+  assert.throws(
+    () => normalizeCreditScoreSnapshot({
+      asOfDate: "06/01/2026",
+      model: "fico",
+      score: 720,
+      source: "manual_bureau"
+    }),
+    /ISO date/
   );
 });
 
@@ -113,6 +133,36 @@ test("buildCreditScoreSummary exposes manual trend and no live provider", () => 
   assert.equal(score.trend, "up");
   assert.equal(score.liveProvider, "none");
   assert.match(score.sourceCopy, /not connected to a live credit bureau score provider/i);
+});
+
+test("buildCreditScoreSummary treats latest same-day entry as current without same-day delta", () => {
+  const score = buildCreditScoreSummary([
+    {
+      asOfDate: "2026-06-01",
+      createdAt: "2026-06-01T16:00:00.000Z",
+      model: "fico",
+      score: 719,
+      source: "manual_bureau"
+    },
+    {
+      asOfDate: "2026-06-01",
+      createdAt: "2026-06-01T18:00:00.000Z",
+      model: "fico",
+      score: 714,
+      source: "manual_bureau"
+    },
+    {
+      asOfDate: "2026-05-01",
+      createdAt: "2026-05-01T18:00:00.000Z",
+      model: "fico",
+      score: 700,
+      source: "manual_bureau"
+    }
+  ]);
+
+  assert.equal(score.current?.score, 714);
+  assert.equal(score.delta, 14);
+  assert.equal(score.trend, "up");
 });
 
 test("buildCreditHealthSummary prioritizes payment safety and utilization guidance", () => {
