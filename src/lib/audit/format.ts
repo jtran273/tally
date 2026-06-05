@@ -120,6 +120,7 @@ const ACTION_LABELS: Record<string, string> = {
   "recurring.candidate_dismissed": "Recurring candidate dismissed",
   "reimbursement.inflow_linked": "Reimbursement linked",
   "reimbursement.inflow_unlinked": "Reimbursement unlinked",
+  "reimbursement.status_changed": "Reimbursement status changed",
   "ledger_seed_loaded": "Seed data loaded"
 };
 

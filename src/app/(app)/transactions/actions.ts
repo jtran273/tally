@@ -9,6 +9,7 @@ import {
   listTransactions,
   recordAuditEvent,
   resolveReviewItem,
+  setReimbursementStatus,
   unlinkReimbursementReceivedTransaction,
   updateTransactionEnrichment,
   upsertCategory,
@@ -17,6 +18,7 @@ import {
   type EnrichedTransactionRow,
   type FinanceSupabaseClient,
   type Json,
+  type ReimbursementStatus,
   type ReviewItemRow,
   type TransactionRecord,
   type TransactionIntent
@@ -30,6 +32,7 @@ import {
   type TransactionTag,
   type UserTransactionIntent
 } from "@/lib/finance/classification";
+import { isReimbursementManualStatus } from "@/lib/finance/reimbursement-linking";
 import { isManualTransactionEditResolvableReview } from "@/lib/review/reasons";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -163,6 +166,19 @@ function reimbursementLinkErrorState(error: unknown): ReimbursementLinkActionSta
   return {
     error: error instanceof Error ? error.message : "Unable to update reimbursement link."
   };
+}
+
+function reimbursementStatusMessage(status: ReimbursementStatus): string {
+  switch (status) {
+    case "requested":
+      return "Reimbursement marked as requested.";
+    case "written-off":
+      return "Reimbursement written off.";
+    case "expected":
+      return "Reimbursement reopened as expected.";
+    default:
+      return "Reimbursement status updated.";
+  }
 }
 
 function expectRows<T>(
@@ -499,6 +515,39 @@ export async function unlinkReimbursementAction(
     revalidatePath(`/transactions/${reimbursement.transactionId}`);
 
     return { message: "Reimbursement link removed and audit history recorded." };
+  } catch (error) {
+    return reimbursementLinkErrorState(error);
+  }
+}
+
+export async function updateReimbursementStatusAction(
+  _state: ReimbursementLinkActionState,
+  formData: FormData
+): Promise<ReimbursementLinkActionState> {
+  try {
+    const reimbursementId = cleanString(formData.get("reimbursementId"), 80);
+    if (!uuidPattern.test(reimbursementId)) return { error: "Invalid reimbursement id." };
+
+    const status = cleanString(formData.get("status"), 24);
+    if (!isReimbursementManualStatus(status)) return { error: "Choose a valid reimbursement status." };
+
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to update reimbursements." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to update real reimbursements." };
+
+    const reimbursement = await setReimbursementStatus(context.client, context.userId, {
+      actorId: context.userId,
+      reimbursementId,
+      source: "transactions_reimbursement_status_action",
+      status
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transactions");
+    revalidatePath(`/transactions/${reimbursement.transactionId}`);
+
+    return { message: reimbursementStatusMessage(reimbursement.status) };
   } catch (error) {
     return reimbursementLinkErrorState(error);
   }

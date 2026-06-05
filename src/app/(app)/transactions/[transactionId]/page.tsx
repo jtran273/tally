@@ -2,6 +2,7 @@ import {
   ReimbursementLinkPanel,
   type ReimbursementLinkOption
 } from "@/components/finance/transactions/reimbursement-link-panel";
+import { ReimbursementStatusPanel } from "@/components/finance/transactions/reimbursement-status-panel";
 import { TransactionEditForm } from "@/components/finance/transactions/transaction-edit-form";
 import styles from "@/components/finance/transactions/transactions.module.css";
 import {
@@ -138,6 +139,7 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
   return (
     <div className={styles.editPageStack}>
       <TransactionEditForm categories={categories} isDemo={isDemo} transaction={transaction} />
+      <ReimbursementStatusPanel isDemo={isDemo} transaction={transaction} />
       <ReimbursementLinkPanel
         isDemo={isDemo}
         linkedReceivedReimbursements={linkedReceivedReimbursements}

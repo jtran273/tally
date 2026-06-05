@@ -59,3 +59,43 @@ export function buildReimbursementLinkDecision(
 export function isReportableIncomeIntent(intent: TransactionRecord["intent"]) {
   return intent !== "transfer" && intent !== "reimbursable";
 }
+
+export type ReimbursementManualStatus = "expected" | "requested" | "written-off";
+
+const MANUAL_REIMBURSEMENT_STATUSES: readonly ReimbursementManualStatus[] = [
+  "expected",
+  "requested",
+  "written-off"
+];
+
+export function isReimbursementManualStatus(value: string): value is ReimbursementManualStatus {
+  return (MANUAL_REIMBURSEMENT_STATUSES as readonly string[]).includes(value);
+}
+
+export interface ReimbursementStatusTransition {
+  status: ReimbursementManualStatus;
+}
+
+/**
+ * Validates a manual reimbursement status change (expected/requested/written-off).
+ *
+ * Received status is owned by the inflow linking flow, so records with a linked
+ * received transaction (or any received amount) must be unlinked before their
+ * lifecycle status can be changed by hand.
+ */
+export function buildReimbursementStatusTransition(
+  reimbursement: Pick<ReimbursementRecord, "status" | "receivedTransactionId" | "receivedAmount">,
+  targetStatus: ReimbursementManualStatus
+): ReimbursementStatusTransition {
+  if (reimbursement.receivedTransactionId || roundMoney(reimbursement.receivedAmount) > 0) {
+    throw new Error("Unlink the received inflow before changing this reimbursement's status.");
+  }
+  if (reimbursement.status === "received") {
+    throw new Error("Received reimbursements cannot be changed without unlinking the inflow first.");
+  }
+  if (reimbursement.status === targetStatus) {
+    throw new Error("This reimbursement is already in that state.");
+  }
+
+  return { status: targetStatus };
+}

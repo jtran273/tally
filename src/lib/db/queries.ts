@@ -59,7 +59,11 @@ import {
   excludeMatchedRefundReversalTransactions,
   getMatchedRefundReversalTransactionIds
 } from "../finance/refund-reversals";
-import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
+import {
+  buildReimbursementLinkDecision,
+  buildReimbursementStatusTransition,
+  type ReimbursementManualStatus
+} from "../finance/reimbursement-linking";
 import { transactionSpendingAmount } from "../finance/spending";
 import { isRecurringReview } from "../review/reasons";
 import { getSupabaseConfig } from "../supabase/env";
@@ -254,6 +258,13 @@ export interface UnlinkReimbursementInput {
   actorId?: string | null;
   reimbursementId: string;
   restoredReceivedTransactionIntent?: TransactionIntent;
+  source?: string;
+}
+
+export interface SetReimbursementStatusInput {
+  actorId?: string | null;
+  reimbursementId: string;
+  status: ReimbursementManualStatus;
   source?: string;
 }
 
@@ -2219,6 +2230,48 @@ export async function unlinkReimbursementReceivedTransaction(
       receivedTransactionId,
       restoredReceivedTransactionIntent: input.restoredReceivedTransactionIntent ?? null,
       source: input.source ?? "reimbursement_link_helper",
+      transactionId: after.enriched_transaction_id
+    }
+  });
+
+  return toReimbursementRecord(after);
+}
+
+export async function setReimbursementStatus(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: SetReimbursementStatusInput
+): Promise<ReimbursementRecord> {
+  const before = await getReimbursementRecordRow(client, userId, input.reimbursementId);
+  const transition = buildReimbursementStatusTransition(toReimbursementRecord(before), input.status);
+  const beforeData = reimbursementAuditSnapshot(before);
+  const previousStatus = before.status;
+
+  const update: ReimbursementRecordUpdate = {
+    status: transition.status,
+    updated_at: new Date().toISOString()
+  };
+
+  const result = await client
+    .from("reimbursement_records")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", before.id)
+    .select("*")
+    .single();
+  const after = expectData(result, "Update reimbursement status");
+
+  await recordAuditEvent(client, userId, {
+    action: "reimbursement.status_changed",
+    actorId: input.actorId ?? userId,
+    afterData: reimbursementAuditSnapshot(after),
+    beforeData,
+    entityId: after.id,
+    entityTable: "reimbursement_records",
+    metadata: {
+      previousStatus,
+      source: input.source ?? "reimbursement_status_helper",
+      status: transition.status,
       transactionId: after.enriched_transaction_id
     }
   });
