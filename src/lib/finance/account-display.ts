@@ -5,7 +5,7 @@ export function cleanInstitutionName(name: string) {
 }
 
 export function friendlyAccountLabel(account: AccountRecord) {
-  const institution = cleanInstitutionName(account.institutionName);
+  const institution = cleanInstitutionName(account.institutionName) || account.name.trim();
   const subtype = account.subtype?.toLowerCase() ?? "";
 
   if (account.type === "depository") {

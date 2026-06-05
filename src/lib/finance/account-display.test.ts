@@ -62,6 +62,18 @@ test("friendlyAccountLabel labels credit, investment, and retirement accounts", 
   );
 });
 
+test("friendlyAccountLabel falls back to the account name when institution text is blank", () => {
+  assert.equal(
+    friendlyAccountLabel(makeAccount({
+      institutionName: " (manual) ",
+      name: "  Cash envelope  ",
+      subtype: "checking",
+      type: "depository"
+    })),
+    "Cash envelope checking"
+  );
+});
+
 test("accountGroupLabel returns a human-readable group for each account type", () => {
   assert.equal(accountGroupLabel(makeAccount({ type: "depository" })), "Checking & savings");
   assert.equal(accountGroupLabel(makeAccount({ type: "credit" })), "Credit card");
