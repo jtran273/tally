@@ -2,11 +2,18 @@ import type { AccountRecord, TransactionRecord } from "@/lib/db";
 
 const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay)\b/i;
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
+const DEFAULT_PAYMENT_GRACE_DAYS = 25;
 const DUE_SOON_DAYS = 7;
 
 export type LiabilityTransactionInput = Pick<TransactionRecord, "accountId" | "amount" | "date" | "intent" | "merchant" | "plaidName">;
 
 export type LiabilityStatus = "current" | "due-soon" | "overdue" | "no-balance";
+export type LiabilityReportingDateSource =
+  | "actual_plaid_liability"
+  | "inferred_from_statement_cycle"
+  | "estimated_from_due_date"
+  | "unknown";
+export type LiabilityReportingDateConfidence = "high" | "medium" | "low" | "unknown";
 
 export interface LiabilityAccountSummary {
   accountId: string;
@@ -27,6 +34,9 @@ export interface LiabilityAccountSummary {
   minimumPaymentAmount: number | null;
   // True when the due date came from Plaid liabilities, not an estimate.
   dueDateIsActual: boolean;
+  reportingDate: string | null;
+  reportingDateSource: LiabilityReportingDateSource;
+  reportingDateConfidence: LiabilityReportingDateConfidence;
   actionRank: number;
 }
 
@@ -61,6 +71,14 @@ function dayDifference(fromIso: string, toIso: string) {
   const from = parseIsoDate(fromIso).getTime();
   const to = parseIsoDate(toIso).getTime();
   return Math.round((to - from) / 86_400_000);
+}
+
+function nextCycleDate(anchorIso: string, asOfIso: string) {
+  let date = anchorIso;
+  while (dayDifference(asOfIso, date) < 0) {
+    date = addDays(date, DEFAULT_BILLING_CYCLE_DAYS);
+  }
+  return date;
 }
 
 function statusForDays(days: number | null, owed: number): LiabilityStatus {
@@ -122,6 +140,51 @@ function findLastPayment(
   return null;
 }
 
+function reportingDateMetadata({
+  asOfDate,
+  lastStatementIssueDate,
+  nextPaymentDueDate
+}: {
+  asOfDate: string;
+  lastStatementIssueDate: string | null | undefined;
+  nextPaymentDueDate: string | null;
+}): {
+  reportingDate: string | null;
+  reportingDateSource: LiabilityReportingDateSource;
+  reportingDateConfidence: LiabilityReportingDateConfidence;
+} {
+  if (lastStatementIssueDate) {
+    if (dayDifference(asOfDate, lastStatementIssueDate) >= 0) {
+      return {
+        reportingDate: lastStatementIssueDate,
+        reportingDateConfidence: "high",
+        reportingDateSource: "actual_plaid_liability"
+      };
+    }
+
+    return {
+      reportingDate: nextCycleDate(lastStatementIssueDate, asOfDate),
+      reportingDateConfidence: "medium",
+      reportingDateSource: "inferred_from_statement_cycle"
+    };
+  }
+
+  if (nextPaymentDueDate) {
+    const estimatedReportingDate = addDays(nextPaymentDueDate, DEFAULT_BILLING_CYCLE_DAYS - DEFAULT_PAYMENT_GRACE_DAYS);
+    return {
+      reportingDate: nextCycleDate(estimatedReportingDate, asOfDate),
+      reportingDateConfidence: "low",
+      reportingDateSource: "estimated_from_due_date"
+    };
+  }
+
+  return {
+    reportingDate: null,
+    reportingDateConfidence: "unknown",
+    reportingDateSource: "unknown"
+  };
+}
+
 export function buildLiabilitiesDueSummary({
   accounts,
   asOfDate,
@@ -142,16 +205,16 @@ export function buildLiabilitiesDueSummary({
       const amountOwed = Math.max(0, Math.abs(account.balance));
       const lastPayment = findLastPayment(account.id, sortedTransactions);
       const actualDueDate = account.nextPaymentDueDate ?? null;
-      const fallbackDueDate = amountOwed > 0
-        ? lastPayment
-          ? addDays(lastPayment.date, DEFAULT_BILLING_CYCLE_DAYS)
-          : addDays(today, DEFAULT_BILLING_CYCLE_DAYS)
-        : null;
-      const estimatedDueDate = actualDueDate ?? fallbackDueDate;
+      const estimatedDueDate = actualDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
       const utilizationPercent = account.creditLimit && account.creditLimit > 0
         ? Math.round((amountOwed / account.creditLimit) * 1000) / 10
         : null;
+      const reportingDate = reportingDateMetadata({
+        asOfDate: today,
+        lastStatementIssueDate: account.lastStatementIssueDate,
+        nextPaymentDueDate: actualDueDate
+      });
 
       const row = {
         accountId: account.id,
@@ -168,6 +231,9 @@ export function buildLiabilitiesDueSummary({
         dueDateIsActual: Boolean(actualDueDate),
         mask: account.mask,
         name: account.name,
+        reportingDate: reportingDate.reportingDate,
+        reportingDateConfidence: reportingDate.reportingDateConfidence,
+        reportingDateSource: reportingDate.reportingDateSource,
         status: statusForDays(daysUntilDue, amountOwed),
         utilizationPercent
       };
