@@ -149,6 +149,7 @@ const transactionCsvColumns: TransactionCsvColumn[] = [
   { header: "review_reason", value: reviewReasons },
   { header: "review_notes", value: reviewNotes },
   { header: "reviewed_at", value: (transaction) => transaction.reviewedAt },
+  { header: "reimbursement_count", value: (_transaction, reimbursement) => reimbursement?.count },
   { header: "reimbursement_status", value: (_transaction, reimbursement) => reimbursement?.statuses },
   { header: "reimbursement_counterparty", value: (_transaction, reimbursement) => reimbursement?.counterparties },
   { header: "reimbursement_expected_amount", value: (_transaction, reimbursement) => reimbursement?.expectedAmount },

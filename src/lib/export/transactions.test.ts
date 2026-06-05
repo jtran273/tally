@@ -90,6 +90,7 @@ test("buildTransactionsCsv exports review, reimbursement, raw Plaid, and safe me
   assert.match(transactionCsvFixture, /'=SUM\(A1:A2\)/);
   assert.match(transactionCsvFixture, /Food \/ Restaurants,Restaurants/);
   assert.match(transactionCsvFixture, /open,low-confidence/);
+  assert.match(transactionCsvFixture, /reviewed_at,reimbursement_count,reimbursement_status/);
   assert.match(transactionCsvFixture, /requested,Ada,64\.50,0/);
   assert.match(transactionCsvFixture, /RAW MERCHANT,SQ \*RAW PLAID NAME/);
   assert.doesNotMatch(transactionCsvFixture, /plaid_transaction_id/);
@@ -109,6 +110,37 @@ test("buildTransactionsCsv neutralizes formula-like values hidden behind whitesp
   assert.match(csv, /"' =IMPORTXML\(""https:\/\/example\.test"", ""\/\/title""\)"/);
   assert.match(csv, /"'\n=HYPERLINK\(""https:\/\/example\.test""\)"/);
   assert.match(csv, /"'\t@external-reference"/);
+});
+
+test("buildTransactionsCsv exports reimbursement count alongside summary fields", () => {
+  const csv = buildTransactionsCsv(
+    [
+      transaction({
+        id: "tx-multiple-reimbursements",
+        merchant: "Split dinner"
+      })
+    ],
+    new Map([
+      [
+        "tx-multiple-reimbursements",
+        {
+          count: 2,
+          counterparties: "Ada; Grace",
+          dueDates: "2026-05-20",
+          expectedAmount: 96.75,
+          notes: "Requested after dinner | Confirmed in chat",
+          receivedAmount: 32.25,
+          receivedDates: "2026-05-21",
+          statuses: "requested; received"
+        }
+      ]
+    ])
+  );
+
+  assert.match(
+    csv,
+    /2,requested; received,Ada; Grace,96\.75,32\.25,2026-05-20,2026-05-21,Requested after dinner \| Confirmed in chat/
+  );
 });
 
 function assertTransactionCsvFixture(csv: string): true {
