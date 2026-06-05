@@ -10,6 +10,8 @@ function account(input: {
   type: AccountRecord["type"];
   balance: number;
   creditLimit?: number | null;
+  lastStatementIssueDate?: string | null;
+  lastStatementBalance?: number | null;
   minimumPaymentAmount?: number | null;
   nextPaymentDueDate?: string | null;
 }): AccountRecord {
@@ -24,6 +26,8 @@ function account(input: {
     institutionName: "Seed Bank",
     isActive: true,
     lastSyncedAt: null,
+    lastStatementBalance: input.lastStatementBalance ?? null,
+    lastStatementIssueDate: input.lastStatementIssueDate ?? null,
     minimumPaymentAmount: input.minimumPaymentAmount ?? null,
     mask: "1234",
     name: `${input.type === "credit" ? "Card" : "Checking"} ${input.id}`,
@@ -153,4 +157,101 @@ test("buildLiabilitiesDueSummary returns empty when no credit accounts", () => {
   assert.equal(summary.rows.length, 0);
   assert.equal(summary.totalOwed, 0);
   assert.equal(summary.coverageDelta, 100);
+});
+
+test("buildLiabilitiesDueSummary marks current Plaid statement dates as actual reporting dates", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-actual",
+        type: "credit",
+        balance: 450,
+        creditLimit: 2000,
+        lastStatementIssueDate: "2026-05-11",
+        lastStatementBalance: 430,
+        nextPaymentDueDate: "2026-06-05"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.reportingDate, "2026-05-11");
+  assert.equal(row?.reportingDateSource, "actual_plaid_liability");
+  assert.equal(row?.reportingDateConfidence, "high");
+  assert.equal(row?.lastStatementBalance, 430);
+  assert.equal(row?.dueDateIsActual, true);
+});
+
+test("buildLiabilitiesDueSummary infers the next reporting date from a prior statement cycle", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-cycle",
+        type: "credit",
+        balance: 900,
+        creditLimit: 3000,
+        lastStatementIssueDate: "2026-04-15",
+        nextPaymentDueDate: "2026-05-10"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.reportingDate, "2026-05-15");
+  assert.equal(row?.reportingDateSource, "inferred_from_statement_cycle");
+  assert.equal(row?.reportingDateConfidence, "medium");
+  assert.equal(row?.status, "overdue", "due-date safety should still use the actual due date");
+});
+
+test("buildLiabilitiesDueSummary falls back to a weaker reporting estimate from the due date", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-due-date",
+        type: "credit",
+        balance: 300,
+        creditLimit: 1200,
+        nextPaymentDueDate: "2026-05-26"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.estimatedDueDate, "2026-05-26");
+  assert.equal(row?.reportingDate, "2026-05-31");
+  assert.equal(row?.reportingDateSource, "estimated_from_due_date");
+  assert.equal(row?.reportingDateConfidence, "low");
+});
+
+test("buildLiabilitiesDueSummary keeps due-date fallback when Plaid liabilities are unavailable", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-unknown",
+        type: "credit",
+        balance: 200,
+        creditLimit: 1000
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: [transaction({ id: "payment", accountId: "card-unknown", amount: 25, date: "2026-05-01" })]
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.estimatedDueDate, "2026-05-31");
+  assert.equal(row?.dueDateIsActual, false);
+  assert.equal(row?.reportingDate, null);
+  assert.equal(row?.reportingDateSource, "unknown");
+  assert.equal(row?.reportingDateConfidence, "unknown");
+  assert.equal(row?.status, "current");
 });

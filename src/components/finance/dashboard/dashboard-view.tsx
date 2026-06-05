@@ -428,6 +428,24 @@ function cardDueDetail(row: LiabilityAccountSummary) {
   return `${source}: ${formatDate(row.estimatedDueDate)}.`;
 }
 
+function cardReportingDateDetail(row: LiabilityAccountSummary) {
+  if (row.amountOwed <= 0) return "Reporting timing is not needed while this card is paid.";
+
+  if (!row.reportingDate) {
+    return "Reporting date unknown; payment due-date safety still applies.";
+  }
+
+  if (row.reportingDateSource === "actual_plaid_liability") {
+    return `Statement date from Plaid: ${formatDate(row.reportingDate)}.`;
+  }
+
+  if (row.reportingDateSource === "inferred_from_statement_cycle") {
+    return `Est. next statement date: ${formatDate(row.reportingDate)} from Plaid statement cycle.`;
+  }
+
+  return `Est. reporting date: ${formatDate(row.reportingDate)} from due date.`;
+}
+
 function cardUtilizationDetail(row: LiabilityAccountSummary) {
   if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
     return "Credit limit is not reported, so utilization is not ranked for this card.";
@@ -1993,6 +2011,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
                   {index === 0 ? "Best action: " : ""}{cardPrimaryAction(row, summary)}
                 </strong>
                 <span>{cardDueDetail(row)}</span>
+                <span>{cardReportingDateDetail(row)}</span>
                 <span>{cardUtilizationDetail(row)}</span>
               </div>
 
