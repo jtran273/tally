@@ -134,6 +134,39 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected gross spending reports to ignore confirmed reimbursement receipts.");
   }
 
+  const pendingDinnerReimbursement = transaction({
+    amount: -100,
+    category: "Food",
+    categoryId: "category-food",
+    date: "2026-05-04",
+    id: "tx-dinner-pending",
+    merchant: "Group dinner",
+    reimbursements: [reimbursement({
+      expectedAmount: 70,
+      receivedAmount: 0,
+      receivedTransactionId: null,
+      status: "expected",
+      transactionId: "tx-dinner-pending"
+    })]
+  });
+  const unmatchedReimbursementInflow = transaction({
+    amount: 70,
+    category: "Uncategorized",
+    categoryId: null,
+    date: "2026-05-05",
+    id: "tx-unmatched-reimbursement-inflow",
+    intent: "reimbursable",
+    merchant: "Venmo - Chris"
+  });
+
+  if (transactionSpendingAmount(pendingDinnerReimbursement) !== 100) {
+    throw new Error("Expected unlinked expected reimbursements to leave net spending unchanged.");
+  }
+
+  if (transactionSpendingAmount(unmatchedReimbursementInflow) !== 0) {
+    throw new Error("Expected unmatched reimbursement income not to count as spending.");
+  }
+
   const summary = buildSpendingInsightSummary([
     transaction({
       amount: -400,

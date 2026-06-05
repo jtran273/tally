@@ -8,10 +8,14 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
-import type { AgentInboxProposal, AgentInboxSummary } from "@/lib/agents/proposal-inbox";
+import type {
+  AgentInboxProposal,
+  AgentInboxSummary,
+  ReviewAgentInboxProposal
+} from "@/lib/agents/proposal-inbox";
 import type { TransactionIntent } from "@/lib/db";
 import { getReviewReasonCopy } from "@/lib/review/reasons";
-import { AgentInboxActions } from "./agent-inbox-actions";
+import { AgentInboxActions, ReimbursementMatchActions } from "./agent-inbox-actions";
 import styles from "./agent-inbox.module.css";
 
 interface AgentInboxViewProps {
@@ -81,7 +85,7 @@ function SummaryTile({
   );
 }
 
-function RecommendationList({ proposal }: { proposal: AgentInboxProposal }) {
+function RecommendationList({ proposal }: { proposal: ReviewAgentInboxProposal }) {
   const rows = [
     proposal.recommendation.merchantName
       ? ["Merchant", proposal.merchant, proposal.recommendation.merchantName]
@@ -118,7 +122,7 @@ function RecommendationList({ proposal }: { proposal: AgentInboxProposal }) {
   );
 }
 
-function SafeContext({ proposal }: { proposal: AgentInboxProposal }) {
+function SafeContext({ proposal }: { proposal: ReviewAgentInboxProposal }) {
   return (
     <dl className={styles.contextGrid}>
       <div>
@@ -142,6 +146,10 @@ function SafeContext({ proposal }: { proposal: AgentInboxProposal }) {
 }
 
 function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentInboxProposal }) {
+  if (proposal.action === "reimbursement-match") {
+    return <ReimbursementMatchCard isDemo={isDemo} proposal={proposal} />;
+  }
+
   const reasonCopy = getReviewReasonCopy(proposal.reason);
   const acceptReady = proposal.status === "accept-ready";
 
@@ -186,6 +194,75 @@ function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentIn
 
       <div className={styles.auditLinkRow}>
         <Link href={`/audit?q=${encodeURIComponent(proposal.transactionId)}`}>
+          Advanced: audit trail
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function ReimbursementMatchCard({
+  isDemo,
+  proposal
+}: {
+  isDemo: boolean;
+  proposal: Extract<AgentInboxProposal, { action: "reimbursement-match" }>;
+}) {
+  return (
+    <article className={styles.proposalCard}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.metaLine}>
+            <span className={styles.readyBadge}>Match suggestion</span>
+            <span>{formatDate(proposal.inflow.date)}</span>
+            <span>{proposal.reimbursement.counterparty ?? "Unknown counterparty"}</span>
+          </div>
+          <h2>{proposal.inflow.merchant}</h2>
+          <p>{proposal.recommendation.rationale}</p>
+        </div>
+        <div className={styles.amountBlock}>
+          <strong>{formatMoney(proposal.matchAmount)}</strong>
+          <span>{formatConfidence(proposal.confidence)} confidence</span>
+        </div>
+      </div>
+
+      <div className={styles.changeTable}>
+        <div className={styles.changeRow}>
+          <span>Inflow</span>
+          <div>{proposal.inflow.merchant}</div>
+          <ArrowRight size={13} aria-hidden />
+          <strong>{formatMoney(proposal.inflow.amount)}</strong>
+        </div>
+        <div className={styles.changeRow}>
+          <span>Expense</span>
+          <div>{proposal.expense.merchant}</div>
+          <ArrowRight size={13} aria-hidden />
+          <strong>{formatMoney(proposal.expense.amount)}</strong>
+        </div>
+        <div className={styles.changeRow}>
+          <span>Reimbursement</span>
+          <div>{formatMoney(proposal.reimbursement.expectedAmount)} expected</div>
+          <ArrowRight size={13} aria-hidden />
+          <strong>{proposal.unmatchedAmount > 0 ? `${formatMoney(proposal.unmatchedAmount)} remains` : "Fully matched"}</strong>
+        </div>
+      </div>
+
+      {proposal.recommendation.signals.length > 0 ? (
+        <div className={styles.signalRow}>
+          {proposal.recommendation.signals.map((signal) => (
+            <span key={signal}>{signal}</span>
+          ))}
+        </div>
+      ) : null}
+
+      <ReimbursementMatchActions
+        isDemo={isDemo}
+        proposalId={proposal.proposalId}
+        transactionId={proposal.inflow.id}
+      />
+
+      <div className={styles.auditLinkRow}>
+        <Link href={`/audit?q=${encodeURIComponent(proposal.proposalId)}`}>
           Advanced: audit trail
         </Link>
       </div>

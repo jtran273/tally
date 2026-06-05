@@ -11,6 +11,10 @@ import {
   type FinanceSupabaseClient,
   type TransactionListFilters
 } from "@/lib/db/queries";
+import {
+  createReimbursementMatchProposals,
+  type PersistReimbursementMatchProposalInput
+} from "@/lib/agents/reimbursement-match-proposals";
 import { createDetectedReimbursementCandidateProposals } from "@/lib/review/reimbursement-candidates";
 import type { PersistReimbursementCandidateInput } from "@/lib/review/reimbursement-candidates";
 import { logSafeError } from "@/lib/security/logging";
@@ -40,6 +44,7 @@ type ProactiveScanSuggestionService = Pick<TransactionSuggestionService, "sugges
 
 export interface ProactiveScanDependencies {
   createDetectedReimbursementCandidateProposals?: typeof createDetectedReimbursementCandidateProposals;
+  createReimbursementMatchProposals?: typeof createReimbursementMatchProposals;
   createSuggestionService?: () => ProactiveScanSuggestionService;
   listAgentProposals?: (
     client: FinanceSupabaseClient,
@@ -198,6 +203,7 @@ export async function runProactiveReimbursementScan(
   const loadProposals = dependencies.listAgentProposals ?? listAgentProposals;
   const createProposals = dependencies.createDetectedReimbursementCandidateProposals ??
     createDetectedReimbursementCandidateProposals;
+  const createMatchProposals = dependencies.createReimbursementMatchProposals ?? createReimbursementMatchProposals;
   const audit = dependencies.recordAuditEvent ?? recordAuditEvent;
   const logger = dependencies.logger ?? { error: logSafeError };
   const suggestionService = dependencies.createSuggestionService?.() ?? createProactiveScanSuggestionService();
@@ -224,14 +230,24 @@ export async function runProactiveReimbursementScan(
 
   let created: AgentProposalRecord[];
   try {
-    created = await createProposals(client, userId, {
-      existingProposals,
-      inflows,
-      maxCandidates: maxTransactions,
-      now,
-      suggestionService,
-      transactions
-    } satisfies PersistReimbursementCandidateInput);
+    const [candidateProposals, matchProposals] = await Promise.all([
+      createProposals(client, userId, {
+        existingProposals,
+        inflows,
+        maxCandidates: maxTransactions,
+        now,
+        suggestionService,
+        transactions
+      } satisfies PersistReimbursementCandidateInput),
+      createMatchProposals(client, userId, {
+        existingProposals,
+        inflows,
+        maxProposals: maxTransactions,
+        now,
+        transactions
+      } satisfies PersistReimbursementMatchProposalInput)
+    ]);
+    created = [...candidateProposals, ...matchProposals];
   } catch (error) {
     logger.error("proactive_reimbursement_scan_failed", error);
     return {
