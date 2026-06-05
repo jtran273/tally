@@ -14,7 +14,13 @@ import type {
 } from "@/lib/finance/balances";
 import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
-import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import {
+  reportedBalanceActionReason,
+  type LiabilitiesDueSummary,
+  type LiabilityAccountSummary,
+  type LiabilityTargetPaymentAction,
+  type LiabilityUtilizationTarget
+} from "@/lib/finance/liabilities";
 import {
   excludeMatchedRefundReversalTransactions,
   filterReportableInflowTransactions
@@ -389,6 +395,26 @@ function cardRecommendedPayment(row: LiabilityAccountSummary, summary: Liabiliti
   return minimumPayment;
 }
 
+function cardTargetPaymentAction(
+  row: LiabilityAccountSummary,
+  summary: LiabilitiesDueSummary,
+  target: LiabilityUtilizationTarget = 30
+) {
+  return summary.targetPaymentPlans
+    .find((plan) => plan.targetUtilizationPercent === target)
+    ?.actions.find((action) => action.accountId === row.accountId) ?? null;
+}
+
+function cardTargetCashCopy(action: LiabilityTargetPaymentAction) {
+  if (action.cashShortfall <= 0) {
+    return "Available cash covers this target.";
+  }
+  if (action.recommendedPayment > 0) {
+    return `${formatMoney(action.recommendedPayment)} fits above the cash buffer; ${formatMoney(action.cashShortfall)} more would reach the target.`;
+  }
+  return "Cash buffer leaves no room for this target right now.";
+}
+
 function cardPrimaryAction(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
   if (row.amountOwed <= 0) return "No payment action needed right now.";
 
@@ -409,10 +435,12 @@ function cardPrimaryAction(row: LiabilityAccountSummary, summary: LiabilitiesDue
     return `Pay ${paymentCopy}${dueCopy}. ${coverageCopy}`.trim();
   }
 
+  const targetAction = cardTargetPaymentAction(row, summary, 30);
+  if (targetAction) {
+    return `Pay about ${formatMoney(targetAction.amountToTarget)} by ${formatDate(targetAction.payByDate)} to move the likely reported balance under ${targetAction.targetUtilizationPercent}%. ${cardTargetCashCopy(targetAction)}`;
+  }
+
   if (row.utilizationPercent !== null && row.creditLimit && row.creditLimit > 0) {
-    if (row.utilizationPercent >= 30 && payment > 0) {
-      return `Pay about ${paymentCopy} to move this card under 30% utilization. ${coverageCopy}`.trim();
-    }
     if (summary.coverageDelta >= 0) {
       return `Cash can clear this card; pay ${paymentCopy} if you want the balance gone.`;
     }
@@ -446,19 +474,23 @@ function cardReportingDateDetail(row: LiabilityAccountSummary) {
   return `Estimated statement timing from due date: ${formatDate(row.reportingDate)}.`;
 }
 
-function cardUtilizationDetail(row: LiabilityAccountSummary) {
+function cardUtilizationDetail(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
   if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
     return "Credit limit is not reported, so utilization is not ranked for this card.";
   }
 
   const utilization = `${row.utilizationPercent.toFixed(1)}% of ${formatMoney(row.creditLimit)}`;
   if (row.utilizationPercent >= 30) {
-    const payment = Math.min(row.amountOwed, Math.max(cardMinimumPaymentAmount(row), row.amountOwed - row.creditLimit * 0.3));
-    return `${utilization} limit. About ${formatMoney(payment)} would move it under 30%.`;
+    const action = cardTargetPaymentAction(row, summary, 30);
+    return action
+      ? `${utilization} limit. ${reportedBalanceActionReason(action)} Target payment: ${formatMoney(action.amountToTarget)} by ${formatDate(action.payByDate)}.`
+      : `${utilization} limit. Reporting timing is not reliable enough for a precise target payment.`;
   }
   if (row.utilizationPercent >= 10) {
-    const payment = Math.min(row.amountOwed, Math.max(cardMinimumPaymentAmount(row), row.amountOwed - row.creditLimit * 0.1));
-    return `${utilization} limit. About ${formatMoney(payment)} would move it near 10%.`;
+    const action = cardTargetPaymentAction(row, summary, 10);
+    return action
+      ? `${utilization} limit. ${reportedBalanceActionReason(action)} Target payment: ${formatMoney(action.amountToTarget)} by ${formatDate(action.payByDate)}.`
+      : `${utilization} limit. Reporting timing is not reliable enough for a precise target payment.`;
   }
   return `${utilization} limit.`;
 }
@@ -1957,6 +1989,15 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
   const coverageCopy = summary.coverageDelta < 0
     ? `Cash is short by ${formatMoney(Math.abs(summary.coverageDelta))} if you paid every card today.`
     : `Cash covers card balances with ${formatMoney(summary.coverageDelta)} left.`;
+  const utilizationCopy = summary.aggregateUtilizationPercent === null || summary.highestIndividualUtilizationPercent === null
+    ? "Utilization needs reported credit limits."
+    : `Aggregate utilization ${summary.aggregateUtilizationPercent.toFixed(1)}%; highest card ${summary.highestIndividualUtilizationPercent.toFixed(1)}%.`;
+  const target30ActionCount = summary.targetPaymentPlans
+    .find((plan) => plan.targetUtilizationPercent === 30)
+    ?.actions.length ?? 0;
+  const reportingCopy = target30ActionCount > 0
+    ? `${target30ActionCount} card${target30ActionCount === 1 ? "" : "s"} with estimated reported-balance targets.`
+    : "No precise reported-balance target is available right now.";
 
   return (
     <section aria-label="Credit card actions" className={styles.liabilityPanel}>
@@ -1980,7 +2021,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
 
       <div className={styles.cardActionSummary}>
         <ShieldCheck size={16} aria-hidden />
-        <span>{coverageCopy} Utilization uses current balance and reported limit only.</span>
+        <span>{coverageCopy} Due dates protect payment history; statement timing may help reported balances. {utilizationCopy} {reportingCopy}</span>
       </div>
 
       <div className={styles.cardActionGrid}>
@@ -2012,7 +2053,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
                 </strong>
                 <span>{cardDueDetail(row)}</span>
                 <span>{cardReportingDateDetail(row)}</span>
-                <span>{cardUtilizationDetail(row)}</span>
+                <span>{cardUtilizationDetail(row, summary)}</span>
               </div>
 
               <div className={styles.cardUtilizationLine}>

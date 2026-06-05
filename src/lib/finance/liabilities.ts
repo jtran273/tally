@@ -4,6 +4,8 @@ const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
 const DEFAULT_PAYMENT_GRACE_DAYS = 25;
 const DUE_SOON_DAYS = 7;
+const DEFAULT_PROCESSING_BUFFER_DAYS = 3;
+const UTILIZATION_TARGETS = [30, 10] as const;
 
 export type LiabilityTransactionInput = Pick<TransactionRecord, "accountId" | "amount" | "date" | "intent" | "merchant" | "plaidName">;
 
@@ -14,6 +16,35 @@ export type LiabilityReportingDateSource =
   | "estimated_from_due_date"
   | "unknown";
 export type LiabilityReportingDateConfidence = "high" | "medium" | "low" | "unknown";
+export type LiabilityUtilizationTarget = typeof UTILIZATION_TARGETS[number];
+
+export interface LiabilityTargetPaymentAction {
+  accountId: string;
+  amountOwed: number;
+  amountToTarget: number;
+  cashShortfall: number;
+  creditLimit: number;
+  currentUtilizationPercent: number;
+  dateConfidence: LiabilityReportingDateConfidence;
+  dateSource: LiabilityReportingDateSource;
+  payByDate: string;
+  projectedUtilizationPercent: number;
+  reason: "reported_balance_optimization";
+  recommendedPayment: number;
+  reportingDate: string;
+  targetUtilizationPercent: LiabilityUtilizationTarget;
+}
+
+export interface LiabilityTargetPaymentPlan {
+  actions: LiabilityTargetPaymentAction[];
+  aggregateUtilizationPercent: number | null;
+  allocatableCash: number;
+  cashAvailable: number;
+  cashBuffer: number;
+  highestIndividualUtilizationPercent: number | null;
+  remainingAllocatableCash: number;
+  targetUtilizationPercent: LiabilityUtilizationTarget;
+}
 
 export interface LiabilityAccountSummary {
   accountId: string;
@@ -45,9 +76,12 @@ export interface LiabilitiesDueSummary {
   rows: LiabilityAccountSummary[];
   totalOwed: number;
   cashAvailable: number;
+  aggregateUtilizationPercent: number | null;
   coverageDelta: number;
   hasOverdue: boolean;
   hasDueSoon: boolean;
+  highestIndividualUtilizationPercent: number | null;
+  targetPaymentPlans: LiabilityTargetPaymentPlan[];
 }
 
 function isCreditAccount(account: AccountRecord) {
@@ -95,6 +129,134 @@ function utilizationRank(utilizationPercent: number | null) {
   if (utilizationPercent >= 30) return 2;
   if (utilizationPercent >= 10) return 1;
   return 0;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function roundPercent(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function utilizationStats(rows: readonly LiabilityAccountSummary[]) {
+  const rowsWithLimits = rows.filter((row) => row.creditLimit !== null && row.creditLimit > 0);
+  if (rowsWithLimits.length === 0) {
+    return {
+      aggregateUtilizationPercent: null,
+      highestIndividualUtilizationPercent: null
+    };
+  }
+
+  const totalOwed = rowsWithLimits.reduce((sum, row) => sum + row.amountOwed, 0);
+  const totalLimit = rowsWithLimits.reduce((sum, row) => sum + (row.creditLimit ?? 0), 0);
+
+  return {
+    aggregateUtilizationPercent: totalLimit > 0 ? roundPercent((totalOwed / totalLimit) * 100) : null,
+    highestIndividualUtilizationPercent: Math.max(
+      ...rowsWithLimits.map((row) => row.utilizationPercent ?? 0)
+    )
+  };
+}
+
+function utilizationTargetBalance(creditLimit: number, utilizationTarget: LiabilityUtilizationTarget) {
+  return Math.max(0, roundMoney((creditLimit * utilizationTarget) / 100 - 0.01));
+}
+
+function projectedUtilizationPercent(amountOwed: number, payment: number, creditLimit: number) {
+  if (creditLimit <= 0) return 0;
+  return roundPercent((Math.max(0, amountOwed - payment) / creditLimit) * 100);
+}
+
+function paymentTargetSort(
+  a: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "reportingDate">,
+  b: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "reportingDate">
+) {
+  const utilizationDiff = b.currentUtilizationPercent - a.currentUtilizationPercent;
+  if (utilizationDiff !== 0) return utilizationDiff;
+  const dateDiff = a.reportingDate.localeCompare(b.reportingDate);
+  if (dateDiff !== 0) return dateDiff;
+  return b.amountToTarget - a.amountToTarget;
+}
+
+export function computeTargetPayments({
+  asOfDate,
+  cashAvailable,
+  cashBuffer = 0,
+  processingBufferDays = DEFAULT_PROCESSING_BUFFER_DAYS,
+  rows,
+  utilizationTarget
+}: {
+  asOfDate: string;
+  cashAvailable: number;
+  cashBuffer?: number;
+  processingBufferDays?: number;
+  rows: readonly LiabilityAccountSummary[];
+  utilizationTarget: LiabilityUtilizationTarget;
+}): LiabilityTargetPaymentPlan {
+  const stats = utilizationStats(rows);
+  const allocatableCash = roundMoney(Math.max(0, cashAvailable - Math.max(0, cashBuffer)));
+  let remainingAllocatableCash = allocatableCash;
+
+  const candidates = rows.flatMap((row): LiabilityTargetPaymentAction[] => {
+    if (row.amountOwed <= 0) return [];
+    if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) return [];
+    if (!row.reportingDate || row.reportingDateConfidence === "unknown") return [];
+
+    const targetBalance = utilizationTargetBalance(row.creditLimit, utilizationTarget);
+    const amountToTarget = roundMoney(Math.max(0, row.amountOwed - targetBalance));
+    if (amountToTarget <= 0) return [];
+
+    const rawPayByDate = addDays(row.reportingDate, -Math.max(0, processingBufferDays));
+    const payByDate = dayDifference(asOfDate, rawPayByDate) < 0 ? asOfDate : rawPayByDate;
+
+    return [{
+      accountId: row.accountId,
+      amountOwed: row.amountOwed,
+      amountToTarget,
+      cashShortfall: amountToTarget,
+      creditLimit: row.creditLimit,
+      currentUtilizationPercent: row.utilizationPercent,
+      dateConfidence: row.reportingDateConfidence,
+      dateSource: row.reportingDateSource,
+      payByDate,
+      projectedUtilizationPercent: projectedUtilizationPercent(row.amountOwed, amountToTarget, row.creditLimit),
+      reason: "reported_balance_optimization",
+      recommendedPayment: 0,
+      reportingDate: row.reportingDate,
+      targetUtilizationPercent: utilizationTarget
+    }];
+  }).sort(paymentTargetSort);
+
+  const actions = candidates.map((candidate) => {
+    const recommendedPayment = roundMoney(Math.min(candidate.amountToTarget, remainingAllocatableCash));
+    remainingAllocatableCash = roundMoney(Math.max(0, remainingAllocatableCash - recommendedPayment));
+    return {
+      ...candidate,
+      cashShortfall: roundMoney(Math.max(0, candidate.amountToTarget - recommendedPayment)),
+      recommendedPayment
+    };
+  });
+
+  return {
+    actions,
+    aggregateUtilizationPercent: stats.aggregateUtilizationPercent,
+    allocatableCash,
+    cashAvailable,
+    cashBuffer: Math.max(0, cashBuffer),
+    highestIndividualUtilizationPercent: stats.highestIndividualUtilizationPercent,
+    remainingAllocatableCash,
+    targetUtilizationPercent: utilizationTarget
+  };
+}
+
+export function reportedBalanceActionReason(action: Pick<LiabilityTargetPaymentAction, "dateConfidence" | "targetUtilizationPercent">) {
+  const timing = action.dateConfidence === "high"
+    ? "current Plaid statement timing"
+    : action.dateConfidence === "medium"
+      ? "estimated statement timing"
+      : "lower-confidence estimated timing";
+  return `May help lower the likely reported balance below ${action.targetUtilizationPercent}% using ${timing}; no score outcome is promised.`;
 }
 
 function minimumPaymentDue(row: Pick<LiabilityAccountSummary, "amountOwed" | "minimumPaymentAmount">) {
@@ -188,11 +350,13 @@ function reportingDateMetadata({
 export function buildLiabilitiesDueSummary({
   accounts,
   asOfDate,
+  cashBuffer,
   cashAvailable,
   transactions
 }: {
   accounts: readonly AccountRecord[];
   asOfDate?: string;
+  cashBuffer?: number;
   cashAvailable: number;
   transactions: readonly LiabilityTransactionInput[];
 }): LiabilitiesDueSummary {
@@ -208,7 +372,7 @@ export function buildLiabilitiesDueSummary({
       const estimatedDueDate = actualDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
       const utilizationPercent = account.creditLimit && account.creditLimit > 0
-        ? Math.round((amountOwed / account.creditLimit) * 1000) / 10
+        ? roundPercent((amountOwed / account.creditLimit) * 100)
         : null;
       const reportingDate = reportingDateMetadata({
         asOfDate: today,
@@ -252,16 +416,29 @@ export function buildLiabilitiesDueSummary({
       return b.amountOwed - a.amountOwed;
     });
 
-  const totalOwed = Math.round(rows.reduce((sum, row) => sum + row.amountOwed, 0) * 100) / 100;
-  const coverageDelta = Math.round((cashAvailable - totalOwed) * 100) / 100;
+  const totalOwed = roundMoney(rows.reduce((sum, row) => sum + row.amountOwed, 0));
+  const coverageDelta = roundMoney(cashAvailable - totalOwed);
+  const stats = utilizationStats(rows);
+  const targetPaymentPlans = UTILIZATION_TARGETS.map((target) =>
+    computeTargetPayments({
+      asOfDate: today,
+      cashAvailable,
+      cashBuffer,
+      rows,
+      utilizationTarget: target
+    })
+  );
 
   return {
+    aggregateUtilizationPercent: stats.aggregateUtilizationPercent,
     asOfDate: today,
     cashAvailable,
     coverageDelta,
     hasDueSoon: rows.some((row) => row.status === "due-soon"),
     hasOverdue: rows.some((row) => row.status === "overdue"),
+    highestIndividualUtilizationPercent: stats.highestIndividualUtilizationPercent,
     rows,
+    targetPaymentPlans,
     totalOwed
   };
 }

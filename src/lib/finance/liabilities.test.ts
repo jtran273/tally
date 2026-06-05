@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountRecord, TransactionRecord } from "@/lib/db";
-import { buildLiabilitiesDueSummary } from "./liabilities";
+import { buildLiabilitiesDueSummary, computeTargetPayments, reportedBalanceActionReason } from "./liabilities";
 
 const userId = "user-1";
 
@@ -327,4 +327,148 @@ test("buildLiabilitiesDueSummary leaves due dates unknown when Plaid liabilities
   assert.equal(row?.reportingDateSource, "unknown");
   assert.equal(row?.reportingDateConfidence, "unknown");
   assert.equal(row?.status, "current");
+});
+
+test("computeTargetPayments flags high card utilization even when aggregate utilization is low", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "high-card",
+        type: "credit",
+        balance: 900,
+        creditLimit: 1000,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      }),
+      account({
+        id: "low-card",
+        type: "credit",
+        balance: 100,
+        creditLimit: 9000,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const target30 = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 30);
+  const target10 = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 10);
+
+  assert.equal(summary.aggregateUtilizationPercent, 10);
+  assert.equal(summary.highestIndividualUtilizationPercent, 90);
+  assert.equal(target30?.actions[0]?.accountId, "high-card");
+  assert.equal(target30?.actions[0]?.amountToTarget, 600.01);
+  assert.equal(target30?.actions[0]?.projectedUtilizationPercent, 30);
+  assert.equal(target10?.actions[0]?.amountToTarget, 800.01);
+});
+
+test("computeTargetPayments skips cards without reliable credit limits or reporting dates", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "missing-limit",
+        type: "credit",
+        balance: 800,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      }),
+      account({
+        id: "missing-date",
+        type: "credit",
+        balance: 900,
+        creditLimit: 1000
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const target30 = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 30);
+  assert.equal(target30?.actions.length, 0);
+  assert.equal(summary.aggregateUtilizationPercent, 90);
+  assert.equal(summary.highestIndividualUtilizationPercent, 90);
+});
+
+test("computeTargetPayments respects available cash after a cash buffer", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "first-card",
+        type: "credit",
+        balance: 900,
+        creditLimit: 1000,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      }),
+      account({
+        id: "second-card",
+        type: "credit",
+        balance: 700,
+        creditLimit: 1000,
+        lastStatementIssueDate: "2026-05-07",
+        nextPaymentDueDate: "2026-06-03"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 500,
+    cashBuffer: 100,
+    transactions: []
+  });
+
+  const target30 = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 30);
+  assert.equal(target30?.allocatableCash, 400);
+  assert.equal(target30?.actions[0]?.accountId, "first-card");
+  assert.equal(target30?.actions[0]?.amountToTarget, 600.01);
+  assert.equal(target30?.actions[0]?.recommendedPayment, 400);
+  assert.equal(target30?.actions[0]?.cashShortfall, 200.01);
+  assert.equal(target30?.actions[1]?.recommendedPayment, 0);
+});
+
+test("computeTargetPayments derives conservative pay-by dates from reporting timing", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "statement-card",
+        type: "credit",
+        balance: 900,
+        creditLimit: 1000,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+  const row = summary.rows[0];
+  assert.ok(row);
+
+  const plan = computeTargetPayments({
+    asOfDate: summary.asOfDate,
+    cashAvailable: summary.cashAvailable,
+    processingBufferDays: 3,
+    rows: [row],
+    utilizationTarget: 30
+  });
+
+  assert.equal(row.reportingDate, "2026-06-04");
+  assert.equal(plan.actions[0]?.payByDate, "2026-06-01");
+  assert.equal(plan.actions[0]?.dateSource, "inferred_from_statement_cycle");
+  assert.equal(plan.actions[0]?.dateConfidence, "medium");
+});
+
+test("reported balance optimizer copy stays conservative and avoids exact score promises", () => {
+  const copy = reportedBalanceActionReason({
+    dateConfidence: "medium",
+    targetUtilizationPercent: 30
+  });
+
+  assert.match(copy, /may help/i);
+  assert.match(copy, /likely reported balance/i);
+  assert.match(copy, /no score outcome is promised/i);
+  assert.doesNotMatch(copy, /guarantee|boost your score|raise your score|improve your score/i);
 });
