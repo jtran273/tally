@@ -5,6 +5,7 @@ const DEMO_COOKIE_NAME = "ledger_demo";
 const responsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
+  { path: "/credit-health", heading: "Credit health" },
   { path: "/agent-inbox", heading: "Agent inbox" },
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
@@ -295,6 +296,7 @@ test("app shell navigation and global search reach the primary workspace routes"
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   const routes = [
     { heading: "Transactions", label: "Transactions", path: "/transactions" },
+    { heading: "Credit health", label: "Credit health", path: "/credit-health" },
     { heading: "Review queue", label: "Review", path: "/review" },
     { heading: "Recurring", label: "Recurring", path: "/recurring" },
     { heading: "Accounts", label: "Accounts", path: "/accounts" },
