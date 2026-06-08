@@ -1,9 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertAssistantContextSafe } from "@/lib/agents";
+import { assertAssistantContextSafe, buildWeeklyPlanningContext } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
+import { buildUpcomingCalendarContext, type CalendarEventInput } from "@/lib/calendar";
 import type { OpenClawSignalsResponse } from "./types";
 import { buildOpenClawOutboxResponse } from "./outbox";
+import { buildOpenClawSignalsResponse } from "./signals";
+
+const OUTBOX_GENERATED_AT = "2026-05-13T12:00:00.000Z";
+
+function signalsWithCalendar(events: CalendarEventInput[]) {
+  const now = new Date(OUTBOX_GENERATED_AT);
+  return buildOpenClawSignalsResponse({
+    generatedAt: OUTBOX_GENERATED_AT,
+    calendarContext: buildUpcomingCalendarContext(events, { generatedAt: OUTBOX_GENERATED_AT, now }),
+    openClarificationProposals: [],
+    pendingProposals: [],
+    since: "2026-05-12T12:00:00.000Z",
+    weeklyPlanningContext: buildWeeklyPlanningContext({
+      generatedAt: OUTBOX_GENERATED_AT,
+      now,
+      transactions: []
+    })
+  });
+}
+
+function budgetBriefingBody(signals: OpenClawSignalsResponse) {
+  return buildOpenClawOutboxResponse(signals).messages.find((message) => message.kind === "budget_briefing")?.body ?? "";
+}
 
 test("OpenClaw outbox creates text-ready reimbursement and budget messages", () => {
   const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture);
@@ -135,4 +159,57 @@ test("OpenClaw outbox filters lifecycle hints out when min priority is high", ()
   });
 
   assert.equal(outbox.messages.find((message) => message.kind === "lifecycle_guidance"), undefined);
+});
+
+test("budget briefing folds calendar pressure into the forwarded body", () => {
+  const quiet = budgetBriefingBody(signalsWithCalendar([]));
+  assert.match(quiet, /Tally budget/);
+  assert.doesNotMatch(quiet, /calendar pressure/);
+
+  const busy = budgetBriefingBody(
+    signalsWithCalendar([
+      {
+        allDay: true,
+        end: "2026-05-17",
+        location: "SFO Airport",
+        start: "2026-05-16",
+        title: "Flight to Phoenix"
+      },
+      {
+        allDay: false,
+        end: "2026-05-17T18:00:00.000Z",
+        location: "Phoenix, AZ",
+        start: "2026-05-17T15:00:00.000Z",
+        title: "Hotel check-in"
+      }
+    ])
+  );
+
+  assert.match(busy, /Tally budget/);
+  assert.match(busy, /calendar pressure high \(.*ahead\)/);
+  assert.match(busy, /travel/);
+});
+
+test("budget briefing calendar phrase never leaks event details", () => {
+  const body = budgetBriefingBody(
+    signalsWithCalendar([
+      {
+        allDay: false,
+        end: "2026-05-15T03:00:00.000Z",
+        location: "123 Market St, San Francisco https://meet.google.com/abc-defg-hij",
+        start: "2026-05-15T01:00:00.000Z",
+        title: "Dinner with alex@example.com about secret-project-orion"
+      },
+      {
+        allDay: true,
+        end: "2026-05-17",
+        location: "SFO Airport",
+        start: "2026-05-16",
+        title: "Flight to Phoenix"
+      }
+    ])
+  );
+
+  assert.match(body, /calendar pressure/);
+  assert.doesNotMatch(body, /alex@example\.com|Market St|meet\.google\.com|secret-project-orion|Dinner with|Phoenix/);
 });

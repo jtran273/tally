@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertAssistantContextSafe } from "@/lib/agents";
+import { assertAssistantContextSafe, buildWeeklyPlanningContext } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
+import { buildUpcomingCalendarContext, type CalendarEventInput } from "@/lib/calendar";
 import type { ReviewQueueItem, TransactionRecord } from "@/lib/db";
 import {
   buildOpenClawRecentTransactionsResponse,
@@ -11,6 +12,25 @@ import {
   parseOpenClawLimit,
   parseSafeToSpendAmount
 } from "./finance-read-api";
+import { buildOpenClawSignalsResponse } from "./signals";
+
+const SIGNALS_GENERATED_AT = "2026-05-13T12:00:00.000Z";
+
+function signalsWithCalendar(events: CalendarEventInput[]) {
+  const now = new Date(SIGNALS_GENERATED_AT);
+  return buildOpenClawSignalsResponse({
+    generatedAt: SIGNALS_GENERATED_AT,
+    calendarContext: buildUpcomingCalendarContext(events, { generatedAt: SIGNALS_GENERATED_AT, now }),
+    openClarificationProposals: [],
+    pendingProposals: [],
+    since: "2026-05-12T12:00:00.000Z",
+    weeklyPlanningContext: buildWeeklyPlanningContext({
+      generatedAt: SIGNALS_GENERATED_AT,
+      now,
+      transactions: []
+    })
+  });
+}
 
 function transaction(input: Partial<TransactionRecord> = {}): TransactionRecord {
   return {
@@ -226,6 +246,63 @@ test("safe-to-spend response is bounded and explainable", () => {
   assert.equal(response.object, "ledger.openclaw.safe_to_spend");
   assert.equal(response.amount, 80);
   assert.match(response.rationale, /\$80/);
+  assertAssistantContextSafe(response);
+});
+
+test("safe-to-spend stays green with a clear calendar and softens under calendar pressure", () => {
+  const quiet = buildOpenClawSafeToSpendResponse(signalsWithCalendar([]), { amount: 200 });
+  assert.equal(quiet.status, "green");
+  assert.equal(quiet.summary.calendarPressure, "none");
+  assert.equal(quiet.summary.calendarPlannedSpendEvents, 0);
+  assert.doesNotMatch(quiet.rationale, /calendar/i);
+
+  const busy = buildOpenClawSafeToSpendResponse(
+    signalsWithCalendar([
+      {
+        allDay: true,
+        end: "2026-05-17",
+        location: "SFO Airport",
+        start: "2026-05-16",
+        title: "Flight to Phoenix"
+      },
+      {
+        allDay: false,
+        end: "2026-05-17T18:00:00.000Z",
+        location: "Phoenix, AZ",
+        start: "2026-05-17T15:00:00.000Z",
+        title: "Hotel check-in"
+      }
+    ]),
+    { amount: 200 }
+  );
+
+  // Same finance numbers, identical query amount — only the calendar changed.
+  assert.equal(busy.status, "yellow");
+  assert.equal(busy.summary.calendarPressure, "high");
+  assert.match(busy.rationale, /calendar may add planned spend/i);
+  assert.match(busy.rationale, /travel/);
+  assertAssistantContextSafe(busy);
+});
+
+test("safe-to-spend never exposes raw calendar event details", () => {
+  const response = buildOpenClawSafeToSpendResponse(
+    signalsWithCalendar([
+      {
+        allDay: false,
+        end: "2026-05-15T03:00:00.000Z",
+        location: "123 Market St, San Francisco https://meet.google.com/abc-defg-hij",
+        start: "2026-05-15T01:00:00.000Z",
+        title: "Dinner with alex@example.com about secret-project-orion"
+      }
+    ]),
+    { amount: 50 }
+  );
+  const serialized = JSON.stringify(response);
+
+  assert.doesNotMatch(serialized, /alex@example\.com/);
+  assert.doesNotMatch(serialized, /123 Market St|Market St/);
+  assert.doesNotMatch(serialized, /meet\.google\.com|https?:\/\//);
+  assert.doesNotMatch(serialized, /secret-project-orion|Dinner with/);
   assertAssistantContextSafe(response);
 });
 

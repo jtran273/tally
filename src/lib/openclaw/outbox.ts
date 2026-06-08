@@ -1,4 +1,5 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
+import { calendarPressureCategoryPhrase, summarizeCalendarPressure } from "@/lib/calendar";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
 import type { AccountLifecycleHint } from "@/lib/finance/account-lifecycle";
 import type { CreditOptimizationPacket } from "./credit-nudges";
@@ -99,6 +100,14 @@ function topCategoryText(signals: OpenClawSignalsResponse) {
   return `${category.label} ${money(category.amount)}`;
 }
 
+function calendarPressureText(signals: OpenClawSignalsResponse) {
+  const pressure = summarizeCalendarPressure(signals.calendarContext);
+  if (pressure.level !== "moderate" && pressure.level !== "high") return null;
+  const phrase = calendarPressureCategoryPhrase(pressure.topPlannedSpendCategories);
+  if (!phrase) return null;
+  return `calendar pressure ${pressure.level} (${phrase} ahead)`;
+}
+
 function budgetBriefingBody(signals: OpenClawSignalsResponse) {
   const context = signals.weeklyPlanningContext;
   const current = context.spending.currentWeek;
@@ -121,7 +130,8 @@ function budgetBriefingBody(signals: OpenClawSignalsResponse) {
     projectedCash,
     topCategory ? `top ${topCategory}` : null,
     reviewText,
-    reimbursementText
+    reimbursementText,
+    calendarPressureText(signals)
   ].filter((piece): piece is string => Boolean(piece));
 
   return compact(`${pieces.join("; ")}.`, MAX_MESSAGE_LENGTH);

@@ -10,7 +10,12 @@ import {
   type AgentProposalMutationInput,
   type FinanceSupabaseClient
 } from "@/lib/db/queries";
-import { emptyUpcomingCalendarContext, loadUpcomingCalendarContext, type UpcomingCalendarContext } from "@/lib/calendar";
+import {
+  calendarPressureLevel,
+  emptyUpcomingCalendarContext,
+  loadUpcomingCalendarContext,
+  type UpcomingCalendarContext
+} from "@/lib/calendar";
 import { openClawTransactionWindow } from "@/lib/openclaw/signals";
 import { assertAssistantContextSafe } from "./assistant-contract";
 import type { WeeklyPlanningContext } from "./weekly-planning-context";
@@ -206,14 +211,7 @@ function topReimbursementCandidates(proposals: readonly AgentProposalRecord[]) {
 function calendarPressure(calendar: UpcomingCalendarContext): OpenClawBriefingCalendarPressure {
   const busyDays = new Set(calendar.events.map((event) => event.start.slice(0, 10)));
   const eventCount = calendar.eventCount;
-  const travelPressure = (calendar.categories.travel ?? 0) + (calendar.categories.lodging ?? 0);
-  const level = eventCount === 0
-    ? "none"
-    : eventCount >= 8 || travelPressure >= 2
-      ? "high"
-      : eventCount >= 4 || travelPressure >= 1
-        ? "moderate"
-        : "light";
+  const level = calendarPressureLevel(calendar);
 
   return {
     busyDayCount: busyDays.size,

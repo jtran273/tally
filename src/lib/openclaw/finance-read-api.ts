@@ -1,4 +1,9 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
+import {
+  calendarPressureCategoryPhrase,
+  summarizeCalendarPressure,
+  type CalendarPressureLevel
+} from "@/lib/calendar";
 import type { ReviewQueueItem, TransactionRecord } from "@/lib/db";
 import { summarizeTransactionReimbursement } from "@/lib/finance/reimbursements";
 import type { OpenClawSignalsResponse } from "./types";
@@ -99,6 +104,8 @@ export interface OpenClawSafeToSpendResponse {
   status: "green" | "yellow" | "red";
   summary: {
     billsDue: number;
+    calendarPlannedSpendEvents: number;
+    calendarPressure: CalendarPressureLevel;
     openReviewCount: number;
     projectedCash: number | null;
     reimbursementOutstanding: number;
@@ -322,9 +329,12 @@ export function parseSafeToSpendAmount(value: string | number | null | undefined
   return roundMoney(parsed);
 }
 
+const CALENDAR_PRESSURE_AMOUNT_THRESHOLD = 150;
+
 function safeToSpendStatus(input: {
   amount: number;
   billsDue: number;
+  calendarPressure: CalendarPressureLevel;
   openReviewCount: number;
   projectedCash: number | null;
   reimbursementOutstanding: number;
@@ -335,21 +345,41 @@ function safeToSpendStatus(input: {
   if (input.amount > 250 && input.weekVsPrevious > 0) return "yellow";
   if (input.openReviewCount >= 10 || input.reimbursementOutstanding >= 100) return "yellow";
   if (input.billsDue >= 500 && input.projectedCash !== null && input.projectedCash < input.billsDue * 2) return "yellow";
+  // High upcoming calendar pressure softens an otherwise-green answer for a meaningful spend,
+  // because planned commitments (travel, dining, gifts) likely add spend the ledger has not seen yet.
+  // It never escalates to red: calendar inference must not block spending on its own.
+  if (input.calendarPressure === "high" && input.amount >= CALENDAR_PRESSURE_AMOUNT_THRESHOLD) return "yellow";
   return "green";
 }
 
-function safeToSpendRationale(status: OpenClawSafeToSpendResponse["status"], amount: number | null, summary: OpenClawSafeToSpendResponse["summary"]) {
+function safeToSpendRationale(
+  status: OpenClawSafeToSpendResponse["status"],
+  amount: number | null,
+  summary: OpenClawSafeToSpendResponse["summary"],
+  calendarClause: string | null
+) {
   const amountText = amount === null ? "new spending" : `$${Math.round(amount).toLocaleString("en-US")}`;
+  const withCalendar = (base: string) => (calendarClause ? `${base} ${calendarClause}` : base);
+
   if (status === "red") {
     return `${amountText} would push projected cash below zero after upcoming bills.`;
   }
   if (summary.openReviewCount > 0 || summary.reimbursementOutstanding > 0) {
-    return `${amountText} is possible, but open reviews or reimbursements make the current picture less clean.`;
+    return withCalendar(`${amountText} is possible, but open reviews or reimbursements make the current picture less clean.`);
   }
   if (status === "yellow") {
-    return `${amountText} is possible, but upcoming bills or this week's pace make it worth keeping tight.`;
+    return withCalendar(`${amountText} is possible, but upcoming bills or this week's pace make it worth keeping tight.`);
   }
-  return `${amountText} looks reasonable against projected cash, bills due, and this week's pace.`;
+  return withCalendar(`${amountText} looks reasonable against projected cash, bills due, and this week's pace.`);
+}
+
+function calendarRationaleClause(
+  pressure: ReturnType<typeof summarizeCalendarPressure>
+): string | null {
+  if (pressure.level !== "moderate" && pressure.level !== "high") return null;
+  const phrase = calendarPressureCategoryPhrase(pressure.topPlannedSpendCategories);
+  if (!phrase) return null;
+  return `Upcoming ${phrase} on your calendar may add planned spend, so keep a buffer.`;
 }
 
 export function buildOpenClawSafeToSpendResponse(
@@ -361,8 +391,11 @@ export function buildOpenClawSafeToSpendResponse(
   const current = context.spending.currentWeek;
   const previous = context.spending.previousWeek;
   const upcoming = context.cashflow.upcoming;
+  const calendarPressure = summarizeCalendarPressure(signals.calendarContext);
   const summary = {
     billsDue: upcoming.billTotal,
+    calendarPlannedSpendEvents: calendarPressure.plannedSpendEventCount,
+    calendarPressure: calendarPressure.level,
     openReviewCount: context.review.openCount,
     projectedCash: upcoming.projectedCashBalance,
     reimbursementOutstanding: current.reimbursementOutstanding,
@@ -379,7 +412,7 @@ export function buildOpenClawSafeToSpendResponse(
     amount,
     asOfDate: context.asOfDate,
     generatedAt: signals.generatedAt,
-    rationale: safeToSpendRationale(status, amount, summary),
+    rationale: safeToSpendRationale(status, amount, summary, calendarRationaleClause(calendarPressure)),
     status,
     summary,
     safety: openClawReadSafety()
