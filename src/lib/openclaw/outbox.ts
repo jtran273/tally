@@ -2,19 +2,25 @@ import { assertAssistantContextSafe } from "@/lib/agents";
 import { calendarPressureCategoryPhrase, summarizeCalendarPressure } from "@/lib/calendar";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
 import type { AccountLifecycleHint } from "@/lib/finance/account-lifecycle";
+import type { BudgetGuardrailItem, BudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
+import type { Json } from "@/lib/db";
 import type { CreditOptimizationPacket } from "./credit-nudges";
-import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
+import type { OpenClawProposalSignal, OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
 
 export type OpenClawOutboxMessageKind =
   | "budget_briefing"
+  | "budget_threshold"
   | "anomaly_alert"
   | "credit_optimization"
   | "lifecycle_guidance"
   | "reimbursement_alert"
   | "reimbursement_clarification"
+  | "reimbursement_detected"
   | "review_queue_alert";
 
 const LIFECYCLE_HINT_LIMIT = 1;
+const BUDGET_THRESHOLD_LIMIT = 2;
+const REIMBURSEMENT_DETECTED_LIMIT = 2;
 export type OpenClawOutboxMessagePriority = "normal" | "high";
 export type OpenClawOutboxMinimumPriority = OpenClawOutboxMessagePriority;
 
@@ -225,6 +231,87 @@ function lifecycleHintMessage(hint: AccountLifecycleHint, generatedAt: string): 
   };
 }
 
+function budgetThresholdDaysLeft(summary: BudgetGuardrailSummary) {
+  return Math.max(0, summary.monthTotalDays - summary.monthElapsedDays);
+}
+
+function budgetThresholdBody(item: BudgetGuardrailItem, summary: BudgetGuardrailSummary) {
+  const daysLeft = budgetThresholdDaysLeft(summary);
+  const daysText = daysLeft === 1 ? "1 day left" : `${daysLeft} days left`;
+  const lead = item.status === "over"
+    ? `You're over your ${item.label} budget`
+    : `You're ${Math.round(item.percentUsed)}% through your ${item.label} budget`;
+  return compact(
+    `Tally budget watch: ${lead} (${money(item.currentAmount)} of ${money(item.budgetAmount)}) with ${daysText} this month. Projected ${money(item.projectedAmount)}.`,
+    MAX_MESSAGE_LENGTH
+  );
+}
+
+function budgetThresholdMessages(summary: BudgetGuardrailSummary, generatedAt: string): OpenClawOutboxMessage[] {
+  return summary.items
+    .filter((item) => item.status === "over" || item.status === "near")
+    .slice(0, BUDGET_THRESHOLD_LIMIT)
+    .map((item) => ({
+      id: `openclaw-outbox:budget-threshold:${summary.asOfDate}:${item.id ?? item.label}`,
+      body: budgetThresholdBody(item, summary),
+      createdAt: generatedAt,
+      kind: "budget_threshold" as const,
+      priority: "high" as const,
+      replyAction: null,
+      target: "openclaw" as const
+    }));
+}
+
+function jsonObject(value: Json | undefined): Record<string, Json | undefined> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, Json | undefined>
+    : {};
+}
+
+function evidenceString(value: Json | undefined) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function evidenceNumber(value: Json | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function reimbursementDetectedMessages(
+  signals: OpenClawSignalsResponse,
+  calendarHint: string | null
+): OpenClawOutboxMessage[] {
+  const alreadyAsked = new Set(signals.openClarificationQuestions.map((question) => question.proposalId));
+  const detected = signals.pendingProposals.filter((proposal): proposal is OpenClawProposalSignal =>
+    proposal.proposalType === "reimbursement_candidate" &&
+    proposal.status === "pending" &&
+    !alreadyAsked.has(proposal.id)
+  );
+
+  return detected.slice(0, REIMBURSEMENT_DETECTED_LIMIT).map((proposal) => {
+    const transaction = jsonObject(jsonObject(proposal.evidence).transaction);
+    const merchant = evidenceString(transaction.merchant);
+    const amount = evidenceNumber(transaction.amount);
+    const amountText = amount === null ? "a recent charge" : money(amount);
+    const merchantText = merchant ? ` at ${merchant}` : "";
+    const hint = calendarHint ? ` ${calendarHint}` : "";
+    const prompt = `Mark ${amountText}${merchantText} as reimbursable?`;
+    return {
+      id: `openclaw-outbox:reimbursement-detected:${proposal.id}`,
+      body: compact(`Tally spotted a possible reimbursement: ${amountText}${merchantText} might be owed back. Want me to mark it? Reply yes/no or a name.${hint}`, MAX_MESSAGE_LENGTH),
+      createdAt: proposal.createdAt,
+      kind: "reimbursement_detected" as const,
+      priority: "high" as const,
+      replyAction: {
+        endpoint: "/api/openclaw/replies" as const,
+        method: "POST" as const,
+        proposalId: proposal.id,
+        prompt: compact(prompt, MAX_QUESTION_LENGTH)
+      },
+      target: "openclaw" as const
+    };
+  });
+}
+
 function anomalyAlertMessage(packet: OpenClawAnomalyPacket): OpenClawOutboxMessage {
   return {
     id: `openclaw-outbox:anomaly:${packet.id}`,
@@ -241,6 +328,7 @@ export function buildOpenClawOutboxResponse(
   signals: OpenClawSignalsResponse,
   options: {
     anomalyPackets?: readonly OpenClawAnomalyPacket[];
+    budgetGuardrails?: BudgetGuardrailSummary;
     creditOptimizationPackets?: readonly CreditOptimizationPacket[];
     lifecycleHints?: readonly AccountLifecycleHint[];
     includeBudgetBriefing?: boolean;
@@ -260,6 +348,8 @@ export function buildOpenClawOutboxResponse(
     ...(options.lifecycleHints ?? [])
       .slice(0, LIFECYCLE_HINT_LIMIT)
       .map((hint) => lifecycleHintMessage(hint, signals.generatedAt)),
+    ...(options.budgetGuardrails ? budgetThresholdMessages(options.budgetGuardrails, signals.generatedAt) : []),
+    ...reimbursementDetectedMessages(signals, calendarHint),
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt, calendarHint)),
     reimbursementAlert(signals),
     reviewQueueAlert(signals),
