@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AuthApiError } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
-import { isSessionBypassPath, updateSession } from "./middleware";
+import { isInvalidRefreshTokenAuthError, isSupabaseAuthCookieName } from "./auth-errors";
+import { buildLoggedOutRedirect, isSessionBypassPath, updateSession } from "./middleware";
 
 test("OpenClaw API routes bypass Supabase session redirects", () => {
   assert.equal(isSessionBypassPath("/api/openclaw/signals"), true);
@@ -47,4 +49,45 @@ test("ordinary app and API routes still require the normal session path", () => 
   assert.equal(isSessionBypassPath("/api/calendar/connections"), false);
   assert.equal(isSessionBypassPath("/api/agents/proactive-scanner"), false);
   assert.equal(isSessionBypassPath("/api/openclawish/signals"), false);
+});
+
+test("invalid Supabase refresh-token errors are recognized without treating all auth errors as stale sessions", () => {
+  assert.equal(
+    isInvalidRefreshTokenAuthError(
+      new AuthApiError("Invalid Refresh Token: Refresh Token Not Found", 400, "refresh_token_not_found")
+    ),
+    true
+  );
+  assert.equal(isInvalidRefreshTokenAuthError(new AuthApiError("User not found", 400, "user_not_found")), false);
+  assert.equal(isInvalidRefreshTokenAuthError(new Error("Invalid Refresh Token: Refresh Token Not Found")), false);
+});
+
+test("stale Supabase auth cookies are cleared when redirecting a logged-out session", () => {
+  const request = new NextRequest("http://localhost/dashboard", {
+    headers: {
+      cookie: [
+        "sb-project-auth-token=stale",
+        "sb-project-auth-token.0=stale",
+        "supabase-auth-token=stale",
+        "other=value"
+      ].join("; ")
+    }
+  });
+
+  const response = buildLoggedOutRedirect(request, { clearAuthCookies: true });
+  const setCookieHeaders = response.headers.getSetCookie();
+
+  assert.equal(response.status, 307);
+  assert.equal(response.headers.get("location"), "http://localhost/login?redirectedFrom=%2Fdashboard");
+  assert.equal(setCookieHeaders.some((header) => header.startsWith("sb-project-auth-token=")), true);
+  assert.equal(setCookieHeaders.some((header) => header.startsWith("sb-project-auth-token.0=")), true);
+  assert.equal(setCookieHeaders.some((header) => header.startsWith("supabase-auth-token=")), true);
+  assert.equal(setCookieHeaders.some((header) => header.startsWith("other=")), false);
+});
+
+test("Supabase auth cookie name matching stays scoped to auth-token cookies", () => {
+  assert.equal(isSupabaseAuthCookieName("sb-project-auth-token"), true);
+  assert.equal(isSupabaseAuthCookieName("sb-project-auth-token.0"), true);
+  assert.equal(isSupabaseAuthCookieName("supabase-auth-token"), true);
+  assert.equal(isSupabaseAuthCookieName("sb-project-preferences"), false);
 });
