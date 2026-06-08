@@ -11,6 +11,7 @@ import {
   listAnomalyAlerts,
   listAccounts,
   listReviewItems,
+  listTransactionAccounts,
   listTransactions,
   recordClarificationAnswer,
   replaceTransactionSplitsAndSyncReimbursements,
@@ -583,8 +584,45 @@ test("listAccounts includes errored items and excludes inactive, revoked, and ot
   assert.deepEqual(accounts.map((account) => account.id), ["account-checking", "account-error"]);
 });
 
-test("listTransactions excludes inactive and revoked account rows before applying limits", async () => {
+test("listTransactionAccounts includes preserved historical accounts", async () => {
   const client = new FakeFinanceClient();
+  client.institutions.push(fixtureInstitution());
+  client.plaidItems.push(
+    fixturePlaidItem(),
+    fixturePlaidItem({
+      id: "plaid-item-revoked",
+      plaid_item_id: "provider-item-revoked",
+      status: "revoked"
+    })
+  );
+  client.accounts.push(
+    fixtureAccount(),
+    {
+      ...fixtureAccount(),
+      id: "account-revoked",
+      name: "Old Checking",
+      plaid_account_id: "plaid-account-revoked",
+      plaid_item_id: "plaid-item-revoked"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-inactive",
+      is_active: false,
+      name: "Inactive Checking",
+      plaid_account_id: "plaid-account-inactive"
+    }
+  );
+
+  const accounts = await listTransactionAccounts(client.asClient(), userId);
+
+  assert.deepEqual(accounts.map((account) => account.id), [
+    "account-checking",
+    "account-inactive",
+    "account-revoked"
+  ]);
+});
+
+function seedDisconnectedHistoryRows(client: FakeFinanceClient) {
   seedTransactionRows(client);
   client.plaidItems.push(fixturePlaidItem({
     id: "plaid-item-revoked",
@@ -628,10 +666,27 @@ test("listTransactions excludes inactive and revoked account rows before applyin
       account_id: "account-inactive"
     }
   );
+}
+
+test("listTransactions excludes inactive and revoked accounts by default so analytics stay active-only", async () => {
+  const client = new FakeFinanceClient();
+  seedDisconnectedHistoryRows(client);
 
   const transactions = await listTransactions(client.asClient(), userId, { limit: 2 });
 
   assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
+});
+
+test("listTransactions includes inactive and revoked history when includeDisconnectedAccounts is set", async () => {
+  const client = new FakeFinanceClient();
+  seedDisconnectedHistoryRows(client);
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    limit: 2,
+    includeDisconnectedAccounts: true
+  });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-inactive", "tx-revoked"]);
 });
 
 test("listTransactions applies database limits before hydration for simple filters", async () => {

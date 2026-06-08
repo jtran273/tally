@@ -34,6 +34,11 @@ export interface RefundReversalCandidate {
   plaidName?: string | null;
 }
 
+export interface RefundReversalMatch<T extends RefundReversalCandidate> {
+  credit: T;
+  debit: T;
+}
+
 function roundCents(value: number) {
   return Math.round(value * 100);
 }
@@ -133,6 +138,29 @@ export function getMatchedRefundReversalTransactionIds<T extends RefundReversalC
   }
 
   return matchedIds;
+}
+
+export function findRefundReversalMatch<T extends RefundReversalCandidate>(
+  transactions: readonly T[],
+  target: T,
+  options: { windowDays?: number } = {}
+): RefundReversalMatch<T> | null {
+  const windowDays = options.windowDays ?? DEFAULT_REVERSAL_WINDOW_DAYS;
+  const targetDay = dayNumber(target.date);
+  const candidates = transactions
+    .filter((transaction) => transaction.id !== target.id)
+    .sort((left, right) =>
+      Math.abs((targetDay ?? 0) - (dayNumber(left.date) ?? 0)) -
+        Math.abs((targetDay ?? 0) - (dayNumber(right.date) ?? 0)) ||
+      left.date.localeCompare(right.date) ||
+      left.id.localeCompare(right.id)
+    );
+  const match = candidates.find((candidate) => canMatchRefundReversal(target, candidate, windowDays));
+  if (!match) return null;
+
+  return target.amount > 0
+    ? { credit: target, debit: match }
+    : { credit: match, debit: target };
 }
 
 export function excludeMatchedRefundReversalTransactions<T extends RefundReversalCandidate>(

@@ -13,6 +13,7 @@ import {
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { findRefundReversalMatch } from "@/lib/finance/refund-reversals";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -86,6 +87,25 @@ function reimbursementLinkOptions(transactions: TransactionRecord[], currentTran
   };
 }
 
+interface RefundReversalLinkOption {
+  matchedTransaction: Pick<TransactionRecord, "amount" | "date" | "id" | "merchant">;
+}
+
+function refundReversalLinkOption(transactions: TransactionRecord[], currentTransaction: TransactionRecord): RefundReversalLinkOption | null {
+  const match = findRefundReversalMatch(transactions, currentTransaction);
+  if (!match) return null;
+
+  const matchedTransaction = currentTransaction.amount > 0 ? match.debit : match.credit;
+  return {
+    matchedTransaction: {
+      amount: matchedTransaction.amount,
+      date: matchedTransaction.date,
+      id: matchedTransaction.id,
+      merchant: matchedTransaction.merchant
+    }
+  };
+}
+
 export default async function TransactionEditPage({ params, searchParams }: TransactionEditPageProps) {
   const { transactionId } = await params;
   const returnQuery = sanitizeReturnQuery((searchParams ? await searchParams : {}).return);
@@ -96,6 +116,7 @@ export default async function TransactionEditPage({ params, searchParams }: Tran
   let transaction: TransactionRecord | null = null;
   let reimbursementOptions: ReimbursementLinkOption[] = [];
   let linkedReceivedReimbursements: ReimbursementLinkOption[] = [];
+  let refundReversalOption: RefundReversalLinkOption | null = null;
   let isDemo = false;
 
   const context = await getFinanceServerContext();
@@ -117,6 +138,7 @@ export default async function TransactionEditPage({ params, searchParams }: Tran
         const links = reimbursementLinkOptions(recentTransactions, transaction);
         reimbursementOptions = links.linkOptions;
         linkedReceivedReimbursements = links.linkedReceivedReimbursements;
+        refundReversalOption = refundReversalLinkOption(recentTransactions, transaction);
       }
     } catch (loadError) {
       dataError = errorMessage(loadError);
@@ -159,6 +181,7 @@ export default async function TransactionEditPage({ params, searchParams }: Tran
         isDemo={isDemo}
         linkedReceivedReimbursements={linkedReceivedReimbursements}
         linkOptions={reimbursementOptions}
+        refundReversalOption={refundReversalOption}
         transaction={transaction}
       />
       <p className={styles.auditLinkRow}>

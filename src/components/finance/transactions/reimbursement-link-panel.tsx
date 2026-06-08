@@ -8,7 +8,7 @@ import {
 } from "@/app/(app)/transactions/actions";
 import type { ReimbursementRecord, TransactionIntent, TransactionRecord } from "@/lib/db";
 import { isUnmatchedReimbursementIncome } from "@/lib/finance/reimbursements";
-import { HandCoins, Link2Off } from "lucide-react";
+import { HandCoins, Link2Off, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
 import styles from "./transactions.module.css";
@@ -18,10 +18,15 @@ export interface ReimbursementLinkOption {
   sourceTransaction: Pick<TransactionRecord, "date" | "id" | "merchant" | "amount">;
 }
 
+export interface RefundReversalLinkOption {
+  matchedTransaction: Pick<TransactionRecord, "amount" | "date" | "id" | "merchant">;
+}
+
 interface ReimbursementLinkPanelProps {
   isDemo: boolean;
   linkedReceivedReimbursements: ReimbursementLinkOption[];
   linkOptions: ReimbursementLinkOption[];
+  refundReversalOption: RefundReversalLinkOption | null;
   transaction: TransactionRecord;
 }
 
@@ -200,16 +205,59 @@ function UnmatchedReimbursementIncomeForm({
   );
 }
 
+function RefundReversalPanel({
+  option,
+  transaction
+}: {
+  option: RefundReversalLinkOption;
+  transaction: TransactionRecord;
+}) {
+  const matched = option.matchedTransaction;
+  const currentIsCredit = transaction.amount > 0;
+
+  return (
+    <section className={styles.reimbursementPanel} aria-label="Refund matching">
+      <div className={styles.reimbursementPanelHeader}>
+        <span>Refund / return</span>
+        <strong>Likely merchant refund</strong>
+        <p>
+          {currentIsCredit
+            ? `${formatMoney(transaction.amount)} from ${transaction.merchant} matches a charge from the same merchant.`
+            : `${formatMoney(transaction.amount)} at ${transaction.merchant} has a matching credit from the same merchant.`}
+        </p>
+      </div>
+      <div className={styles.reimbursementLinkForm}>
+        <div className={styles.reimbursementOptionCopy}>
+          <strong>{matched.merchant}</strong>
+          <span>
+            <Link href={`/transactions/${matched.id}`}>{matched.date}</Link>
+            {" · "}{matched.amount > 0 ? "+" : "-"}{formatMoney(matched.amount)}
+          </span>
+        </div>
+        <Link className={styles.secondaryButton} href={`/transactions/${matched.id}`}>
+          <Undo2 size={14} aria-hidden />
+          Open match
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export function ReimbursementLinkPanel({
   isDemo,
   linkedReceivedReimbursements,
   linkOptions,
+  refundReversalOption,
   transaction
 }: ReimbursementLinkPanelProps) {
   const isPositiveInflow = transaction.amount > 0;
   const hasExistingLinks = linkedReceivedReimbursements.length > 0;
   const isUnmatched = isUnmatchedReimbursementIncome(transaction);
   const showLinkChoices = isPositiveInflow && linkOptions.length > 0;
+
+  if (refundReversalOption && !hasExistingLinks) {
+    return <RefundReversalPanel option={refundReversalOption} transaction={transaction} />;
+  }
 
   if (!isPositiveInflow && !hasExistingLinks) return null;
 

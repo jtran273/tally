@@ -174,6 +174,14 @@ export interface TransactionListFilters {
   quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
   includeRawContext?: boolean;
+  /**
+   * When true, transactions from inactive accounts and revoked Plaid items are
+   * included. Only the Transactions history page and CSV export opt into this so
+   * users keep a record of past spending. All analytics surfaces (dashboard, net
+   * worth, anomaly scan, recurring, OpenClaw) leave this false so disconnected
+   * accounts never distort financial calculations.
+   */
+  includeDisconnectedAccounts?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -447,7 +455,7 @@ function toAccountRecord(
   };
 }
 
-async function listVisibleAccountIds(client: FinanceSupabaseClient, userId: string) {
+async function listActiveAccountIds(client: FinanceSupabaseClient, userId: string) {
   const [accountResult, plaidItemResult] = await Promise.all([
     client.from("accounts").select("id,plaid_item_id").eq("user_id", userId).eq("is_active", true),
     client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
@@ -457,8 +465,18 @@ async function listVisibleAccountIds(client: FinanceSupabaseClient, userId: stri
       .map((item) => item.id)
   );
 
-  return (expectData(accountResult, "List visible account ids") as Array<Pick<AccountRow, "id" | "plaid_item_id">>)
+  return (expectData(accountResult, "List active account ids") as Array<Pick<AccountRow, "id" | "plaid_item_id">>)
     .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) => account.id);
+}
+
+async function listTransactionHistoryAccountIds(client: FinanceSupabaseClient, userId: string) {
+  const result = await client
+    .from("accounts")
+    .select("id")
+    .eq("user_id", userId);
+
+  return expectData(result, "List transaction history account ids")
     .map((account) => account.id);
 }
 
@@ -865,7 +883,6 @@ async function hydrateTransactions(
   const [
     rawResult,
     accountResult,
-    plaidItemResult,
     institutionResult,
     categoryResult,
     reviewResult,
@@ -879,8 +896,7 @@ async function hydrateTransactions(
         .eq("user_id", userId)
         .in("id", rawIds)
       : Promise.resolve({ data: [] as RawTransactionContextRow[], error: null }),
-    client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true),
-    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked"),
+    client.from("accounts").select("*").eq("user_id", userId),
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
     client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
@@ -889,14 +905,7 @@ async function hydrateTransactions(
   ]);
 
   const rawById = byId(expectData(rawResult, "Load raw transactions"));
-  const activePlaidItemIds = new Set(
-    (expectData(plaidItemResult, "Load active Plaid item ids for transactions") as Array<Pick<PlaidItemRow, "id">>)
-      .map((item) => item.id)
-  );
-  const accountById = byId(
-    expectData(accountResult, "Load accounts for transactions")
-      .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
-  );
+  const accountById = byId(expectData(accountResult, "Load accounts for transactions"));
   const institutionById = byId(expectData(institutionResult, "Load institutions for transactions"));
   const categoryById = byId(expectData(categoryResult, "Load categories for transactions"));
   const reviewsByTransaction = groupBy(
@@ -1020,6 +1029,25 @@ export async function listAccounts(client: FinanceSupabaseClient, userId: string
     .filter((account) => activePlaidItemsById.has(account.plaid_item_id))
     .map((account) =>
       toAccountRecord(account, institutionById.get(account.institution_id), activePlaidItemsById.get(account.plaid_item_id))
+    );
+}
+
+export async function listTransactionAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {
+  const [accountResult, institutionResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("*").eq("user_id", userId).order("type").order("name"),
+    client.from("institutions").select("*").eq("user_id", userId),
+    client.from("plaid_items").select("id,connection_source,auto_sync_enabled").eq("user_id", userId)
+  ]);
+
+  const institutionById = byId(expectData(institutionResult, "List transaction account institutions"));
+  const plaidItemsById = new Map(
+    (expectData(plaidItemResult, "List transaction account Plaid item ids") as Array<Pick<PlaidItemRow, "auto_sync_enabled" | "connection_source" | "id">>)
+      .map((item) => [item.id, item])
+  );
+
+  return expectData(accountResult, "List transaction accounts")
+    .map((account) =>
+      toAccountRecord(account, institutionById.get(account.institution_id), plaidItemsById.get(account.plaid_item_id))
     );
 }
 
@@ -1183,7 +1211,9 @@ export async function listTransactions(
 ): Promise<TransactionRecord[]> {
   const reviewTransactionIds = await listReviewTransactionIds(client, userId, filters);
   if (reviewTransactionIds && reviewTransactionIds.length === 0) return [];
-  const visibleAccountIds = await listVisibleAccountIds(client, userId);
+  const visibleAccountIds = filters.includeDisconnectedAccounts
+    ? await listTransactionHistoryAccountIds(client, userId)
+    : await listActiveAccountIds(client, userId);
   if (visibleAccountIds.length === 0) return [];
   const visibleAccountIdSet = new Set(visibleAccountIds);
   const accountIds = filters.accountIds?.length

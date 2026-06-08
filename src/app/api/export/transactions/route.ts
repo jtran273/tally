@@ -6,8 +6,8 @@ import {
   type TransactionSearchParams
 } from "@/components/finance/transactions/filters";
 import {
-  listAccounts,
   listCategories,
+  listTransactionAccounts,
   listTransactions
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
@@ -78,11 +78,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const [accounts, categories] = await Promise.all([
-      listAccounts(context.client, context.userId),
+      listTransactionAccounts(context.client, context.userId),
       listCategories(context.client, context.userId)
     ]);
     const filters = normalizeTransactionFilters(parsedFilters, accounts, categories);
-    const transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
+    const transactions = await listTransactions(context.client, context.userId, {
+      ...toTransactionListFilters(filters),
+      includeDisconnectedAccounts: true
+    });
     const reimbursements = await listTransactionReimbursementSummaries(
       context.client,
       context.userId,
