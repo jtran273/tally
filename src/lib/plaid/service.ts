@@ -1286,6 +1286,21 @@ async function fetchItemLiabilities(
   try {
     const response = await plaid.liabilitiesGet({ access_token: accessToken });
     const credit = response.data.liabilities.credit ?? [];
+    console.info("plaid_credit_liability_field_presence", {
+      creditCount: credit.length,
+      rows: credit.map((row, index) => ({
+        aprCount: row.aprs?.length ?? 0,
+        hasAccountId: Boolean(row.account_id),
+        hasIsOverdue: row.is_overdue !== null && row.is_overdue !== undefined,
+        hasLastPaymentAmount: row.last_payment_amount !== null && row.last_payment_amount !== undefined,
+        hasLastPaymentDate: Boolean(row.last_payment_date),
+        hasLastStatementBalance: row.last_statement_balance !== null && row.last_statement_balance !== undefined,
+        hasLastStatementIssueDate: Boolean(row.last_statement_issue_date),
+        hasMinimumPaymentAmount: row.minimum_payment_amount !== null && row.minimum_payment_amount !== undefined,
+        hasNextPaymentDueDate: Boolean(row.next_payment_due_date),
+        index
+      }))
+    });
     return new Map(
       credit
         .filter((row): row is CreditCardLiability & { account_id: string } => Boolean(row.account_id))
