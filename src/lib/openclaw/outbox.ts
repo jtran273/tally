@@ -54,6 +54,9 @@ const PRIORITY_RANK: Record<OpenClawOutboxMessagePriority, number> = {
   high: 1
 };
 
+// Categories that warrant a calendar hint in reimbursement-clarification and review prompt copy.
+const PROMPT_CALENDAR_CATEGORIES = new Set(["dining", "gift", "travel", "wedding"]);
+
 function money(value: number) {
   const rounded = Math.round(value);
   return `$${Math.abs(rounded).toLocaleString("en-US")}`;
@@ -70,17 +73,19 @@ function compact(value: string, maxLength: number) {
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function reimbursementQuestionBody(question: OpenClawClarificationQuestion) {
-  return compact(`Tally reimbursement check: ${question.question} Reply yes/no or a name.`, MAX_MESSAGE_LENGTH);
+function reimbursementQuestionBody(question: OpenClawClarificationQuestion, calendarHint: string | null) {
+  const hint = calendarHint ? ` ${calendarHint}` : "";
+  return compact(`Tally reimbursement check: ${question.question} Reply yes/no or a name.${hint}`, MAX_MESSAGE_LENGTH);
 }
 
 function reimbursementMessage(
   question: OpenClawClarificationQuestion,
-  generatedAt: string
+  generatedAt: string,
+  calendarHint: string | null
 ): OpenClawOutboxMessage {
   return {
     id: `openclaw-outbox:reimbursement:${question.proposalId}`,
-    body: reimbursementQuestionBody(question),
+    body: reimbursementQuestionBody(question, calendarHint),
     createdAt: generatedAt,
     kind: "reimbursement_clarification",
     priority: "high",
@@ -106,6 +111,14 @@ function calendarPressureText(signals: OpenClawSignalsResponse) {
   const phrase = calendarPressureCategoryPhrase(pressure.topPlannedSpendCategories);
   if (!phrase) return null;
   return `calendar pressure ${pressure.level} (${phrase} ahead)`;
+}
+
+function promptCalendarHint(signals: OpenClawSignalsResponse): string | null {
+  const pressure = summarizeCalendarPressure(signals.calendarContext);
+  const relevant = pressure.topPlannedSpendCategories.filter((c) => PROMPT_CALENDAR_CATEGORIES.has(c.category));
+  const phrase = calendarPressureCategoryPhrase(relevant);
+  if (!phrase) return null;
+  return `Heads-up: upcoming ${phrase} on your calendar.`;
 }
 
 function budgetBriefingBody(signals: OpenClawSignalsResponse) {
@@ -157,9 +170,11 @@ function reviewQueueAlert(signals: OpenClawSignalsResponse): OpenClawOutboxMessa
   const topText = top
     ? ` top ${top.merchant} ${money(top.amount)} (${top.reason})`
     : "";
+  const calendarHint = promptCalendarHint(signals);
+  const hintText = calendarHint ? ` ${calendarHint}` : "";
   return {
     id: `openclaw-outbox:review:${signals.weeklyPlanningContext.asOfDate}`,
-    body: compact(`Tally review: ${review.openCount} open item${review.openCount === 1 ? "" : "s"} totaling ${money(review.totalAbsoluteAmount)}.${topText ? `${topText}.` : ""}`, MAX_MESSAGE_LENGTH),
+    body: compact(`Tally review: ${review.openCount} open item${review.openCount === 1 ? "" : "s"} totaling ${money(review.totalAbsoluteAmount)}.${topText ? `${topText}.` : ""}${hintText}`, MAX_MESSAGE_LENGTH),
     createdAt: signals.generatedAt,
     kind: "review_queue_alert",
     priority: "high",
@@ -236,6 +251,7 @@ export function buildOpenClawOutboxResponse(
   const includeBudgetBriefing = options.includeBudgetBriefing ?? true;
   const messageLimit = Math.max(0, Math.min(options.messageLimit ?? 5, 25));
   const minPriority = options.minPriority ?? "normal";
+  const calendarHint = promptCalendarHint(signals);
   const messages = [
     ...(options.anomalyPackets ?? []).map(anomalyAlertMessage),
     ...(options.creditOptimizationPackets ?? []).map((packet) =>
@@ -244,7 +260,7 @@ export function buildOpenClawOutboxResponse(
     ...(options.lifecycleHints ?? [])
       .slice(0, LIFECYCLE_HINT_LIMIT)
       .map((hint) => lifecycleHintMessage(hint, signals.generatedAt)),
-    ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
+    ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt, calendarHint)),
     reimbursementAlert(signals),
     reviewQueueAlert(signals),
     ...(includeBudgetBriefing ? [budgetBriefingMessage(signals)] : [])

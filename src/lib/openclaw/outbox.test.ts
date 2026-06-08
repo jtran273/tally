@@ -190,6 +190,116 @@ test("budget briefing folds calendar pressure into the forwarded body", () => {
   assert.match(busy, /travel/);
 });
 
+test("reimbursement clarification appends calendar hint when dining/travel/gift/wedding events present", () => {
+  const base = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  const now = new Date(OUTBOX_GENERATED_AT);
+  base.calendarContext = buildUpcomingCalendarContext(
+    [
+      { allDay: true, end: "2026-05-17", location: null, start: "2026-05-16", title: "Flight to Phoenix" },
+      { allDay: false, end: "2026-05-18T21:00:00.000Z", location: null, start: "2026-05-18T19:00:00.000Z", title: "Dinner reservation" }
+    ],
+    { generatedAt: OUTBOX_GENERATED_AT, now }
+  );
+  const outbox = buildOpenClawOutboxResponse(base);
+  const body = outbox.messages.find((m) => m.kind === "reimbursement_clarification")?.body ?? "";
+
+  assert.match(body, /Tally reimbursement check/);
+  assert.match(body, /Reply yes\/no or a name/);
+  assert.match(body, /Heads-up: upcoming/);
+  assert.match(body, /travel/);
+  assert.match(body, /dining/);
+  assertAssistantContextSafe(outbox);
+});
+
+test("reimbursement clarification omits calendar hint when only non-prompt categories present", () => {
+  const base = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  const now = new Date(OUTBOX_GENERATED_AT);
+  base.calendarContext = buildUpcomingCalendarContext(
+    [
+      { allDay: false, end: "2026-05-17T18:00:00.000Z", location: null, start: "2026-05-17T15:00:00.000Z", title: "Hotel checkout" },
+      { allDay: false, end: "2026-05-18T18:00:00.000Z", location: null, start: "2026-05-18T16:00:00.000Z", title: "Birthday party" }
+    ],
+    { generatedAt: OUTBOX_GENERATED_AT, now }
+  );
+  const outbox = buildOpenClawOutboxResponse(base);
+  const body = outbox.messages.find((m) => m.kind === "reimbursement_clarification")?.body ?? "";
+
+  assert.match(body, /Reply yes\/no or a name/);
+  assert.doesNotMatch(body, /Heads-up/);
+});
+
+test("review queue alert appends calendar hint when dining/travel/gift/wedding events present", () => {
+  const base = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  const now = new Date(OUTBOX_GENERATED_AT);
+  base.calendarContext = buildUpcomingCalendarContext(
+    [{ allDay: false, end: "2026-05-17T21:00:00.000Z", location: null, start: "2026-05-17T19:00:00.000Z", title: "Wedding reception" }],
+    { generatedAt: OUTBOX_GENERATED_AT, now }
+  );
+  base.openClarificationQuestions = [];
+  base.weeklyPlanningContext.review = {
+    action: "read.review_queue_summary",
+    examples: [{
+      amount: -90,
+      category: "Entertainment",
+      confidence: 0.45,
+      date: "2026-05-13",
+      intent: "personal",
+      merchant: "Grand Venue",
+      reason: "low-confidence",
+      reviewItemId: "review-2",
+      transactionId: "tx-2"
+    }],
+    generatedAt: OUTBOX_GENERATED_AT,
+    openCount: 1,
+    reasonCounts: { "low-confidence": 1 },
+    totalAbsoluteAmount: 90
+  };
+  const outbox = buildOpenClawOutboxResponse(base);
+  const body = outbox.messages.find((m) => m.kind === "review_queue_alert")?.body ?? "";
+
+  assert.match(body, /Tally review/);
+  assert.match(body, /Heads-up: upcoming/);
+  assert.match(body, /weddings/);
+  assertAssistantContextSafe(outbox);
+});
+
+test("reimbursement and review prompt copy never leaks event titles, locations, or timing", () => {
+  const base = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  const now = new Date(OUTBOX_GENERATED_AT);
+  base.calendarContext = buildUpcomingCalendarContext(
+    [
+      {
+        allDay: false,
+        end: "2026-05-15T03:00:00.000Z",
+        location: "456 Secret Blvd, hidden-city",
+        start: "2026-05-15T01:00:00.000Z",
+        title: "Dinner with confidential-guest at top-secret-restaurant"
+      },
+      {
+        allDay: true,
+        end: "2026-05-17",
+        location: "SFO Airport",
+        start: "2026-05-16",
+        title: "Flight to classified-destination"
+      }
+    ],
+    { generatedAt: OUTBOX_GENERATED_AT, now }
+  );
+  base.weeklyPlanningContext.review = {
+    action: "read.review_queue_summary",
+    examples: [],
+    generatedAt: OUTBOX_GENERATED_AT,
+    openCount: 1,
+    reasonCounts: { "low-confidence": 1 },
+    totalAbsoluteAmount: 50
+  };
+  const outbox = buildOpenClawOutboxResponse(base);
+  const allBodies = outbox.messages.map((m) => m.body).join(" ");
+
+  assert.doesNotMatch(allBodies, /confidential-guest|top-secret-restaurant|classified-destination|hidden-city|Secret Blvd|SFO Airport/i);
+  assertAssistantContextSafe(outbox);
+});
+
 test("budget briefing calendar phrase never leaks event details", () => {
   const body = budgetBriefingBody(
     signalsWithCalendar([
