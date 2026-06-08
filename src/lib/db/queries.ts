@@ -173,6 +173,14 @@ export interface TransactionListFilters {
   quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
   includeRawContext?: boolean;
+  /**
+   * When true, transactions from inactive accounts and revoked Plaid items are
+   * included. Only the Transactions history page and CSV export opt into this so
+   * users keep a record of past spending. All analytics surfaces (dashboard, net
+   * worth, anomaly scan, recurring, OpenClaw) leave this false so disconnected
+   * accounts never distort financial calculations.
+   */
+  includeDisconnectedAccounts?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -415,6 +423,21 @@ function toAccountRecord(
     nextPaymentDueDate: row.next_payment_due_date,
     minimumPaymentAmount: row.minimum_payment_amount
   };
+}
+
+async function listActiveAccountIds(client: FinanceSupabaseClient, userId: string) {
+  const [accountResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("id,plaid_item_id").eq("user_id", userId).eq("is_active", true),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
+  ]);
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
+  );
+
+  return (expectData(accountResult, "List active account ids") as Array<Pick<AccountRow, "id" | "plaid_item_id">>)
+    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) => account.id);
 }
 
 async function listTransactionHistoryAccountIds(client: FinanceSupabaseClient, userId: string) {
@@ -1158,7 +1181,9 @@ export async function listTransactions(
 ): Promise<TransactionRecord[]> {
   const reviewTransactionIds = await listReviewTransactionIds(client, userId, filters);
   if (reviewTransactionIds && reviewTransactionIds.length === 0) return [];
-  const visibleAccountIds = await listTransactionHistoryAccountIds(client, userId);
+  const visibleAccountIds = filters.includeDisconnectedAccounts
+    ? await listTransactionHistoryAccountIds(client, userId)
+    : await listActiveAccountIds(client, userId);
   if (visibleAccountIds.length === 0) return [];
   const visibleAccountIdSet = new Set(visibleAccountIds);
   const accountIds = filters.accountIds?.length

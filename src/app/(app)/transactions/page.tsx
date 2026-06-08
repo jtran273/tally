@@ -61,7 +61,8 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       filters = normalizeTransactionFilters(filters, accounts, categories);
       transactions = await listTransactions(context.client, context.userId, {
         ...toTransactionListFilters(filters),
-        includeRawContext: false
+        includeRawContext: false,
+        includeDisconnectedAccounts: true
       });
       try {
         const agentProposals: AgentProposalRecord[] = await listAgentProposals(context.client, context.userId, {

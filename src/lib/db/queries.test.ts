@@ -622,8 +622,7 @@ test("listTransactionAccounts includes preserved historical accounts", async () 
   ]);
 });
 
-test("listTransactions includes inactive and revoked historical account rows before applying limits", async () => {
-  const client = new FakeFinanceClient();
+function seedDisconnectedHistoryRows(client: FakeFinanceClient) {
   seedTransactionRows(client);
   client.plaidItems.push(fixturePlaidItem({
     id: "plaid-item-revoked",
@@ -667,8 +666,25 @@ test("listTransactions includes inactive and revoked historical account rows bef
       account_id: "account-inactive"
     }
   );
+}
+
+test("listTransactions excludes inactive and revoked accounts by default so analytics stay active-only", async () => {
+  const client = new FakeFinanceClient();
+  seedDisconnectedHistoryRows(client);
 
   const transactions = await listTransactions(client.asClient(), userId, { limit: 2 });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
+});
+
+test("listTransactions includes inactive and revoked history when includeDisconnectedAccounts is set", async () => {
+  const client = new FakeFinanceClient();
+  seedDisconnectedHistoryRows(client);
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    limit: 2,
+    includeDisconnectedAccounts: true
+  });
 
   assert.deepEqual(transactions.map((item) => item.id), ["tx-inactive", "tx-revoked"]);
 });

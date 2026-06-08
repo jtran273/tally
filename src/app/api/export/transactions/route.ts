@@ -82,7 +82,10 @@ export async function GET(request: NextRequest) {
       listCategories(context.client, context.userId)
     ]);
     const filters = normalizeTransactionFilters(parsedFilters, accounts, categories);
-    const transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
+    const transactions = await listTransactions(context.client, context.userId, {
+      ...toTransactionListFilters(filters),
+      includeDisconnectedAccounts: true
+    });
     const reimbursements = await listTransactionReimbursementSummaries(
       context.client,
       context.userId,
