@@ -22,7 +22,7 @@ import { getSupabaseConfig } from "@/lib/supabase/env";
 
 export interface ProactiveScanResult {
   createdProposalCount: number;
-  errorCode: "detector_failed" | null;
+  errorCode: "detector_failed" | "proposal_schema_missing" | null;
   fromDate: string;
   includeDisconnectedAccounts: boolean;
   maxCandidateProposals: number;
@@ -116,6 +116,19 @@ function proposalAuditData(proposal: AgentProposalRecord) {
     targetId: proposal.targetId,
     targetKind: proposal.targetKind
   };
+}
+
+function isAgentProposalSchemaMissingError(error: unknown) {
+  const text = error instanceof Error
+    ? `${error.message} ${"code" in error ? String(error.code) : ""}`
+    : String(error);
+  return /agent_proposals/i.test(text) && (
+    /schema cache/i.test(text) ||
+    /could not find the table/i.test(text) ||
+    /relation .*agent_proposals.* does not exist/i.test(text) ||
+    /\b42P01\b/i.test(text) ||
+    /\bPGRST205\b/i.test(text)
+  );
 }
 
 export function resolveProactiveScanMaxTransactions(value = process.env.PROACTIVE_SCAN_MAX_TX) {
@@ -295,9 +308,12 @@ export async function runProactiveReimbursementScan(
     created = [...candidateProposals, ...matchProposals];
   } catch (error) {
     logger.error("proactive_reimbursement_scan_failed", error);
+    const errorCode = isAgentProposalSchemaMissingError(error)
+      ? "proposal_schema_missing"
+      : "detector_failed";
     return {
       createdProposalCount: 0,
-      errorCode: "detector_failed",
+      errorCode,
       fromDate,
       includeDisconnectedAccounts,
       maxCandidateProposals,

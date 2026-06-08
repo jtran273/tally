@@ -247,6 +247,29 @@ test("proactive scan logs detector failures and returns a failed result without 
   assert.equal(logged.length, 1);
 });
 
+test("proactive scan identifies missing agent proposal schema", async () => {
+  const result = await runProactiveReimbursementScan(client, userId, {
+    maxTransactions: 5,
+    now
+  }, {
+    createDetectedReimbursementCandidateProposals: async () => {
+      const error = new Error("Could not find the table 'public.agent_proposals' in the schema cache");
+      Object.assign(error, { code: "PGRST205" });
+      throw error;
+    },
+    createSuggestionService: suggestionService,
+    listAgentProposals: async () => [],
+    listTransactions: async () => [transaction({ id: "tx-dinner" })],
+    logger: {
+      error: () => {}
+    },
+    recordAuditEvent: async () => ({})
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.errorCode, "proposal_schema_missing");
+});
+
 test("proactive scan max transaction env parser falls back and clamps", () => {
   assert.equal(resolveProactiveScanMaxTransactions(undefined), 100);
   assert.equal(resolveProactiveScanMaxTransactions("   "), 100);

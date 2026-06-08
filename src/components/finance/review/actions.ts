@@ -520,6 +520,11 @@ export async function runHistoricalReimbursementScanAction(
     });
 
     if (scan.status === "failed") {
+      if (scan.errorCode === "proposal_schema_missing") {
+        return {
+          error: "Supabase is missing the agent_proposals table. Apply migration 20260608000200_repair_agent_proposals_schema.sql, then run this scan again."
+        };
+      }
       return { error: "Historical reimbursement scan failed before creating proposals." };
     }
 
