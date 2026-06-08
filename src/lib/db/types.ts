@@ -6,8 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type AccountType = "depository" | "credit" | "loan" | "investment" | "retirement";
-export type AccountLiabilityKind = "credit_card" | "student_loan" | "mortgage" | "other_loan" | "other_credit";
+export type AccountType = "depository" | "credit" | "investment" | "retirement";
 export type PlaidConnectionSource = "plaid" | "manual";
 export type PlaidItemStatus = "active" | "error" | "revoked";
 export type GoogleCalendarConnectionStatus = "active" | "error" | "revoked";
@@ -147,19 +146,6 @@ export interface AccountRow {
   last_statement_balance: number | null;
   next_payment_due_date: string | null;
   minimum_payment_amount: number | null;
-  liability_kind: AccountLiabilityKind | null;
-  liability_is_overdue: boolean | null;
-  liability_last_payment_date: string | null;
-  liability_last_payment_amount: number | null;
-  liability_next_payment_amount: number | null;
-  liability_interest_rate_percentage: number | null;
-  liability_origination_principal_amount: number | null;
-  liability_origination_date: string | null;
-  liability_expected_payoff_date: string | null;
-  liability_loan_name: string | null;
-  liability_loan_status: string | null;
-  liability_repayment_plan: string | null;
-  liability_past_due_amount: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -477,7 +463,6 @@ export type Database = {
     Views: Record<never, never>;
     Functions: Record<never, never>;
     Enums: {
-      account_liability_kind: AccountLiabilityKind;
       account_type: AccountType;
       plaid_item_status: PlaidItemStatus;
       plaid_sync_run_source: PlaidSyncRunSource;
@@ -526,19 +511,6 @@ export interface AccountRecord {
   lastStatementBalance?: number | null;
   nextPaymentDueDate?: string | null;
   minimumPaymentAmount?: number | null;
-  liabilityKind?: AccountLiabilityKind | null;
-  liabilityIsOverdue?: boolean | null;
-  liabilityLastPaymentDate?: string | null;
-  liabilityLastPaymentAmount?: number | null;
-  liabilityNextPaymentAmount?: number | null;
-  liabilityInterestRatePercentage?: number | null;
-  liabilityOriginationPrincipalAmount?: number | null;
-  liabilityOriginationDate?: string | null;
-  liabilityExpectedPayoffDate?: string | null;
-  liabilityLoanName?: string | null;
-  liabilityLoanStatus?: string | null;
-  liabilityRepaymentPlan?: string | null;
-  liabilityPastDueAmount?: number | null;
   manualValuation?: ManualInvestmentValuationRecord;
 }
 
@@ -740,7 +712,6 @@ export interface InsightRecord {
 export interface FinanceDashboardTotals {
   cash: number;
   credit: number;
-  loans: number;
   investments: number;
   retirement: number;
   netWorth: number;

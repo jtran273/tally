@@ -413,20 +413,7 @@ function toAccountRecord(
     lastStatementIssueDate: row.last_statement_issue_date,
     lastStatementBalance: row.last_statement_balance,
     nextPaymentDueDate: row.next_payment_due_date,
-    minimumPaymentAmount: row.minimum_payment_amount,
-    liabilityKind: row.liability_kind,
-    liabilityIsOverdue: row.liability_is_overdue,
-    liabilityLastPaymentDate: row.liability_last_payment_date,
-    liabilityLastPaymentAmount: row.liability_last_payment_amount,
-    liabilityNextPaymentAmount: row.liability_next_payment_amount,
-    liabilityInterestRatePercentage: row.liability_interest_rate_percentage,
-    liabilityOriginationPrincipalAmount: row.liability_origination_principal_amount,
-    liabilityOriginationDate: row.liability_origination_date,
-    liabilityExpectedPayoffDate: row.liability_expected_payoff_date,
-    liabilityLoanName: row.liability_loan_name,
-    liabilityLoanStatus: row.liability_loan_status,
-    liabilityRepaymentPlan: row.liability_repayment_plan,
-    liabilityPastDueAmount: row.liability_past_due_amount
+    minimumPaymentAmount: row.minimum_payment_amount
   };
 }
 
@@ -2106,13 +2093,12 @@ export async function getFinanceDashboardData(
     (sum, account) => {
       if (account.type === "depository") sum.cash += account.balance;
       if (account.type === "credit") sum.credit += account.balance;
-      if (account.type === "loan") sum.loans += account.balance;
       if (account.type === "investment") sum.investments += account.balance;
       if (account.type === "retirement") sum.retirement += account.balance;
       sum.netWorth += account.balance;
       return sum;
     },
-    { cash: 0, credit: 0, investments: 0, loans: 0, retirement: 0, netWorth: 0 }
+    { cash: 0, credit: 0, investments: 0, retirement: 0, netWorth: 0 }
   );
 
   return {

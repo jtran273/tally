@@ -8,14 +8,11 @@ import {
   type CreditCardLiability,
   type Institution,
   type LinkTokenCreateRequest,
-  type MortgageLiability,
   type RemovedTransaction,
-  type StudentLoan,
   type Transaction
 } from "plaid";
 import type {
   AccountRow,
-  AccountLiabilityKind,
   AccountType,
   BalanceSnapshotRow,
   CategoryRecord,
@@ -167,19 +164,6 @@ const ACCOUNT_COLUMNS = [
   "last_statement_balance",
   "next_payment_due_date",
   "minimum_payment_amount",
-  "liability_kind",
-  "liability_is_overdue",
-  "liability_last_payment_date",
-  "liability_last_payment_amount",
-  "liability_next_payment_amount",
-  "liability_interest_rate_percentage",
-  "liability_origination_principal_amount",
-  "liability_origination_date",
-  "liability_expected_payoff_date",
-  "liability_loan_name",
-  "liability_loan_status",
-  "liability_repayment_plan",
-  "liability_past_due_amount",
   "created_at",
   "updated_at"
 ].join(",");
@@ -522,155 +506,18 @@ function mapPlaidAccountType(account: AccountBase): AccountType {
     return RETIREMENT_SUBTYPES.has(subtype) ? "retirement" : "investment";
   }
 
-  if (account.type === PlaidAccountType.Credit) {
+  if (account.type === PlaidAccountType.Credit || account.type === PlaidAccountType.Loan) {
     return "credit";
   }
 
-  if (account.type === PlaidAccountType.Loan) {
-    return "loan";
-  }
-
   return "depository";
-}
-
-function liabilityKindForAccount(account: AccountBase): AccountLiabilityKind | null {
-  const subtype = account.subtype?.toString().toLowerCase() ?? "";
-
-  if (account.type === PlaidAccountType.Credit) {
-    if (subtype === "credit card" || subtype === "paypal") return "credit_card";
-    return "other_credit";
-  }
-
-  if (account.type === PlaidAccountType.Loan) {
-    if (subtype === "student") return "student_loan";
-    if (subtype === "mortgage") return "mortgage";
-    return "other_loan";
-  }
-
-  return null;
-}
-
-type PlaidLiabilitySummary =
-  | { kind: "credit_card"; liability: CreditCardLiability }
-  | { kind: "student_loan"; liability: StudentLoan }
-  | { kind: "mortgage"; liability: MortgageLiability };
-
-interface NormalizedLiabilityDetails {
-  lastStatementIssueDate: string | null;
-  lastStatementBalance: number | null;
-  minimumPaymentAmount: number | null;
-  nextPaymentDueDate: string | null;
-  liabilityIsOverdue: boolean | null;
-  liabilityLastPaymentDate: string | null;
-  liabilityLastPaymentAmount: number | null;
-  liabilityNextPaymentAmount: number | null;
-  liabilityInterestRatePercentage: number | null;
-  liabilityOriginationPrincipalAmount: number | null;
-  liabilityOriginationDate: string | null;
-  liabilityExpectedPayoffDate: string | null;
-  liabilityLoanName: string | null;
-  liabilityLoanStatus: string | null;
-  liabilityRepaymentPlan: string | null;
-  liabilityPastDueAmount: number | null;
-}
-
-const emptyLiabilityDetails: NormalizedLiabilityDetails = {
-  lastStatementBalance: null,
-  lastStatementIssueDate: null,
-  liabilityExpectedPayoffDate: null,
-  liabilityInterestRatePercentage: null,
-  liabilityIsOverdue: null,
-  liabilityLastPaymentAmount: null,
-  liabilityLastPaymentDate: null,
-  liabilityLoanName: null,
-  liabilityLoanStatus: null,
-  liabilityNextPaymentAmount: null,
-  liabilityOriginationDate: null,
-  liabilityOriginationPrincipalAmount: null,
-  liabilityPastDueAmount: null,
-  liabilityRepaymentPlan: null,
-  minimumPaymentAmount: null,
-  nextPaymentDueDate: null
-};
-
-function cleanOptionalText(value: string | null | undefined) {
-  const text = value?.trim();
-  return text ? text.slice(0, 240) : null;
-}
-
-function roundOptionalMoney(value: number | null | undefined) {
-  return value == null ? null : roundMoney(value);
-}
-
-function roundOptionalRate(value: number | null | undefined) {
-  return value == null ? null : Math.round(value * 10_000) / 10_000;
-}
-
-export function normalizePlaidLiabilityDetails(summary?: PlaidLiabilitySummary): NormalizedLiabilityDetails {
-  if (!summary) return emptyLiabilityDetails;
-
-  if (summary.kind === "credit_card") {
-    const liability = summary.liability;
-    const purchaseApr = liability.aprs
-      .filter((apr) => apr.apr_type === "purchase_apr" && apr.apr_percentage != null)
-      .sort((a, b) => (b.balance_subject_to_apr ?? 0) - (a.balance_subject_to_apr ?? 0))[0];
-
-    return {
-      ...emptyLiabilityDetails,
-      lastStatementBalance: roundOptionalMoney(liability.last_statement_balance),
-      lastStatementIssueDate: liability.last_statement_issue_date ?? null,
-      liabilityInterestRatePercentage: roundOptionalRate(purchaseApr?.apr_percentage ?? null),
-      liabilityIsOverdue: liability.is_overdue ?? null,
-      liabilityLastPaymentAmount: roundOptionalMoney(liability.last_payment_amount),
-      liabilityLastPaymentDate: liability.last_payment_date ?? null,
-      minimumPaymentAmount: roundOptionalMoney(liability.minimum_payment_amount),
-      nextPaymentDueDate: liability.next_payment_due_date ?? null
-    };
-  }
-
-  if (summary.kind === "student_loan") {
-    const liability = summary.liability;
-
-    return {
-      ...emptyLiabilityDetails,
-      lastStatementBalance: roundOptionalMoney(liability.last_statement_balance),
-      lastStatementIssueDate: liability.last_statement_issue_date ?? null,
-      liabilityExpectedPayoffDate: liability.expected_payoff_date ?? null,
-      liabilityInterestRatePercentage: roundOptionalRate(liability.interest_rate_percentage),
-      liabilityIsOverdue: liability.is_overdue ?? null,
-      liabilityLastPaymentAmount: roundOptionalMoney(liability.last_payment_amount),
-      liabilityLastPaymentDate: liability.last_payment_date ?? null,
-      liabilityLoanName: cleanOptionalText(liability.loan_name),
-      liabilityLoanStatus: cleanOptionalText(liability.loan_status?.type),
-      liabilityOriginationDate: liability.origination_date ?? null,
-      liabilityOriginationPrincipalAmount: roundOptionalMoney(liability.origination_principal_amount),
-      liabilityRepaymentPlan: cleanOptionalText(liability.repayment_plan?.description ?? liability.repayment_plan?.type),
-      minimumPaymentAmount: roundOptionalMoney(liability.minimum_payment_amount),
-      nextPaymentDueDate: liability.next_payment_due_date ?? null
-    };
-  }
-
-  const liability = summary.liability;
-  return {
-    ...emptyLiabilityDetails,
-    liabilityExpectedPayoffDate: liability.maturity_date ?? null,
-    liabilityInterestRatePercentage: roundOptionalRate(liability.interest_rate?.percentage ?? null),
-    liabilityLastPaymentAmount: roundOptionalMoney(liability.last_payment_amount),
-    liabilityLastPaymentDate: liability.last_payment_date ?? null,
-    liabilityLoanName: cleanOptionalText(liability.loan_type_description ?? liability.loan_term),
-    liabilityNextPaymentAmount: roundOptionalMoney(liability.next_monthly_payment),
-    liabilityOriginationDate: liability.origination_date ?? null,
-    liabilityOriginationPrincipalAmount: roundOptionalMoney(liability.origination_principal_amount),
-    liabilityPastDueAmount: roundOptionalMoney(liability.past_due_amount),
-    nextPaymentDueDate: liability.next_payment_due_date ?? null
-  };
 }
 
 function toLedgerBalance(account: AccountBase) {
   const type = mapPlaidAccountType(account);
   const current = roundMoney(account.balances.current ?? account.balances.available ?? 0);
 
-  return type === "credit" || type === "loan" ? -Math.abs(current) : current;
+  return type === "credit" ? -Math.abs(current) : current;
 }
 
 function toLedgerAmount(transaction: Transaction) {
@@ -1142,10 +989,9 @@ function buildAccountInsert(
   userId: string,
   account: AccountBase,
   syncedAt: string,
-  liability?: PlaidLiabilitySummary
+  liability?: CreditCardLiability
 ): AccountInsert {
   const type = mapPlaidAccountType(account);
-  const liabilityDetails = normalizePlaidLiabilityDetails(liability);
 
   return {
     available_balance: account.balances.available === null ? null : roundMoney(account.balances.available),
@@ -1155,23 +1001,12 @@ function buildAccountInsert(
     is_active: true,
     iso_currency_code: normalizeCurrency(account.balances.iso_currency_code),
     last_synced_at: syncedAt,
-    last_statement_issue_date: liabilityDetails.lastStatementIssueDate,
-    last_statement_balance: liabilityDetails.lastStatementBalance,
-    next_payment_due_date: liabilityDetails.nextPaymentDueDate,
-    minimum_payment_amount: liabilityDetails.minimumPaymentAmount,
-    liability_kind: liability?.kind ?? liabilityKindForAccount(account),
-    liability_is_overdue: liabilityDetails.liabilityIsOverdue,
-    liability_last_payment_date: liabilityDetails.liabilityLastPaymentDate,
-    liability_last_payment_amount: liabilityDetails.liabilityLastPaymentAmount,
-    liability_next_payment_amount: liabilityDetails.liabilityNextPaymentAmount,
-    liability_interest_rate_percentage: liabilityDetails.liabilityInterestRatePercentage,
-    liability_origination_principal_amount: liabilityDetails.liabilityOriginationPrincipalAmount,
-    liability_origination_date: liabilityDetails.liabilityOriginationDate,
-    liability_expected_payoff_date: liabilityDetails.liabilityExpectedPayoffDate,
-    liability_loan_name: liabilityDetails.liabilityLoanName,
-    liability_loan_status: liabilityDetails.liabilityLoanStatus,
-    liability_repayment_plan: liabilityDetails.liabilityRepaymentPlan,
-    liability_past_due_amount: liabilityDetails.liabilityPastDueAmount,
+    last_statement_issue_date: liability?.last_statement_issue_date ?? null,
+    last_statement_balance:
+      liability?.last_statement_balance == null ? null : roundMoney(liability.last_statement_balance),
+    next_payment_due_date: liability?.next_payment_due_date ?? null,
+    minimum_payment_amount:
+      liability?.minimum_payment_amount == null ? null : roundMoney(liability.minimum_payment_amount),
     mask: account.mask,
     name: cleanRequiredText(account.name, "Plaid account"),
     official_name: account.official_name,
@@ -1258,7 +1093,7 @@ async function upsertPlaidAccounts({
   accounts: AccountBase[];
   client: FinanceSupabaseClient;
   item: PlaidItemRow;
-  liabilitiesByPlaidAccountId?: Map<string, PlaidLiabilitySummary>;
+  liabilitiesByPlaidAccountId?: Map<string, CreditCardLiability>;
   snapshotDate: string;
   syncedAt: string;
   userId: string;
@@ -1421,25 +1256,16 @@ async function fetchBalanceAccounts(accessToken: string) {
 
 async function fetchItemLiabilities(
   accessToken: string
-): Promise<Map<string, PlaidLiabilitySummary>> {
+): Promise<Map<string, CreditCardLiability>> {
   const plaid = getPlaidClient();
   try {
     const response = await plaid.liabilitiesGet({ access_token: accessToken });
     const credit = response.data.liabilities.credit ?? [];
-    const student = response.data.liabilities.student ?? [];
-    const mortgage = response.data.liabilities.mortgage ?? [];
-    const entries: Array<[string, PlaidLiabilitySummary]> = [
-      ...credit
+    return new Map(
+      credit
         .filter((row): row is CreditCardLiability & { account_id: string } => Boolean(row.account_id))
-        .map((row): [string, PlaidLiabilitySummary] => [row.account_id, { kind: "credit_card", liability: row }]),
-      ...student
-        .filter((row): row is StudentLoan & { account_id: string } => Boolean(row.account_id))
-        .map((row): [string, PlaidLiabilitySummary] => [row.account_id, { kind: "student_loan", liability: row }]),
-      ...mortgage
-        .filter((row): row is MortgageLiability & { account_id: string } => Boolean(row.account_id))
-        .map((row): [string, PlaidLiabilitySummary] => [row.account_id, { kind: "mortgage", liability: row }])
-    ];
-    return new Map(entries);
+        .map((row) => [row.account_id, row])
+    );
   } catch (error) {
     // Liabilities product may not be enabled for this item, or the institution
     // doesn't support it. Do not hide configuration or credential failures.

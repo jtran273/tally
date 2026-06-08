@@ -14,11 +14,6 @@ export function friendlyAccountLabel(account: AccountRecord) {
     return `${institution} checking`;
   }
   if (account.type === "credit") return `${institution} card`;
-  if (account.type === "loan") {
-    if (account.liabilityKind === "mortgage") return `${institution} mortgage`;
-    if (account.liabilityKind === "student_loan") return `${institution} student loan`;
-    return `${institution} loan`;
-  }
   if (account.type === "investment") return `${institution} investments`;
   return `${institution} retirement`;
 }
@@ -26,7 +21,6 @@ export function friendlyAccountLabel(account: AccountRecord) {
 export function accountGroupLabel(account: AccountRecord) {
   if (account.type === "depository") return "Checking & savings";
   if (account.type === "credit") return "Credit card";
-  if (account.type === "loan") return "Loan";
   if (account.type === "investment") return "Investments";
   return "Retirement";
 }

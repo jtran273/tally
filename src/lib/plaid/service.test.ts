@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  AccountType as PlaidAccountType,
-  APRAprTypeEnum,
-  Products,
-  StudentLoanStatusTypeEnum,
-  StudentRepaymentPlanTypeEnum,
-  type AccountBase,
-  type Transaction
-} from "plaid";
+import { AccountType as PlaidAccountType, Products, type AccountBase, type Transaction } from "plaid";
 import {
   buildPlaidLinkTokenCreateRequest,
   getPlaidLinkOptionalProducts,
@@ -23,7 +15,6 @@ import {
   isSkippablePlaidTransactionsError,
   listPlaidConnections,
   mergePlaidAccountSourcesForSync,
-  normalizePlaidLiabilityDetails,
   persistedSyncError,
   PLAID_TRANSACTION_HISTORY_DAYS,
   planPendingRawTransactionReplacements,
@@ -439,136 +430,6 @@ test("low Plaid category confidence is raised only for clear ordinary merchant-c
       primary: "FOOD_AND_DRINK"
     }
   }), 0.25);
-});
-
-test("normalizePlaidLiabilityDetails extracts safe credit card liability fields", () => {
-  const details = normalizePlaidLiabilityDetails({
-    kind: "credit_card",
-    liability: {
-      account_id: "plaid-card",
-      aprs: [
-        {
-          apr_percentage: 27.99,
-          apr_type: APRAprTypeEnum.CashApr,
-          balance_subject_to_apr: 10,
-          interest_charge_amount: 1
-        },
-        {
-          apr_percentage: 19.24567,
-          apr_type: APRAprTypeEnum.PurchaseApr,
-          balance_subject_to_apr: 800,
-          interest_charge_amount: 12
-        }
-      ],
-      is_overdue: false,
-      last_payment_amount: 125.456,
-      last_payment_date: "2026-06-01",
-      last_statement_balance: 900.129,
-      last_statement_issue_date: "2026-05-28",
-      minimum_payment_amount: 35,
-      next_payment_due_date: "2026-06-25"
-    }
-  });
-
-  assert.equal(details.nextPaymentDueDate, "2026-06-25");
-  assert.equal(details.minimumPaymentAmount, 35);
-  assert.equal(details.lastStatementBalance, 900.13);
-  assert.equal(details.liabilityLastPaymentAmount, 125.46);
-  assert.equal(details.liabilityInterestRatePercentage, 19.2457);
-  assert.equal(details.liabilityLoanName, null);
-});
-
-test("normalizePlaidLiabilityDetails extracts safe student loan fields", () => {
-  const details = normalizePlaidLiabilityDetails({
-    kind: "student_loan",
-    liability: {
-      account_id: "plaid-student",
-      account_number: "should-not-persist",
-      disbursement_dates: ["2020-08-01"],
-      expected_payoff_date: "2032-07-28",
-      guarantor: "DEPT OF ED",
-      interest_rate_percentage: 5.125,
-      is_overdue: true,
-      last_payment_amount: 138.05,
-      last_payment_date: "2026-05-22",
-      last_statement_balance: 12000,
-      last_statement_issue_date: "2026-05-28",
-      loan_name: "Consolidation",
-      loan_status: { end_date: "2032-07-28", type: StudentLoanStatusTypeEnum.Repayment },
-      minimum_payment_amount: 25,
-      next_payment_due_date: "2026-06-28",
-      origination_date: "2020-08-01",
-      origination_principal_amount: 15000,
-      outstanding_interest_amount: 600,
-      payment_reference_number: "should-not-persist",
-      pslf_status: {
-        estimated_eligibility_date: null,
-        payments_made: null,
-        payments_remaining: null
-      },
-      repayment_plan: { description: "Standard Repayment", type: StudentRepaymentPlanTypeEnum.Standard },
-      sequence_number: "1",
-      servicer_address: {
-        city: "Private",
-        country: "US",
-        postal_code: "00000",
-        region: "CA",
-        street: "Private"
-      },
-      ytd_interest_paid: 100,
-      ytd_principal_paid: 200
-    }
-  });
-
-  assert.equal(details.nextPaymentDueDate, "2026-06-28");
-  assert.equal(details.minimumPaymentAmount, 25);
-  assert.equal(details.liabilityExpectedPayoffDate, "2032-07-28");
-  assert.equal(details.liabilityInterestRatePercentage, 5.125);
-  assert.equal(details.liabilityIsOverdue, true);
-  assert.equal(details.liabilityLoanName, "Consolidation");
-  assert.equal(details.liabilityLoanStatus, "repayment");
-  assert.equal(details.liabilityRepaymentPlan, "Standard Repayment");
-});
-
-test("normalizePlaidLiabilityDetails extracts safe mortgage fields", () => {
-  const details = normalizePlaidLiabilityDetails({
-    kind: "mortgage",
-    liability: {
-      account_id: "plaid-mortgage",
-      account_number: "should-not-persist",
-      current_late_fee: 25,
-      escrow_balance: 3000,
-      has_pmi: true,
-      has_prepayment_penalty: false,
-      interest_rate: { percentage: 3.98765, type: "fixed" },
-      last_payment_amount: 3141.54,
-      last_payment_date: "2026-05-15",
-      loan_term: "30 year",
-      loan_type_description: "conventional",
-      maturity_date: "2045-07-31",
-      next_monthly_payment: 3141.54,
-      next_payment_due_date: "2026-06-15",
-      origination_date: "2015-08-01",
-      origination_principal_amount: 425000,
-      past_due_amount: 2304.129,
-      property_address: {
-        city: "Private",
-        country: "US",
-        postal_code: "00000",
-        region: "CA",
-        street: "Private"
-      },
-      ytd_interest_paid: 12000,
-      ytd_principal_paid: 10000
-    }
-  });
-
-  assert.equal(details.nextPaymentDueDate, "2026-06-15");
-  assert.equal(details.liabilityNextPaymentAmount, 3141.54);
-  assert.equal(details.liabilityExpectedPayoffDate, "2045-07-31");
-  assert.equal(details.liabilityInterestRatePercentage, 3.9877);
-  assert.equal(details.liabilityLoanName, "conventional");
-  assert.equal(details.liabilityPastDueAmount, 2304.13);
 });
 
 test("sync run summary marks partial failures and excludes provider ids", () => {

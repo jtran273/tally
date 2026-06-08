@@ -59,9 +59,7 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const asOfDate = now.toISOString().slice(0, 10);
-  const plaidSyncAccounts = accounts.filter(
-    (account) => account.type === "depository" || account.type === "credit" || account.type === "loan"
-  );
+  const plaidSyncAccounts = accounts.filter((account) => account.type === "depository" || account.type === "credit");
   const totals = calculateAccountTotals(accounts);
   const trendOptions = {
     asOfDate,

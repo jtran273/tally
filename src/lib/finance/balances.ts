@@ -1,6 +1,6 @@
 import type { AccountRecord, AccountType, BalanceSnapshotRecord, TransactionIntent, TransactionStatus } from "@/lib/db";
 
-export type AccountGroupKey = "cash" | "credit" | "loans" | "investments" | "retirement";
+export type AccountGroupKey = "cash" | "credit" | "investments" | "retirement";
 export type BalanceTrendScope = "netWorth" | "cash" | "liabilities" | "cashMinusLiabilities";
 export type TrendSource = "current" | "snapshot" | "transaction";
 export type SyncState = "fresh" | "stale" | "never";
@@ -10,7 +10,6 @@ export interface AccountBalanceTotals {
   credit: number;
   investments: number;
   retirement: number;
-  loans: number;
   assets: number;
   liabilities: number;
   netWorth: number;
@@ -54,7 +53,7 @@ interface BalanceTrendTransaction {
 const MIN_SNAPSHOT_TREND_DAYS = 45;
 const DEFAULT_TRANSACTION_LOOKBACK_DAYS = 366;
 
-const GROUP_ORDER: AccountGroupKey[] = ["cash", "credit", "loans", "investments", "retirement"];
+const GROUP_ORDER: AccountGroupKey[] = ["cash", "credit", "investments", "retirement"];
 
 const GROUP_META: Record<AccountGroupKey, Pick<AccountGroup, "description" | "label">> = {
   cash: {
@@ -64,10 +63,6 @@ const GROUP_META: Record<AccountGroupKey, Pick<AccountGroup, "description" | "la
   credit: {
     description: "Credit cards and revolving liabilities.",
     label: "Credit / liabilities"
-  },
-  loans: {
-    description: "Student loans, mortgages, and other installment liabilities.",
-    label: "Loans"
   },
   investments: {
     description: "Taxable brokerage and investment accounts.",
@@ -82,13 +77,12 @@ const GROUP_META: Record<AccountGroupKey, Pick<AccountGroup, "description" | "la
 export function accountGroupKey(type: AccountType): AccountGroupKey {
   if (type === "depository") return "cash";
   if (type === "credit") return "credit";
-  if (type === "loan") return "loans";
   if (type === "investment") return "investments";
   return "retirement";
 }
 
 export function balanceContribution({ balance, type }: BalanceLike): number {
-  if (type === "credit" || type === "loan") {
+  if (type === "credit") {
     return -Math.abs(balance);
   }
 
@@ -98,17 +92,15 @@ export function balanceContribution({ balance, type }: BalanceLike): number {
 export function accountIncludedInBalanceScope(account: Pick<BalanceLike, "type">, scope: BalanceTrendScope) {
   if (scope === "netWorth") return true;
   if (scope === "cash") return account.type === "depository";
-  if (scope === "liabilities") return account.type === "credit" || account.type === "loan";
-  return account.type === "depository" || account.type === "credit" || account.type === "loan";
+  if (scope === "liabilities") return account.type === "credit";
+  return account.type === "depository" || account.type === "credit";
 }
 
 export function balanceContributionForScope(account: BalanceLike, scope: BalanceTrendScope): number {
   if (!accountIncludedInBalanceScope(account, scope)) return 0;
 
   if (scope === "liabilities") return Math.abs(account.balance);
-  if (scope === "cashMinusLiabilities" && (account.type === "credit" || account.type === "loan")) {
-    return -Math.abs(account.balance);
-  }
+  if (scope === "cashMinusLiabilities" && account.type === "credit") return -Math.abs(account.balance);
 
   return scope === "netWorth" ? balanceContribution(account) : account.balance;
 }
@@ -127,7 +119,7 @@ export function calculateAccountTotals(accounts: readonly AccountRecord[]): Acco
       const key = accountGroupKey(account.type);
       sum[key] += value;
 
-      if (key === "credit" || key === "loans") {
+      if (key === "credit") {
         sum.liabilities += Math.abs(value);
       } else {
         sum.assets += value;
@@ -142,7 +134,6 @@ export function calculateAccountTotals(accounts: readonly AccountRecord[]): Acco
       credit: 0,
       investments: 0,
       liabilities: 0,
-      loans: 0,
       netWorth: 0,
       retirement: 0
     }

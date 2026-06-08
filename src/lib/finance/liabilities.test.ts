@@ -14,9 +14,6 @@ function account(input: {
   lastStatementBalance?: number | null;
   minimumPaymentAmount?: number | null;
   nextPaymentDueDate?: string | null;
-  liabilityKind?: AccountRecord["liabilityKind"];
-  liabilityInterestRatePercentage?: number | null;
-  liabilityNextPaymentAmount?: number | null;
 }): AccountRecord {
   return {
     availableBalance: null,
@@ -31,16 +28,13 @@ function account(input: {
     lastSyncedAt: null,
     lastStatementBalance: input.lastStatementBalance ?? null,
     lastStatementIssueDate: input.lastStatementIssueDate ?? null,
-    liabilityInterestRatePercentage: input.liabilityInterestRatePercentage ?? null,
-    liabilityKind: input.liabilityKind ?? (input.type === "credit" ? "credit_card" : input.type === "loan" ? "student_loan" : null),
-    liabilityNextPaymentAmount: input.liabilityNextPaymentAmount ?? null,
     minimumPaymentAmount: input.minimumPaymentAmount ?? null,
     mask: "1234",
-    name: `${input.type === "credit" ? "Card" : input.type === "loan" ? "Loan" : "Checking"} ${input.id}`,
+    name: `${input.type === "credit" ? "Card" : "Checking"} ${input.id}`,
     nextPaymentDueDate: input.nextPaymentDueDate ?? null,
     officialName: null,
     plaidAccountId: `plaid-${input.id}`,
-    subtype: input.type === "credit" ? "credit card" : input.type === "loan" ? "student" : "checking",
+    subtype: input.type === "credit" ? "credit card" : "checking",
     type: input.type,
     userId
   };
@@ -175,36 +169,6 @@ test("buildLiabilitiesDueSummary returns empty when no credit accounts", () => {
   assert.equal(summary.rows.length, 0);
   assert.equal(summary.totalOwed, 0);
   assert.equal(summary.coverageDelta, 100);
-});
-
-test("buildLiabilitiesDueSummary includes loan due dates without card utilization", () => {
-  const summary = buildLiabilitiesDueSummary({
-    accounts: [
-      account({ id: "checking", type: "depository", balance: 5000 }),
-      account({
-        balance: -12000,
-        id: "student-loan",
-        liabilityInterestRatePercentage: 5.25,
-        liabilityKind: "student_loan",
-        liabilityNextPaymentAmount: 125,
-        minimumPaymentAmount: 125,
-        nextPaymentDueDate: "2026-05-15",
-        type: "loan"
-      })
-    ],
-    asOfDate: "2026-05-11",
-    cashAvailable: 5000,
-    transactions: []
-  });
-
-  assert.equal(summary.rows.length, 1);
-  assert.equal(summary.totalOwed, 12000);
-  assert.equal(summary.rows[0]?.liabilityKind, "student_loan");
-  assert.equal(summary.rows[0]?.status, "due-soon");
-  assert.equal(summary.rows[0]?.utilizationPercent, null);
-  assert.equal(summary.rows[0]?.nextPaymentAmount, 125);
-  assert.equal(summary.rows[0]?.interestRatePercentage, 5.25);
-  assert.equal(summary.rows[0]?.reportingDate, null);
 });
 
 test("buildLiabilitiesDueSummary marks current Plaid statement dates as actual reporting dates", () => {
