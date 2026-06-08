@@ -448,7 +448,11 @@ function pickLeadAction(summary: LiabilitiesDueSummary): LeadAction | null {
     .map((row) => ({ paydown: cardUtilizationPaydown(row), row }))
     .filter((entry): entry is { paydown: CardPaydown; row: LiabilityAccountSummary } =>
       entry.paydown !== null)
-    .sort((a, b) => (b.row.utilizationPercent ?? 0) - (a.row.utilizationPercent ?? 0))[0];
+    .sort((a, b) => {
+      const utilizationDiff = (b.row.utilizationPercent ?? 0) - (a.row.utilizationPercent ?? 0);
+      if (utilizationDiff !== 0) return utilizationDiff;
+      return (b.row.highestAprPercentage ?? -1) - (a.row.highestAprPercentage ?? -1);
+    })[0];
 
   if (top) {
     const { paydown, row } = top;
@@ -2059,6 +2063,9 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
             const utilizationWidth = Math.max(0, Math.min(100, row.utilizationPercent ?? 0));
             const statusClass = cardStatusClass(row);
             const limitLine = cardLimitLine(row);
+            const aprLine = row.highestAprPercentage === null || row.highestAprPercentage === undefined
+              ? null
+              : `${row.highestAprPercentage.toFixed(1)}% max APR`;
             const isLead = lead?.accountId === row.accountId;
 
             return (
@@ -2084,11 +2091,13 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
 
                 {limitLine ? (
                   <div className={styles.cardLimitLine}>
-                    <span>{limitLine}</span>
+                    <span>{aprLine ? `${limitLine} · ${aprLine}` : limitLine}</span>
                     <div className={styles.utilizationTrack} aria-hidden>
                       <span style={{ width: `${utilizationWidth}%` }} className={statusClass} />
                     </div>
                   </div>
+                ) : aprLine ? (
+                  <span className={styles.cardLimitLine}>{aprLine}</span>
                 ) : null}
               </Link>
             );

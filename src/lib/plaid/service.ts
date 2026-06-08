@@ -164,6 +164,10 @@ const ACCOUNT_COLUMNS = [
   "last_statement_balance",
   "next_payment_due_date",
   "minimum_payment_amount",
+  "liability_is_overdue",
+  "liability_last_payment_date",
+  "liability_last_payment_amount",
+  "liability_aprs",
   "created_at",
   "updated_at"
 ].join(",");
@@ -1007,6 +1011,11 @@ function buildAccountInsert(
     next_payment_due_date: liability?.next_payment_due_date ?? null,
     minimum_payment_amount:
       liability?.minimum_payment_amount == null ? null : roundMoney(liability.minimum_payment_amount),
+    liability_is_overdue: liability?.is_overdue ?? null,
+    liability_last_payment_date: liability?.last_payment_date ?? null,
+    liability_last_payment_amount:
+      liability?.last_payment_amount == null ? null : roundMoney(liability.last_payment_amount),
+    liability_aprs: normalizeCreditAprs(liability),
     mask: account.mask,
     name: cleanRequiredText(account.name, "Plaid account"),
     official_name: account.official_name,
@@ -1016,6 +1025,22 @@ function buildAccountInsert(
     type,
     user_id: userId
   };
+}
+
+function normalizeCreditAprs(liability?: CreditCardLiability): Json {
+  return (liability?.aprs ?? [])
+    .map((apr) => ({
+      aprPercentage: apr.apr_percentage == null ? null : roundMoney(apr.apr_percentage),
+      aprType: String(apr.apr_type ?? "unknown"),
+      balanceSubjectToApr: apr.balance_subject_to_apr == null ? null : roundMoney(apr.balance_subject_to_apr),
+      interestChargeAmount: apr.interest_charge_amount == null ? null : roundMoney(apr.interest_charge_amount)
+    }))
+    .filter(
+      (apr) =>
+        apr.aprPercentage !== null ||
+        apr.balanceSubjectToApr !== null ||
+        apr.interestChargeAmount !== null
+    );
 }
 
 async function markInactiveAccounts(

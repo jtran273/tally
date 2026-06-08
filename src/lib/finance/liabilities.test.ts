@@ -12,6 +12,10 @@ function account(input: {
   creditLimit?: number | null;
   lastStatementIssueDate?: string | null;
   lastStatementBalance?: number | null;
+  liabilityAprs?: AccountRecord["liabilityAprs"];
+  liabilityIsOverdue?: boolean | null;
+  liabilityLastPaymentAmount?: number | null;
+  liabilityLastPaymentDate?: string | null;
   minimumPaymentAmount?: number | null;
   nextPaymentDueDate?: string | null;
 }): AccountRecord {
@@ -28,6 +32,10 @@ function account(input: {
     lastSyncedAt: null,
     lastStatementBalance: input.lastStatementBalance ?? null,
     lastStatementIssueDate: input.lastStatementIssueDate ?? null,
+    liabilityAprs: input.liabilityAprs ?? [],
+    liabilityIsOverdue: input.liabilityIsOverdue ?? null,
+    liabilityLastPaymentAmount: input.liabilityLastPaymentAmount ?? null,
+    liabilityLastPaymentDate: input.liabilityLastPaymentDate ?? null,
     minimumPaymentAmount: input.minimumPaymentAmount ?? null,
     mask: "1234",
     name: `${input.type === "credit" ? "Card" : "Checking"} ${input.id}`,
@@ -113,6 +121,40 @@ test("buildLiabilitiesDueSummary flags overdue cards and computes coverage", () 
   assert.equal(cardA?.status, "overdue", "actual issuer due date should be overdue by May 11");
   assert.equal(cardA?.lastPaymentDate, "2026-03-01");
   assert.equal(cardA?.utilizationPercent, 12);
+});
+
+test("buildLiabilitiesDueSummary prefers Plaid card liability payment and APR data", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-a",
+        type: "credit",
+        balance: 800,
+        creditLimit: 4000,
+        liabilityAprs: [{
+          aprPercentage: 24.99,
+          aprType: "purchase_apr",
+          balanceSubjectToApr: 800,
+          interestChargeAmount: 12.5
+        }],
+        liabilityIsOverdue: true,
+        liabilityLastPaymentAmount: 75,
+        liabilityLastPaymentDate: "2026-05-20",
+        nextPaymentDueDate: "2026-06-05"
+      })
+    ],
+    asOfDate: "2026-06-08",
+    cashAvailable: 1000,
+    transactions: [transaction({ id: "old-payment", accountId: "card-a", amount: 50, date: "2026-05-01" })]
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.status, "overdue");
+  assert.equal(row?.lastPaymentSource, "plaid_liability");
+  assert.equal(row?.lastPaymentDate, "2026-05-20");
+  assert.equal(row?.lastPaymentAmount, 75);
+  assert.equal(row?.purchaseAprPercentage, 24.99);
+  assert.equal(row?.highestAprPercentage, 24.99);
 });
 
 test("buildLiabilitiesDueSummary ranks best card action by due status cash coverage and utilization", () => {
