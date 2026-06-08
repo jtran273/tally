@@ -287,6 +287,127 @@ test("Google Calendar events parser ignores raw descriptions and attendees", () 
   assert.doesNotMatch(JSON.stringify(events), /guest@example\.com|private notes/);
 });
 
+function createEmptyCalendarClient(): FinanceSupabaseClient {
+  return {
+    from(_table: string) {
+      const builder = {
+        eq() { return builder; },
+        in() { return builder; },
+        limit() { return builder; },
+        order() { return builder; },
+        select() { return builder; },
+        single() { return builder; },
+        then<TResult1 = unknown, TResult2 = never>(
+          onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+          onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+        ) {
+          return Promise.resolve({ data: [], error: null }).then(onfulfilled, onrejected);
+        },
+        update(_value: Record<string, unknown>) { return builder; }
+      };
+      return builder;
+    }
+  } as unknown as FinanceSupabaseClient;
+}
+
+test("loadUpcomingCalendarContext refreshes an expired token before fetching events", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const now = new Date("2026-05-13T12:00:00.000Z");
+    const expiredConnection = calendarConnection({ expires_at: "2026-05-13T11:00:00.000Z" });
+    const updates: CalendarUpdateCall[] = [];
+
+    const fetcher: typeof fetch = async (input) => {
+      if (String(input).includes("oauth2.googleapis.com")) {
+        return responseJson({
+          access_token: "access-refreshed",
+          expires_in: 3600,
+          scope: GOOGLE_CALENDAR_READONLY_SCOPE,
+          token_type: "Bearer"
+        });
+      }
+      return responseJson({ items: [] });
+    };
+
+    const context = await loadUpcomingCalendarContext(
+      createCalendarConnectionClient(expiredConnection, updates),
+      "user-1",
+      { fetcher, generatedAt: now.toISOString(), now }
+    );
+
+    assert.equal(context.status, "ready");
+    assert.equal(updates.length, 2);
+    assert.ok("access_token_ciphertext" in updates[0].payload, "first update should store new access token");
+    assert.equal(updates[1].payload.last_successful_sync_at, now.toISOString());
+  });
+});
+
+test("loadUpcomingCalendarContext marks connection error and returns error context on read failure", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const now = new Date("2026-05-13T12:00:00.000Z");
+    const updates: CalendarUpdateCall[] = [];
+
+    const context = await loadUpcomingCalendarContext(
+      createCalendarConnectionClient(calendarConnection(), updates),
+      "user-1",
+      {
+        fetcher: async () => new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
+        generatedAt: now.toISOString(),
+        now
+      }
+    );
+
+    assert.equal(context.status, "error");
+    assert.equal(context.eventCount, 0);
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].payload.status, "error");
+    assert.equal(updates[0].payload.error_code, "CALENDAR_READ_FAILED");
+  });
+});
+
+test("loadUpcomingCalendarContext returns not_configured when no active connection exists", async () => {
+  const now = new Date("2026-05-13T12:00:00.000Z");
+
+  const context = await loadUpcomingCalendarContext(
+    createEmptyCalendarClient(),
+    "user-1",
+    { generatedAt: now.toISOString(), now }
+  );
+
+  assert.equal(context.status, "not_configured");
+  assert.equal(context.eventCount, 0);
+});
+
+test("parseGoogleCalendarEvents filters out all cancelled events", () => {
+  const events = parseGoogleCalendarEvents({
+    items: [
+      { start: { dateTime: "2026-05-14T10:00:00.000Z" }, status: "cancelled", summary: "Removed" },
+      { start: { dateTime: "2026-05-14T11:00:00.000Z" }, summary: "Active" },
+      { start: { date: "2026-05-15" }, status: "cancelled", summary: "Also Removed" }
+    ]
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].title, "Active");
+});
+
+test("parseGoogleCalendarEvents marks events with only date as all-day and events with dateTime as timed", () => {
+  const events = parseGoogleCalendarEvents({
+    items: [
+      { start: { date: "2026-05-14" }, end: { date: "2026-05-15" }, summary: "All Day" },
+      { start: { dateTime: "2026-05-14T10:00:00.000Z" }, end: { dateTime: "2026-05-14T11:00:00.000Z" }, summary: "Timed" },
+      { start: { date: "2026-05-14", dateTime: "2026-05-14T00:00:00.000Z" }, summary: "Has Both" }
+    ]
+  });
+
+  assert.equal(events.length, 3);
+  assert.equal(events[0].allDay, true);
+  assert.equal(events[0].start, "2026-05-14");
+  assert.equal(events[1].allDay, false);
+  assert.equal(events[1].start, "2026-05-14T10:00:00.000Z");
+  assert.equal(events[2].allDay, false);
+  assert.equal(events[2].start, "2026-05-14T00:00:00.000Z");
+});
+
 test("Google Calendar list helper sends bounded readonly request", async () => {
   let requestedUrlText: string | null = null;
   let requestedAuth: string | null = null;
