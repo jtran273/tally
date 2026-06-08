@@ -317,7 +317,7 @@ test("loadUpcomingCalendarContext refreshes an expired token before fetching eve
     const updates: CalendarUpdateCall[] = [];
 
     const fetcher: typeof fetch = async (input) => {
-      if (String(input).includes("oauth2.googleapis.com")) {
+      if (new URL(String(input)).hostname === "oauth2.googleapis.com") {
         return responseJson({
           access_token: "access-refreshed",
           expires_in: 3600,
