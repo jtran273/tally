@@ -3,11 +3,47 @@ import test from "node:test";
 import { assertAssistantContextSafe, buildWeeklyPlanningContext } from "@/lib/agents";
 import { openClawSignalsFixture } from "@/lib/agents/openclaw-fixtures";
 import { buildUpcomingCalendarContext, type CalendarEventInput } from "@/lib/calendar";
-import type { OpenClawSignalsResponse } from "./types";
+import type { BudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
+import type { AgentProposalType } from "@/lib/db";
+import type { OpenClawProposalSignal, OpenClawSignalsResponse } from "./types";
 import { buildOpenClawOutboxResponse } from "./outbox";
 import { buildOpenClawSignalsResponse } from "./signals";
 
 const OUTBOX_GENERATED_AT = "2026-05-13T12:00:00.000Z";
+
+function guardrailSummary(items: BudgetGuardrailSummary["items"]): BudgetGuardrailSummary {
+  return {
+    asOfDate: "2026-05-13",
+    baselineMonthCount: 3,
+    fromDate: "2026-05-01",
+    items,
+    monthElapsedDays: 13,
+    monthTotalDays: 31,
+    nearCount: items.filter((item) => item.status === "near").length,
+    overCount: items.filter((item) => item.status === "over").length,
+    toDate: "2026-05-13"
+  };
+}
+
+function pendingProposalSignal(input: Partial<OpenClawProposalSignal> = {}): OpenClawProposalSignal {
+  return {
+    id: "detected-1",
+    clarificationQuestion: null,
+    confidence: 0.7,
+    createdAt: OUTBOX_GENERATED_AT,
+    evidence: { transaction: { amount: -84, date: "2026-05-11", merchant: "Sushi House" } },
+    expiresAt: null,
+    proposalType: "reimbursement_candidate" as AgentProposalType,
+    proposedPatch: { suggestedIntent: "reimbursable" },
+    questionFingerprint: null,
+    sourceAgent: "test",
+    status: "pending",
+    targetId: "tx-detected",
+    targetKind: "enriched_transaction",
+    updatedAt: OUTBOX_GENERATED_AT,
+    ...input
+  };
+}
 
 function signalsWithCalendar(events: CalendarEventInput[]) {
   const now = new Date(OUTBOX_GENERATED_AT);
@@ -81,6 +117,7 @@ test("OpenClaw outbox applies priority filtering before message limits", () => {
 test("OpenClaw outbox creates specific high-priority review and reimbursement alerts", () => {
   const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
   signals.openClarificationQuestions = [];
+  signals.pendingProposals = [];
   signals.weeklyPlanningContext.spending.currentWeek.reimbursementOutstanding = 125;
   signals.weeklyPlanningContext.review = {
     action: "read.review_queue_summary",
@@ -322,4 +359,155 @@ test("budget briefing calendar phrase never leaks event details", () => {
 
   assert.match(body, /calendar pressure/);
   assert.doesNotMatch(body, /alex@example\.com|Market St|meet\.google\.com|secret-project-orion|Dinner with|Phoenix/);
+});
+
+test("OpenClaw outbox emits high-priority budget-threshold nudges for near and over categories", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    includeBudgetBriefing: false,
+    minPriority: "high",
+    budgetGuardrails: guardrailSummary([
+      {
+        budgetAmount: 500,
+        currentAmount: 436,
+        id: "cat-dining",
+        label: "Dining",
+        openReviewCount: 0,
+        percentUsed: 87.2,
+        projectedAmount: 1040,
+        projectedPercent: 208,
+        remainingAmount: 64,
+        status: "near",
+        transactionCount: 12,
+        trustedAmount: 436,
+        unresolvedReviewAmount: 0
+      },
+      {
+        budgetAmount: 200,
+        currentAmount: 260,
+        id: "cat-rideshare",
+        label: "Rideshare",
+        openReviewCount: 0,
+        percentUsed: 130,
+        projectedAmount: 620,
+        projectedPercent: 310,
+        remainingAmount: -60,
+        status: "over",
+        transactionCount: 9,
+        trustedAmount: 260,
+        unresolvedReviewAmount: 0
+      }
+    ])
+  });
+
+  const thresholdMessages = outbox.messages.filter((message) => message.kind === "budget_threshold");
+  assert.equal(thresholdMessages.length, 2);
+  assert.equal(thresholdMessages[0]?.priority, "high");
+  assert.equal(thresholdMessages[0]?.replyAction, null);
+  assert.match(thresholdMessages[0]?.body ?? "", /87% through your Dining budget/);
+  assert.match(thresholdMessages[0]?.body ?? "", /\$436 of \$500/);
+  assert.match(thresholdMessages[0]?.body ?? "", /18 days left this month/);
+  assert.match(thresholdMessages[1]?.body ?? "", /over your Rideshare budget/);
+  assertAssistantContextSafe(outbox);
+});
+
+test("OpenClaw outbox skips on-track budget categories", () => {
+  const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    includeBudgetBriefing: false,
+    budgetGuardrails: guardrailSummary([
+      {
+        budgetAmount: 500,
+        currentAmount: 100,
+        id: "cat-groceries",
+        label: "Groceries",
+        openReviewCount: 0,
+        percentUsed: 20,
+        projectedAmount: 240,
+        projectedPercent: 48,
+        remainingAmount: 400,
+        status: "on-track",
+        transactionCount: 4,
+        trustedAmount: 100,
+        unresolvedReviewAmount: 0
+      }
+    ])
+  });
+
+  assert.equal(outbox.messages.find((message) => message.kind === "budget_threshold"), undefined);
+});
+
+test("OpenClaw outbox surfaces detected reimbursement candidates as approval-gated nudges", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.pendingProposals = [
+    pendingProposalSignal({ id: "detected-sushi" })
+  ];
+
+  const outbox = buildOpenClawOutboxResponse(signals, {
+    includeBudgetBriefing: false,
+    minPriority: "high"
+  });
+
+  const detected = outbox.messages.filter((message) => message.kind === "reimbursement_detected");
+  assert.equal(detected.length, 1);
+  assert.equal(detected[0]?.priority, "high");
+  assert.equal(detected[0]?.replyAction?.endpoint, "/api/openclaw/replies");
+  assert.equal(detected[0]?.replyAction?.method, "POST");
+  assert.equal(detected[0]?.replyAction?.proposalId, "detected-sushi");
+  assert.match(detected[0]?.body ?? "", /Tally spotted a possible reimbursement/);
+  assert.match(detected[0]?.body ?? "", /\$84 at Sushi House/);
+  assert.match(detected[0]?.body ?? "", /Reply yes\/no or a name/);
+  assert.equal(outbox.safety.directFinanceWritesAllowed, false);
+  assertAssistantContextSafe(outbox);
+});
+
+test("OpenClaw outbox does not double-surface candidates already asked as clarification questions", () => {
+  const detectedMessages = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    includeBudgetBriefing: false
+  }).messages.filter((message) => message.kind === "reimbursement_detected");
+
+  assert.equal(detectedMessages.length, 0);
+});
+
+test("budget-threshold and reimbursement-detected nudges never leak seeded secret-looking data", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.pendingProposals = [
+    pendingProposalSignal({
+      id: "detected-secret",
+      evidence: {
+        transaction: {
+          amount: -120,
+          date: "2026-05-11",
+          merchant: "Sushi House"
+        },
+        secretNote: "ssn 123-45-6789 token sk-proj-abcdefghijklmnopqrstuvwx",
+        rawProviderPayload: "access-production-0123456789abcdef"
+      }
+    })
+  ];
+
+  const outbox = buildOpenClawOutboxResponse(signals, {
+    includeBudgetBriefing: false,
+    budgetGuardrails: guardrailSummary([
+      {
+        budgetAmount: 500,
+        currentAmount: 460,
+        id: "cat-dining",
+        label: "Dining",
+        openReviewCount: 0,
+        percentUsed: 92,
+        projectedAmount: 1100,
+        projectedPercent: 220,
+        remainingAmount: 40,
+        status: "near",
+        transactionCount: 11,
+        trustedAmount: 460,
+        unresolvedReviewAmount: 0
+      }
+    ])
+  });
+
+  const bodies = outbox.messages.map((message) => message.body).join(" ");
+  assert.doesNotMatch(bodies, /123-45-6789|sk-proj-|access-production-|secretNote|rawProviderPayload|ssn/i);
+  assertAssistantContextSafe(outbox);
 });
