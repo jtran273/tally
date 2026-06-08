@@ -19,8 +19,27 @@ export type PlaidEnvironment = "sandbox" | "production";
 const SUPPORTED_PLAID_ENVIRONMENTS = new Set<PlaidEnvironment>(["sandbox", "production"]);
 const LOCALHOST_NAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
 
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
 function getPlaidEnvironment(): PlaidEnvironment {
-  const environment = process.env.PLAID_ENV?.trim().toLowerCase() || "sandbox";
+  const environment = process.env.PLAID_ENV?.trim().toLowerCase();
+
+  if (!environment) {
+    // An empty/unset PLAID_ENV in a deployed environment used to silently fall
+    // back to Sandbox, which can only connect Plaid's fake test banks. Real
+    // institutions (e.g. SchoolsFirst) then appear "broken" with no error. Fail
+    // loudly in a production runtime; only default to sandbox for local dev.
+    if (isProductionRuntime()) {
+      throw new PlaidConfigurationError(
+        "PLAID_ENV must be set to sandbox or production. It is empty in a production runtime, " +
+        "which would silently use Plaid Sandbox and block real bank connections."
+      );
+    }
+
+    return "sandbox";
+  }
 
   if (SUPPORTED_PLAID_ENVIRONMENTS.has(environment as PlaidEnvironment)) {
     return environment as PlaidEnvironment;

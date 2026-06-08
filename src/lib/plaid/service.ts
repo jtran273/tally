@@ -2291,6 +2291,7 @@ export async function createPlaidLinkToken({
   const item = itemId && client ? await loadPlaidItemForSync(client, userId, itemId) : null;
   const response = await plaid.linkTokenCreate(buildPlaidLinkTokenCreateRequest({
     accessToken: item ? decryptPlaidAccessToken(item.access_token_ciphertext) : undefined,
+    optionalProducts: getPlaidLinkOptionalProducts(),
     redirectUri: config.redirectUri,
     userEmail,
     userId
@@ -2303,13 +2304,26 @@ export async function createPlaidLinkToken({
   };
 }
 
+// Liabilities is not part of Plaid's baseline product access; requesting it (even
+// as an optional product) before it is approved for the production app makes
+// link/token/create fail with INVALID_PRODUCT, which blocks every connection.
+// Keep it opt-in so Transactions-only connections work out of the box, and turn
+// it back on with PLAID_ENABLE_LIABILITIES once the product is approved.
+export function getPlaidLinkOptionalProducts(): Products[] {
+  const value = process.env.PLAID_ENABLE_LIABILITIES?.trim().toLowerCase();
+  const enabled = value === "true" || value === "1" || value === "yes";
+  return enabled ? [Products.Liabilities] : [];
+}
+
 export function buildPlaidLinkTokenCreateRequest({
   accessToken,
+  optionalProducts = [],
   redirectUri,
   userEmail,
   userId
 }: {
   accessToken?: string;
+  optionalProducts?: Products[];
   redirectUri: string | null;
   userEmail: string | null;
   userId: string;
@@ -2317,7 +2331,10 @@ export function buildPlaidLinkTokenCreateRequest({
   return {
     ...(accessToken
       ? { access_token: accessToken }
-      : { products: [Products.Transactions], optional_products: [Products.Liabilities] }),
+      : {
+        products: [Products.Transactions],
+        ...(optionalProducts.length > 0 ? { optional_products: optionalProducts } : {})
+      }),
     client_name: "Tally",
     country_codes: [CountryCode.Us],
     language: "en",

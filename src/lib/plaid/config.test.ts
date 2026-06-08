@@ -4,24 +4,28 @@ import { getPlaidConfig, getPlaidLinkTokenConfig, PlaidConfigurationError } from
 
 const ENV_KEYS = [
   "NEXT_PUBLIC_APP_URL",
+  "NODE_ENV",
   "PLAID_CLIENT_ID",
   "PLAID_ENV",
   "PLAID_PRODUCTION_SECRET",
   "PLAID_REDIRECT_URI",
   "PLAID_SANDBOX_SECRET",
   "PLAID_SECRET",
+  "VERCEL_ENV",
   "VERCEL_URL"
 ] as const;
 
+const mutableEnv = process.env as Record<string, string | undefined>;
+
 function withPlaidEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>, fn: () => void) {
-  const previous = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+  const previous = new Map(ENV_KEYS.map((key) => [key, mutableEnv[key]]));
 
   for (const key of ENV_KEYS) {
     const value = values[key];
     if (value === undefined) {
-      delete process.env[key];
+      delete mutableEnv[key];
     } else {
-      process.env[key] = value;
+      mutableEnv[key] = value;
     }
   }
 
@@ -30,9 +34,9 @@ function withPlaidEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string |
   } finally {
     for (const [key, value] of previous) {
       if (value === undefined) {
-        delete process.env[key];
+        delete mutableEnv[key];
       } else {
-        process.env[key] = value;
+        mutableEnv[key] = value;
       }
     }
   }
@@ -143,6 +147,37 @@ test("Plaid Link token config does not use Vercel or app URL as production redir
 
     assert.equal(config.environment, "production");
     assert.equal(config.redirectUri, null);
+  });
+});
+
+test("Plaid config rejects an empty PLAID_ENV in a production runtime", () => {
+  withPlaidEnv({
+    NODE_ENV: "production",
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "",
+    PLAID_PRODUCTION_SECRET: "production-secret",
+    PLAID_SECRET: "fallback-secret",
+    VERCEL_ENV: "production"
+  }, () => {
+    assert.throws(
+      () => getPlaidConfig(),
+      (error) => error instanceof PlaidConfigurationError
+        && error.message.startsWith("PLAID_ENV must be set to sandbox or production. It is empty")
+    );
+  });
+});
+
+test("Plaid config defaults to sandbox when PLAID_ENV is empty outside a production runtime", () => {
+  withPlaidEnv({
+    NODE_ENV: "development",
+    PLAID_CLIENT_ID: "client-id",
+    PLAID_ENV: "",
+    PLAID_SANDBOX_SECRET: "sandbox-secret",
+    VERCEL_ENV: undefined
+  }, () => {
+    const config = getPlaidConfig();
+
+    assert.equal(config.environment, "sandbox");
   });
 });
 

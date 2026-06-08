@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AccountType as PlaidAccountType, Products, type AccountBase, type Transaction } from "plaid";
 import {
   buildPlaidLinkTokenCreateRequest,
+  getPlaidLinkOptionalProducts,
   deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
@@ -118,6 +119,7 @@ test("Plaid Link token request uses Tally branding for new connections", () => {
 
   assert.equal(request.client_name, "Tally");
   assert.deepEqual(request.products, [Products.Transactions]);
+  assert.equal("optional_products" in request, false);
   assert.equal("access_token" in request, false);
   assert.deepEqual(request.country_codes, ["US"]);
   assert.equal(request.language, "en");
@@ -126,6 +128,38 @@ test("Plaid Link token request uses Tally branding for new connections", () => {
     client_user_id: userId,
     email_address: "james@example.com"
   });
+});
+
+test("Plaid Link token request includes optional products only when provided", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    optionalProducts: [Products.Liabilities],
+    redirectUri: null,
+    userEmail: null,
+    userId
+  });
+
+  assert.deepEqual(request.products, [Products.Transactions]);
+  assert.deepEqual(request.optional_products, [Products.Liabilities]);
+});
+
+test("getPlaidLinkOptionalProducts is opt-in via PLAID_ENABLE_LIABILITIES", () => {
+  const previous = process.env.PLAID_ENABLE_LIABILITIES;
+  try {
+    delete process.env.PLAID_ENABLE_LIABILITIES;
+    assert.deepEqual(getPlaidLinkOptionalProducts(), []);
+
+    process.env.PLAID_ENABLE_LIABILITIES = "true";
+    assert.deepEqual(getPlaidLinkOptionalProducts(), [Products.Liabilities]);
+
+    process.env.PLAID_ENABLE_LIABILITIES = "false";
+    assert.deepEqual(getPlaidLinkOptionalProducts(), []);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.PLAID_ENABLE_LIABILITIES;
+    } else {
+      process.env.PLAID_ENABLE_LIABILITIES = previous;
+    }
+  }
 });
 
 test("Plaid Link token request uses update mode without product creation fields", () => {
