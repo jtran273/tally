@@ -51,6 +51,7 @@ export interface LiabilityAccountSummary {
   name: string;
   mask: string | null;
   institutionName: string;
+  liabilityKind?: AccountRecord["liabilityKind"];
   amountOwed: number;
   creditLimit: number | null;
   utilizationPercent: number | null;
@@ -68,6 +69,14 @@ export interface LiabilityAccountSummary {
   reportingDate: string | null;
   reportingDateSource: LiabilityReportingDateSource;
   reportingDateConfidence: LiabilityReportingDateConfidence;
+  nextPaymentAmount?: number | null;
+  interestRatePercentage?: number | null;
+  originationPrincipalAmount?: number | null;
+  expectedPayoffDate?: string | null;
+  loanName?: string | null;
+  loanStatus?: string | null;
+  repaymentPlan?: string | null;
+  pastDueAmount?: number | null;
   actionRank: number;
 }
 
@@ -84,8 +93,12 @@ export interface LiabilitiesDueSummary {
   targetPaymentPlans: LiabilityTargetPaymentPlan[];
 }
 
-function isCreditAccount(account: AccountRecord) {
-  return account.type === "credit" && account.isActive;
+function isLiabilityAccount(account: AccountRecord) {
+  return (account.type === "credit" || account.type === "loan") && account.isActive;
+}
+
+function isCreditCardLiability(kind: AccountRecord["liabilityKind"], subtype: string | null) {
+  return kind === "credit_card" || (!kind && (subtype === "credit card" || subtype === "paypal"));
 }
 
 function isoDate(date: Date) {
@@ -121,6 +134,20 @@ function statusForDays(days: number | null, owed: number): LiabilityStatus {
   if (days < 0) return "overdue";
   if (days <= DUE_SOON_DAYS) return "due-soon";
   return "current";
+}
+
+function statusForAccount({
+  days,
+  isOverdue,
+  owed
+}: {
+  days: number | null;
+  isOverdue: boolean | null | undefined;
+  owed: number;
+}): LiabilityStatus {
+  if (owed <= 0) return "no-balance";
+  if (isOverdue) return "overdue";
+  return statusForDays(days, owed);
 }
 
 function utilizationRank(utilizationPercent: number | null) {
@@ -362,43 +389,59 @@ export function buildLiabilitiesDueSummary({
 }): LiabilitiesDueSummary {
   const today = asOfDate ?? isoDate(new Date());
   const sortedTransactions = [...transactions].sort((a, b) => b.date.localeCompare(a.date));
-  const creditAccounts = accounts.filter(isCreditAccount);
+  const liabilityAccounts = accounts.filter(isLiabilityAccount);
 
-  const rows: LiabilityAccountSummary[] = creditAccounts
+  const rows: LiabilityAccountSummary[] = liabilityAccounts
     .map((account) => {
       const amountOwed = Math.max(0, Math.abs(account.balance));
-      const lastPayment = findLastPayment(account.id, sortedTransactions);
+      const isCreditCard = isCreditCardLiability(account.liabilityKind ?? null, account.subtype);
+      const transactionLastPayment = findLastPayment(account.id, sortedTransactions);
+      const lastPayment = account.liabilityLastPaymentDate
+        ? {
+            amount: account.liabilityLastPaymentAmount ?? 0,
+            date: account.liabilityLastPaymentDate
+          }
+        : transactionLastPayment;
       const actualDueDate = account.nextPaymentDueDate ?? null;
       const estimatedDueDate = actualDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
-      const utilizationPercent = account.creditLimit && account.creditLimit > 0
+      const utilizationPercent = isCreditCard && account.creditLimit && account.creditLimit > 0
         ? roundPercent((amountOwed / account.creditLimit) * 100)
         : null;
       const reportingDate = reportingDateMetadata({
         asOfDate: today,
-        lastStatementIssueDate: account.lastStatementIssueDate,
-        nextPaymentDueDate: actualDueDate
+        lastStatementIssueDate: isCreditCard ? account.lastStatementIssueDate : null,
+        nextPaymentDueDate: isCreditCard ? actualDueDate : null
       });
 
       const row = {
         accountId: account.id,
         amountOwed,
-        creditLimit: account.creditLimit,
+        creditLimit: isCreditCard ? account.creditLimit : null,
         daysUntilDue,
+        expectedPayoffDate: account.liabilityExpectedPayoffDate ?? null,
         estimatedDueDate,
+        interestRatePercentage: account.liabilityInterestRatePercentage ?? null,
         institutionName: account.institutionName,
-        lastPaymentAmount: lastPayment?.amount ?? null,
+        lastPaymentAmount: lastPayment?.amount && lastPayment.amount > 0 ? lastPayment.amount : null,
         lastPaymentDate: lastPayment?.date ?? null,
         lastStatementIssueDate: account.lastStatementIssueDate ?? null,
         lastStatementBalance: account.lastStatementBalance ?? null,
+        liabilityKind: account.liabilityKind ?? null,
+        loanName: account.liabilityLoanName ?? null,
+        loanStatus: account.liabilityLoanStatus ?? null,
         minimumPaymentAmount: account.minimumPaymentAmount ?? null,
+        nextPaymentAmount: account.liabilityNextPaymentAmount ?? account.minimumPaymentAmount ?? null,
+        originationPrincipalAmount: account.liabilityOriginationPrincipalAmount ?? null,
+        pastDueAmount: account.liabilityPastDueAmount ?? null,
+        repaymentPlan: account.liabilityRepaymentPlan ?? null,
         dueDateIsActual: Boolean(actualDueDate),
         mask: account.mask,
         name: account.name,
         reportingDate: reportingDate.reportingDate,
         reportingDateConfidence: reportingDate.reportingDateConfidence,
         reportingDateSource: reportingDate.reportingDateSource,
-        status: statusForDays(daysUntilDue, amountOwed),
+        status: statusForAccount({ days: daysUntilDue, isOverdue: account.liabilityIsOverdue, owed: amountOwed }),
         utilizationPercent
       };
 

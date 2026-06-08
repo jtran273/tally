@@ -184,6 +184,32 @@ function accountDetailRows(account: AccountRecord, latestSnapshot?: BalanceSnaps
     ];
   }
 
+  if (account.type === "loan") {
+    const rows: Array<AccountDetailRow | null> = [
+      account.nextPaymentDueDate ? {
+        label: "Next due",
+        mono: true,
+        value: formatDate(account.nextPaymentDueDate)
+      } : null,
+      account.liabilityNextPaymentAmount || account.minimumPaymentAmount ? {
+        label: "Payment",
+        mono: true,
+        value: formatMoney(account.liabilityNextPaymentAmount ?? account.minimumPaymentAmount ?? 0)
+      } : null,
+      account.liabilityInterestRatePercentage !== null && account.liabilityInterestRatePercentage !== undefined ? {
+        label: "Rate",
+        mono: true,
+        value: `${account.liabilityInterestRatePercentage.toFixed(2)}%`
+      } : null,
+      account.liabilityExpectedPayoffDate ? {
+        label: "Payoff",
+        mono: true,
+        value: formatDate(account.liabilityExpectedPayoffDate)
+      } : null
+    ];
+    return rows.filter((row): row is AccountDetailRow => row !== null);
+  }
+
   if (valuationOnly) {
     return latestSnapshot ? [{
       label: "Latest snapshot",

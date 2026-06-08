@@ -334,7 +334,7 @@ function accountIncludedInScope(type: AccountRecord["type"] | undefined, scope: 
   if (scope === "netWorth") return true;
   if (!type) return false;
   if (scope === "cash") return type === "depository";
-  return type === "depository" || type === "credit";
+  return type === "depository" || type === "credit" || type === "loan";
 }
 
 function transactionIncludedInScope(
@@ -355,6 +355,9 @@ interface CardPaydown {
 
 function cardMinimumPaymentAmount(row: LiabilityAccountSummary) {
   if (row.amountOwed <= 0) return 0;
+  if (row.nextPaymentAmount && row.nextPaymentAmount > 0) {
+    return Math.min(row.amountOwed, row.nextPaymentAmount);
+  }
   if (row.minimumPaymentAmount && row.minimumPaymentAmount > 0) {
     return Math.min(row.amountOwed, row.minimumPaymentAmount);
   }
@@ -383,6 +386,7 @@ function cardStatementTiming(row: LiabilityAccountSummary) {
 
 function cardActionLine(row: LiabilityAccountSummary) {
   if (row.amountOwed <= 0) return "Paid in full.";
+  const isCard = row.liabilityKind === "credit_card" || row.liabilityKind == null;
 
   if (row.status === "overdue") {
     return `Past due - pay at least ${formatApproxMoney(cardMinimumPaymentAmount(row))} now.`;
@@ -391,6 +395,13 @@ function cardActionLine(row: LiabilityAccountSummary) {
   if (row.status === "due-soon") {
     const dueCopy = row.estimatedDueDate ? `by ${formatDate(row.estimatedDueDate)}` : "by the issuer due date";
     return `Due soon - pay at least ${formatApproxMoney(cardMinimumPaymentAmount(row))} ${dueCopy}.`;
+  }
+
+  if (!isCard) {
+    const dueCopy = row.estimatedDueDate ? `Next due ${formatDate(row.estimatedDueDate)}.` : "Payment schedule unavailable.";
+    return row.interestRatePercentage != null
+      ? `${dueCopy} ${row.interestRatePercentage.toFixed(2)}% rate.`
+      : dueCopy;
   }
 
   const paydown = cardUtilizationPaydown(row);
@@ -1839,7 +1850,7 @@ function NetWorthCompositionPanel({
     .map((account) => ({ account, value: account.balance }))
     .sort((a, b) => b.value - a.value);
   const debtAccounts = accounts
-    .filter((account) => account.type === "credit")
+    .filter((account) => account.type === "credit" || account.type === "loan")
     .map((account) => ({ account, value: Math.abs(account.balance) }))
     .filter((row) => row.value > 0)
     .sort((a, b) => b.value - a.value);
@@ -2013,7 +2024,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
     ? "Add credit limits to track utilization."
     : `Overall utilization ${summary.aggregateUtilizationPercent.toFixed(1)}% · highest card ${summary.highestIndividualUtilizationPercent.toFixed(1)}%.`;
   const calmCopy = activeRows.length === 0
-    ? "All connected cards are paid."
+    ? "All connected liabilities are paid."
     : activeMissingDueDates === activeRows.length
       ? "No utilization paydown is flagged. Due dates are not available in Tally yet, so confirm issuer minimums outside the app."
       : activeMissingDueDates > 0
@@ -2021,10 +2032,10 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
         : "No extra payment is flagged by connected card data right now.";
 
   return (
-    <section aria-label="Credit card actions" className={styles.liabilityPanel} id="card-actions">
+    <section aria-label="Debt actions" className={styles.liabilityPanel} id="card-actions">
       <div className={styles.liabilityPanelHead}>
         <div>
-          <span className={styles.eyebrow}>Card actions</span>
+          <span className={styles.eyebrow}>Debt actions</span>
           <h3 className={styles.liabilityHeadline}>{formatMoney(summary.totalOwed)}</h3>
           <p className={styles.cardActionSubhead}>{utilizationCopy}</p>
         </div>
@@ -2102,19 +2113,19 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
           <span>
             {paidRows.length === 1
               ? `${paidRows[0].name} is paid · $0`
-              : `${paidRows.length} cards paid · $0`}
+              : `${paidRows.length} liabilities paid · $0`}
           </span>
         </div>
       ) : null}
 
       {hiddenCount > 0 ? (
         <Link className={styles.cardActionMoreLink} href="/accounts">
-          View {hiddenCount} more {hiddenCount === 1 ? "card" : "cards"}
+          View {hiddenCount} more {hiddenCount === 1 ? "account" : "accounts"}
         </Link>
       ) : null}
 
       <p className={styles.cardActionFootnote}>
-        Due dates and statement timing appear only when connected liability fields are available. Not a credit-score prediction.
+        Due dates appear only when connected liability fields are available. Card utilization guidance is not a credit-score prediction.
       </p>
     </section>
   );
@@ -2144,7 +2155,7 @@ export function DashboardView({
   const cashMinusLiabilities = totals.cash - totals.liabilities;
   const balanceViews: BalanceViewOption[] = useMemo(() => [
     {
-      description: "Cash and card activity together for the day-to-day view.",
+      description: "Cash and debt activity together for the day-to-day view.",
       icon: WalletCards,
       key: "cashMinusLiabilities",
       label: "Cash flow",
@@ -2161,7 +2172,7 @@ export function DashboardView({
       value: cashScopeValue
     },
     {
-      description: "All assets minus credit card balances.",
+      description: "All assets minus connected liabilities.",
       icon: Landmark,
       key: "netWorth",
       label: "Net worth",
