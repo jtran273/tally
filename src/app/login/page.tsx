@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoModeEnabled } from "@/lib/demo/auth";
+import { isInvalidRefreshTokenAuthError } from "@/lib/supabase/auth-errors";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -37,8 +38,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
     if (supabase) {
       const {
-        data: { user }
+        data: { user },
+        error
       } = await supabase.auth.getUser();
+
+      if (error) {
+        if (!isInvalidRefreshTokenAuthError(error)) throw error;
+      }
 
       userEmail = user?.email ?? null;
     }

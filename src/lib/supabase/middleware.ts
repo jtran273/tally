@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { isDemoRequest } from "@/lib/demo/auth";
+import { clearSupabaseAuthCookies, isInvalidRefreshTokenAuthError } from "./auth-errors";
 import { getSupabaseConfig } from "./env";
 
 const PUBLIC_PATHS = ["/login"];
@@ -57,6 +58,11 @@ function buildLoginRedirect(request: NextRequest) {
   return redirectUrl;
 }
 
+export function buildLoggedOutRedirect(request: NextRequest, options: { clearAuthCookies?: boolean } = {}) {
+  const response = NextResponse.redirect(buildLoginRedirect(request));
+  return options.clearAuthCookies ? clearSupabaseAuthCookies(response, request) : response;
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
   const rawPathname = request.nextUrl.pathname;
@@ -95,12 +101,28 @@ export async function updateSession(request: NextRequest) {
     }
   });
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  let user = null;
+
+  try {
+    const result = await supabase.auth.getUser();
+
+    if (result.error) {
+      if (isInvalidRefreshTokenAuthError(result.error)) {
+        return buildLoggedOutRedirect(request, { clearAuthCookies: true });
+      }
+    } else {
+      user = result.data.user;
+    }
+  } catch (error) {
+    if (isInvalidRefreshTokenAuthError(error)) {
+      return buildLoggedOutRedirect(request, { clearAuthCookies: true });
+    }
+
+    throw error;
+  }
 
   if (!user) {
-    return NextResponse.redirect(buildLoginRedirect(request));
+    return buildLoggedOutRedirect(request);
   }
 
   return supabaseResponse;
