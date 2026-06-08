@@ -11,7 +11,11 @@ import { isPeerToPeerReview } from "@/lib/review/reasons";
 import { assertFinanceManifestSafe } from "./finance-action-manifest";
 
 export type AgentInboxProposalStatus = "accept-ready" | "needs-review";
-export type AgentInboxProposalAction = "review-suggestion" | "manual-review" | "reimbursement-match";
+export type AgentInboxProposalAction =
+  | "review-suggestion"
+  | "manual-review"
+  | "reimbursement-candidate"
+  | "reimbursement-match";
 
 interface BaseAgentInboxProposal {
   action: AgentInboxProposalAction;
@@ -66,7 +70,29 @@ export interface ReimbursementMatchAgentInboxProposal extends BaseAgentInboxProp
   unmatchedAmount: number;
 }
 
-export type AgentInboxProposal = ReviewAgentInboxProposal | ReimbursementMatchAgentInboxProposal;
+export interface ReimbursementCandidateAgentInboxProposal extends BaseAgentInboxProposal {
+  action: "reimbursement-candidate";
+  candidateInflows: Array<{
+    amount: number;
+    category: string;
+    date: string;
+    id: string;
+    merchant: string;
+  }>;
+  proposalId: string;
+  question: string | null;
+  recommendation: {
+    rationale: string;
+    signals: string[];
+    suggestedIntent: TransactionIntent | null;
+  };
+  transactionId: string;
+}
+
+export type AgentInboxProposal =
+  | ReviewAgentInboxProposal
+  | ReimbursementCandidateAgentInboxProposal
+  | ReimbursementMatchAgentInboxProposal;
 
 export interface AgentInboxProposalContext {
   accountLabel: string;
@@ -103,7 +129,7 @@ function accountLabel(item: ReviewQueueItem) {
 }
 
 function proposedFieldCount(proposal: AgentInboxProposal) {
-  if (proposal.action === "reimbursement-match") return 1;
+  if (proposal.action === "reimbursement-candidate" || proposal.action === "reimbursement-match") return 1;
 
   return [
     proposal.recommendation.merchantName,
@@ -167,8 +193,80 @@ function stringArrayValue(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function transactionIntentValue(value: unknown): TransactionIntent | null {
+  return value === "personal" ||
+    value === "business" ||
+    value === "shared" ||
+    value === "reimbursable" ||
+    value === "transfer"
+    ? value
+    : null;
+}
+
 function jsonObjectValue(value: unknown): Record<string, unknown> | null {
   return isJsonObject(value as Json) ? value as Record<string, unknown> : null;
+}
+
+function safeSignals(...values: unknown[]) {
+  const seen = new Set<string>();
+  return values
+    .flatMap(stringArrayValue)
+    .filter((signal) => {
+      if (/openai unavailable|provider diagnostics?/i.test(signal)) return false;
+      if (seen.has(signal)) return false;
+      seen.add(signal);
+      return true;
+    })
+    .slice(0, 6);
+}
+
+function buildReimbursementCandidateProposal(proposal: AgentProposalRecord): ReimbursementCandidateAgentInboxProposal | null {
+  if (proposal.proposalType !== "reimbursement_candidate") return null;
+  if (!isJsonObject(proposal.evidence) || !isJsonObject(proposal.proposedPatch)) return null;
+
+  const transaction = jsonObjectValue(proposal.evidence.transaction);
+  if (!transaction) return null;
+
+  const candidateInflows = Array.isArray(proposal.evidence.candidateInflows)
+    ? proposal.evidence.candidateInflows
+      .map(jsonObjectValue)
+      .filter((inflow): inflow is Record<string, unknown> => inflow !== null)
+      .map((inflow) => ({
+        amount: numberValue(inflow.amount),
+        category: stringValue(inflow.category),
+        date: stringValue(inflow.date),
+        id: stringValue(inflow.id),
+        merchant: stringValue(inflow.merchant)
+      }))
+    : [];
+  const question = stringValue(proposal.proposedPatch.question) ||
+    stringValue(proposal.evidence.question) ||
+    proposal.clarificationQuestion;
+  const rationale = stringValue(proposal.proposedPatch.reason) ||
+    "Review whether this expense should be tracked as reimbursable.";
+  const built: ReimbursementCandidateAgentInboxProposal = {
+    action: "reimbursement-candidate",
+    amount: numberValue(transaction.amount),
+    candidateInflows,
+    category: stringValue(transaction.category),
+    confidence: proposal.confidence,
+    createdAt: proposal.createdAt,
+    date: stringValue(transaction.date),
+    id: `agent-proposal-${proposal.id}`,
+    merchant: stringValue(transaction.merchant),
+    proposalId: proposal.id,
+    question: question || null,
+    recommendation: {
+      rationale,
+      signals: safeSignals(proposal.evidence.signals, proposal.evidence.heuristicReasons),
+      suggestedIntent: transactionIntentValue(proposal.proposedPatch.suggestedIntent)
+    },
+    status: "needs-review",
+    transactionId: stringValue(transaction.id) || proposal.targetId
+  };
+
+  assertFinanceManifestSafe(built);
+  return built;
 }
 
 function buildReimbursementMatchProposal(proposal: AgentProposalRecord): ReimbursementMatchAgentInboxProposal | null {
@@ -232,12 +330,20 @@ export function buildAgentInboxProposals(
   return [
     ...reviewItems.map(buildProposal),
     ...agentProposals
+      .map(buildReimbursementCandidateProposal)
+      .filter((proposal): proposal is ReimbursementCandidateAgentInboxProposal => proposal !== null),
+    ...agentProposals
       .map(buildReimbursementMatchProposal)
       .filter((proposal): proposal is ReimbursementMatchAgentInboxProposal => proposal !== null)
   ]
     .sort((left, right) => {
       if (left.status !== right.status) return left.status === "accept-ready" ? -1 : 1;
-      if (left.action !== right.action) return left.action === "reimbursement-match" ? -1 : 1;
+      if (left.action !== right.action) {
+        if (left.action === "reimbursement-match") return -1;
+        if (right.action === "reimbursement-match") return 1;
+        if (left.action === "reimbursement-candidate") return -1;
+        if (right.action === "reimbursement-candidate") return 1;
+      }
       return Math.abs(right.amount) - Math.abs(left.amount);
     });
 }

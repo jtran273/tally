@@ -1,11 +1,15 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
+import type { AgentInboxProposal } from "@/lib/agents/proposal-inbox";
 import { excludeMatchedRefundReversalTransactions } from "@/lib/finance/refund-reversals";
 import { transactionSpendingAmount, type SpendingReportingMode } from "@/lib/finance/spending";
-import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
+import {
+  buildReimbursementReportingSummary,
+  summarizeTransactionReimbursement
+} from "@/lib/finance/reimbursements";
 import { MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
 import type { PlaidConnectionSummary } from "@/lib/plaid/service";
 import { isRecurringReview } from "@/lib/review/reasons";
-import { Database, Inbox, WalletCards } from "lucide-react";
+import { ArrowRight, Database, HandCoins, Inbox, Sparkles, WalletCards } from "lucide-react";
 import Link from "next/link";
 import {
   hasOnlyAccountFilter,
@@ -28,6 +32,7 @@ interface TransactionsViewProps {
   isDemo: boolean;
   isSignedIn: boolean;
   plaidConnections: PlaidConnectionSummary[];
+  reimbursementProposals: AgentInboxProposal[];
   transactions: TransactionRecord[];
 }
 
@@ -64,6 +69,100 @@ function summarize(transactions: TransactionRecord[], reportingMode: SpendingRep
   };
 }
 
+function topOutstandingItems(transactions: TransactionRecord[]) {
+  return transactions
+    .map((transaction) => ({
+      reimbursement: summarizeTransactionReimbursement(transaction),
+      transaction
+    }))
+    .filter(({ reimbursement }) =>
+      reimbursement.outstandingAmount > 0 &&
+      reimbursement.state !== "unmatched-income" &&
+      reimbursement.state !== "written-off"
+    )
+    .sort((left, right) =>
+      right.reimbursement.outstandingAmount - left.reimbursement.outstandingAmount ||
+      left.transaction.date.localeCompare(right.transaction.date)
+    )
+    .slice(0, 3);
+}
+
+function ReimbursementFocusPanel({
+  proposals,
+  transactions
+}: {
+  proposals: AgentInboxProposal[];
+  transactions: TransactionRecord[];
+}) {
+  const matchCount = proposals.filter((proposal) => proposal.action === "reimbursement-match").length;
+  const candidateCount = proposals.filter((proposal) => proposal.action === "reimbursement-candidate").length;
+  const summary = buildReimbursementReportingSummary(transactions);
+  const outstandingItems = topOutstandingItems(transactions);
+  const hasReimbursementWork = summary.outstandingAmount > 0 ||
+    summary.unmatchedIncomeCount > 0 ||
+    matchCount > 0 ||
+    candidateCount > 0;
+
+  if (!hasReimbursementWork) return null;
+
+  const primaryCopy = matchCount > 0
+    ? `${matchCount.toLocaleString("en-US")} suggested match${matchCount === 1 ? "" : "es"} ready`
+    : candidateCount > 0
+      ? `${candidateCount.toLocaleString("en-US")} AI candidate${candidateCount === 1 ? "" : "s"} to review`
+      : summary.unmatchedIncomeCount > 0
+        ? `${summary.unmatchedIncomeCount.toLocaleString("en-US")} unmatched inflow${summary.unmatchedIncomeCount === 1 ? "" : "s"}`
+        : "No suggested match yet";
+
+  return (
+    <section className={styles.reimbursementFocusPanel} aria-label="Reimbursement follow-up">
+      <div className={styles.reimbursementFocusHeader}>
+        <div>
+          <span>
+            <HandCoins size={13} aria-hidden />
+            Reimbursements
+          </span>
+          <strong>{formatMoney(summary.outstandingAmount)} outstanding</strong>
+          <p>
+            {primaryCopy}. Tally can draft candidates and matches, but ledger changes still need explicit approval.
+          </p>
+        </div>
+        <div className={styles.reimbursementFocusActions}>
+          {matchCount > 0 || candidateCount > 0 ? (
+            <Link className={styles.primaryButton} href="/agent-inbox">
+              <Sparkles size={14} aria-hidden />
+              Review proposals
+            </Link>
+          ) : null}
+          {outstandingItems[0] ? (
+            <Link className={styles.secondaryButton} href={`/transactions/${outstandingItems[0].transaction.id}`}>
+              <ArrowRight size={14} aria-hidden />
+              Open largest
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      {outstandingItems.length > 0 ? (
+        <div className={styles.reimbursementBreakdownGrid}>
+          {outstandingItems.map(({ reimbursement, transaction }) => (
+            <Link
+              className={styles.reimbursementBreakdownItem}
+              href={`/transactions/${transaction.id}`}
+              key={transaction.id}
+            >
+              <span>{transaction.merchant}</span>
+              <strong>{formatMoney(reimbursement.outstandingAmount)}</strong>
+              <em>
+                {formatMoney(reimbursement.receivedAmount)} received of {formatMoney(reimbursement.expectedAmount)} expected
+              </em>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function TransactionsView({
   accounts,
   categories,
@@ -73,6 +172,7 @@ export function TransactionsView({
   isDemo,
   isSignedIn,
   plaidConnections,
+  reimbursementProposals,
   transactions
 }: TransactionsViewProps) {
   const reportingMode = filters.spendingReportingMode;
@@ -170,6 +270,7 @@ export function TransactionsView({
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />
+      <ReimbursementFocusPanel proposals={reimbursementProposals} transactions={transactions} />
       <MerchantCleanupPanel categories={categories} defaultQuery={filters.search} isDemo={isDemo} />
 
       {filters.isDateRangeInverted ? (

@@ -16,6 +16,7 @@ import {
   listPlaidConnections,
   mergePlaidAccountSourcesForSync,
   persistedSyncError,
+  PLAID_TRANSACTION_HISTORY_DAYS,
   planPendingRawTransactionReplacements,
   revokePlaidConnection,
   shouldRefreshImportedEnrichment,
@@ -121,6 +122,9 @@ test("Plaid Link token request uses Tally branding for new connections", () => {
   assert.deepEqual(request.products, [Products.Transactions]);
   assert.equal("optional_products" in request, false);
   assert.equal("access_token" in request, false);
+  assert.deepEqual(request.transactions, {
+    days_requested: PLAID_TRANSACTION_HISTORY_DAYS
+  });
   assert.deepEqual(request.country_codes, ["US"]);
   assert.equal(request.language, "en");
   assert.equal(request.redirect_uri, undefined);
@@ -173,6 +177,7 @@ test("Plaid Link token request uses update mode without product creation fields"
   assert.equal(request.client_name, "Tally");
   assert.equal(request.access_token, "access-sandbox-update");
   assert.equal("products" in request, false);
+  assert.equal("transactions" in request, false);
   assert.equal(request.redirect_uri, "https://app.example.com/settings");
   assert.ok(request.user);
   assert.equal(request.user.client_user_id, userId);
@@ -294,6 +299,17 @@ test("removed pending id is skipped after a posted replacement preserves that ra
       new Set(["pending-tx"])
     ),
     ["orphan-removed-tx"]
+  );
+});
+
+test("sync retention keeps stored history unless Plaid explicitly removes a transaction id", () => {
+  assert.deepEqual(getRemovedPlaidTransactionIdsToDelete([], new Set()), []);
+  assert.deepEqual(
+    getRemovedPlaidTransactionIdsToDelete(
+      [{ transaction_id: "newer-bank-deleted-tx" }],
+      new Set()
+    ),
+    ["newer-bank-deleted-tx"]
   );
 });
 

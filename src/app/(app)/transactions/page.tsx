@@ -7,12 +7,15 @@ import {
 import { TransactionsView } from "@/components/finance/transactions/transactions-view";
 import {
   listAccounts,
+  listAgentProposals,
   listCategories,
   listTransactions,
   type AccountRecord,
+  type AgentProposalRecord,
   type CategoryRecord,
   type TransactionRecord
 } from "@/lib/db";
+import { buildAgentInboxProposals, type AgentInboxProposal } from "@/lib/agents/proposal-inbox";
 import { listDemoPlaidConnections } from "@/lib/demo/finance-client";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
@@ -33,6 +36,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   let accounts: AccountRecord[] = [];
   let categories: CategoryRecord[] = [];
   let plaidConnections: PlaidConnectionSummary[] = [];
+  let reimbursementProposals: AgentInboxProposal[] = [];
   let transactions: TransactionRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
@@ -59,6 +63,18 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         ...toTransactionListFilters(filters),
         includeRawContext: false
       });
+      try {
+        const agentProposals: AgentProposalRecord[] = await listAgentProposals(context.client, context.userId, {
+          status: "pending"
+        });
+        reimbursementProposals = buildAgentInboxProposals([], agentProposals)
+          .filter((proposal) =>
+            proposal.action === "reimbursement-candidate" ||
+            proposal.action === "reimbursement-match"
+          );
+      } catch {
+        reimbursementProposals = [];
+      }
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -74,6 +90,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
       isDemo={isDemo}
       isSignedIn={isSignedIn}
       plaidConnections={plaidConnections}
+      reimbursementProposals={reimbursementProposals}
       transactions={transactions}
     />
   );

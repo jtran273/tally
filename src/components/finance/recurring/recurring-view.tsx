@@ -6,7 +6,6 @@ import {
   BadgeAlert,
   ShieldCheck
 } from "lucide-react";
-import { AddRecurringExpenseForm } from "./add-recurring-expense-form";
 import { RecurringCandidateActions } from "./recurring-candidate-actions";
 import styles from "./recurring.module.css";
 
@@ -288,22 +287,12 @@ export function RecurringView({
 
       {!canShowData ? null : (
         <>
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <div>
-                <div className={styles.eyebrow}>Manual</div>
-                <h2>Add a recurring expense</h2>
-              </div>
-            </div>
-            <AddRecurringExpenseForm isDemo={isDemo} />
-          </section>
-
           {recurringExpenses.length === 0 && additionalCandidates.length === 0 ? (
             <div className={styles.emptyState}>
               <ShieldCheck size={28} aria-hidden />
               <div>
                 <strong>No recurring patterns detected</strong>
-                <span>The detector scanned persisted Plaid transactions and did not find a repeated cadence yet. Add one manually above.</span>
+                <span>The detector scanned persisted Plaid transactions and did not find a repeated cadence yet. Mark a transaction as recurring to start tracking it.</span>
               </div>
               <LinkButton href="/transactions">
                 Open transactions

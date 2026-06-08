@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Json, ReviewQueueItem, ReviewReason, TransactionRecord } from "@/lib/db";
+import type { AgentProposalRecord, Json, ReviewQueueItem, ReviewReason, TransactionRecord } from "@/lib/db";
 import {
   buildAgentInboxProposals,
   summarizeAgentInbox
@@ -65,6 +65,34 @@ function reviewItem(input: {
   };
 }
 
+function agentProposal(input: Partial<AgentProposalRecord> = {}): AgentProposalRecord {
+  return {
+    acceptedAt: null,
+    answeredAt: null,
+    clarificationAnswer: null,
+    clarificationAnswerKind: null,
+    clarificationQuestion: null,
+    confidence: 0.82,
+    createdAt: "2026-05-06T13:00:00.000Z",
+    dismissedAt: null,
+    evidence: {},
+    expiresAt: null,
+    id: "proposal-test",
+    proposalType: "reimbursement_candidate",
+    proposedPatch: {},
+    questionFingerprint: "reimbursement-candidate:tx-dinner:tx-venmo",
+    sourceAgent: "ledger-reimbursement-candidate-detector",
+    sourceCandidateId: "candidate-test",
+    sourceContextId: "reimbursement-candidate:tx-dinner",
+    status: "pending",
+    targetId: "tx-dinner",
+    targetKind: "enriched_transaction",
+    updatedAt: "2026-05-06T13:00:00.000Z",
+    userId: "user-test",
+    ...input
+  };
+}
+
 test("agent inbox turns accept-ready review suggestions into safe proposals", () => {
   const [proposal] = buildAgentInboxProposals([
     reviewItem({
@@ -118,6 +146,56 @@ test("agent inbox does not surface provider diagnostics as recommendation signal
   ]);
 
   assert.deepEqual(proposal?.recommendation.signals, ["merchant cue: grocery"]);
+});
+
+test("agent inbox surfaces AI reimbursement candidates as draft-only proposals", () => {
+  const [proposal] = buildAgentInboxProposals([], [
+    agentProposal({
+      evidence: {
+        aiProvider: { kind: "openai", version: "test" },
+        candidateInflows: [
+          {
+            amount: 40,
+            category: "Transfer",
+            date: "2026-05-07",
+            id: "tx-venmo",
+            merchant: "Venmo"
+          }
+        ],
+        heuristicReasons: ["Nearby positive inflow could be a reimbursement."],
+        signals: ["Shared dining pattern"],
+        transaction: {
+          amount: -80,
+          category: "Food",
+          date: "2026-05-05",
+          id: "tx-dinner",
+          intent: "personal",
+          merchant: "Dinner"
+        }
+      },
+      proposedPatch: {
+        question: "Was $40 of Dinner reimbursed by Venmo?",
+        reason: "Nearby Venmo inflow suggests this may be shared.",
+        suggestedInflowIds: ["tx-venmo"],
+        suggestedIntent: "reimbursable"
+      }
+    })
+  ]);
+
+  assert.equal(proposal?.action, "reimbursement-candidate");
+  if (proposal?.action !== "reimbursement-candidate") {
+    throw new Error("Expected a reimbursement candidate proposal.");
+  }
+  assert.equal(proposal.status, "needs-review");
+  assert.equal(proposal.question, "Was $40 of Dinner reimbursed by Venmo?");
+  assert.equal(proposal.recommendation.suggestedIntent, "reimbursable");
+  assert.deepEqual(proposal.recommendation.signals, [
+    "Shared dining pattern",
+    "Nearby positive inflow could be a reimbursement."
+  ]);
+  assert.equal(proposal.candidateInflows[0]?.merchant, "Venmo");
+  assert.equal("aiProvider" in proposal, false);
+  assert.equal("plaidTransactionId" in proposal, false);
 });
 
 test("agent inbox summary counts proposals and changed fields", () => {

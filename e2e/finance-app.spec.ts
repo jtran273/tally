@@ -621,6 +621,13 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "false");
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
+  await categoryRange.getByRole("button", { exact: true, name: "3M" }).click();
+  await expect(categoryRange.getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
+  const categoryTrendLabels = await page
+    .locator("svg[aria-label='Category spending trend'] text")
+    .evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? "").filter((text) => text.length > 0));
+  expect(categoryTrendLabels).toEqual(expect.arrayContaining(["Mar", "Apr", "May", "Jun"]));
   await categoryRange.getByRole("button", { exact: true, name: "All" }).click();
   await expect(categoryRange.getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
@@ -635,6 +642,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const spendingPanel = page.getByLabel("Spending by category");
   await expect(spendingPanel.getByRole("button", { exact: true, name: "Net" })).toHaveCount(0);
   await expect(spendingPanel.getByRole("button", { exact: true, name: "Gross" })).toHaveCount(0);
+  for (const removedFocus of ["Top", "Rising", "Watch", "Review"]) {
+    await expect(spendingPanel.getByRole("button", { exact: true, name: removedFocus })).toHaveCount(0);
+  }
   await expect(spendingPanel).not.toContainText("Net after reimbursements");
   await expect(spendingPanel).not.toContainText("trusted");
   await expect(spendingPanel).not.toContainText("in review");
@@ -650,10 +660,12 @@ test("dashboard trend range controls update the change-over-time view", async ({
 
   await categoryMonthView.click();
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Month")).toContainText("$");
+  await page.getByLabel("Month").getByRole("button", { name: /May 2026/ }).click();
   const spendingMonthLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
-  expect(spendingMonthLinks.length).toBeGreaterThan(0);
+  expect(spendingMonthLinks.length).toBeGreaterThan(6);
   for (const href of spendingMonthLinks) {
     expect(href).toContain("direction=spending");
     expect(href).toContain("exclude_transfers=1");
@@ -1039,6 +1051,8 @@ test("recurring and accounts pages render focused recurring rows and active acco
   await page.goto("/recurring");
   await expect(page.getByLabel("Recurring summary")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Next 30 days" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Add a recurring expense" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add recurring expense" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Recurring expenses" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Patterns from real transactions" })).toBeVisible();
   await expect(page.getByText("Demo recurring patterns are read-only")).toBeVisible();

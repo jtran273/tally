@@ -128,6 +128,8 @@ Sensitive raw/provider columns are additionally hidden from direct authenticated
 8. Initial sync imports accounts, balances, raw transactions, enriched transactions, and generated review items.
 9. Future manual and scheduled syncs use Plaid transaction cursors for idempotency.
 
+New Item initialization requests 730 days of Plaid Transactions history, which is the maximum backfill window supported by the configured Transactions flow. Once stored, Tally's raw and enriched transaction rows are retained as app history; sync only removes rows when Plaid explicitly emits a removed transaction id or when an operator runs the separate revoked-item cleanup tool.
+
 The core sync service can run either all syncable items or a single item by database item id. Route handlers use that single-item path after Plaid Link update mode so repair and relink flows do not depend on browser-side transaction logic.
 
 Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
@@ -192,7 +194,7 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 ## Recurring Flow
 
-`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Manually added rows are saved directly, and checking Recurring on an expense transaction creates a pending monthly row that can be adjusted before confirmation. Confirmed and pending rows feed recurring review surfaces; dashboard cashflow summaries remain future work.
+`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Checking Recurring on an expense transaction creates a pending monthly row that can be adjusted before confirmation. Confirmed and pending rows feed recurring review surfaces; dashboard cashflow summaries remain future work.
 
 `src/lib/finance/cashflow.ts` also builds upcoming cashflow projections as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. `/recurring` displays only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the recurring model.
 

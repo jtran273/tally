@@ -6,7 +6,6 @@ import {
   listTransactions,
   recordAuditEvent,
   updateRecurringExpense,
-  upsertRecurringExpense,
   type FinanceSupabaseClient,
   type RecurringCadence,
   type RecurringExpenseRecord
@@ -260,59 +259,6 @@ export async function dismissRecurringCandidateAction(
   try {
     await dismissRecurringAction(formData);
     return { message: "Recurring row dismissed." };
-  } catch (error) {
-    return errorState(error);
-  }
-}
-
-export async function addRecurringExpenseAction(
-  _state: RecurringActionState,
-  formData: FormData
-): Promise<RecurringActionState> {
-  try {
-    const { client, userId } = await getRecurringContext();
-    const merchant = cleanString(formData.get("merchant"), 160);
-    if (!merchant) throw new Error("Enter a merchant name.");
-
-    const amount = parseRecurringAmount(formData.get("amount"));
-    const cadence = parseRecurringCadence(formData.get("cadence"));
-    const lastChargeDate = parseRecurringIsoDate(formData.get("lastChargeDate"), "last charge date");
-    const providedNextDue = cleanString(formData.get("nextDueDate"), 10);
-    const nextDueDate = providedNextDue
-      ? parseRecurringIsoDate(formData.get("nextDueDate"), "next due date")
-      : calculateNextDueDate(lastChargeDate, cadence, new Date().toISOString().slice(0, 10));
-
-    // Conflict columns are user_id,merchant_name,cadence, so re-adding the same
-    // merchant + cadence updates that row instead of creating a duplicate.
-    const recurringExpense = await upsertRecurringExpense(client, userId, {
-      user_id: userId,
-      merchant_rule_id: null,
-      category_id: null,
-      account_id: null,
-      last_transaction_id: null,
-      merchant_name: merchant,
-      amount,
-      cadence,
-      next_due_date: nextDueDate,
-      last_charge_date: lastChargeDate,
-      last_amount: amount,
-      status: "active",
-      is_new: false,
-      confidence: 1
-    });
-
-    await recordAuditEvent(client, userId, {
-      action: "recurring.manual_added",
-      actorId: userId,
-      afterData: { amount, cadence, merchant, nextDueDate, status: "active" },
-      beforeData: null,
-      entityId: recurringExpense.id,
-      entityTable: "recurring_expenses",
-      metadata: { source: "recurring_manual_add" }
-    });
-
-    revalidateRecurringPaths();
-    return { message: `Added ${merchant} to recurring expenses.` };
   } catch (error) {
     return errorState(error);
   }

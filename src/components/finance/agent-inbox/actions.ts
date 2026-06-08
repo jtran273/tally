@@ -91,7 +91,7 @@ export async function dismissAgentProposalAction(
 
     await dismissAgentProposal(context.client, context.userId, proposalId, {
       actorId: context.userId,
-      source: "agent_inbox_reimbursement_match_dismiss"
+      source: "agent_inbox_proposal_dismiss"
     });
 
     revalidatePath("/agent-inbox");

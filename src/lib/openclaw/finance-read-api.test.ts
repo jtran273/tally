@@ -128,30 +128,72 @@ test("reimbursements response surfaces outstanding reimbursable transactions", (
       id: "tx-dinner",
       amount: -80,
       intent: "reimbursable",
-      merchant: "Dinner"
+      merchant: "Dinner",
+      reimbursements: [
+        {
+          counterparty: "Alex",
+          dueDate: null,
+          expectedAmount: 50,
+          id: "reimb-alex",
+          notes: null,
+          receivedAmount: 10,
+          receivedAt: "2026-05-08",
+          receivedTransactionId: "tx-venmo",
+          splitId: null,
+          status: "requested",
+          transactionId: "tx-dinner"
+        }
+      ]
     }),
     transaction({ id: "tx-normal" })
   ], { limit: 5 });
 
   assert.equal(response.object, "ledger.openclaw.reimbursements");
   assert.equal(response.items.length, 1);
-  assert.equal(response.items[0]?.outstandingAmount, 80);
-  assert.equal(response.summary.outstandingAmount, 80);
-  assert.equal(response.pageSummary.outstandingAmount, 80);
+  assert.equal(response.items[0]?.outstandingAmount, 40);
+  assert.deepEqual(response.items[0]?.records, [
+    {
+      counterparty: "Alex",
+      dueDate: null,
+      expectedAmount: 50,
+      outstandingAmount: 40,
+      receivedAmount: 10,
+      receivedAt: "2026-05-08",
+      status: "requested"
+    }
+  ]);
+  assert.equal(response.summary.outstandingAmount, 40);
+  assert.equal(response.pageSummary.outstandingAmount, 40);
   assertAssistantContextSafe(response);
 });
 
-test("reimbursements response redacts secret-shaped merchant text", () => {
+test("reimbursements response redacts secret-shaped merchant and counterparty text", () => {
   const response = buildOpenClawReimbursementsResponse([
     transaction({
       amount: -80,
       intent: "reimbursable",
-      merchant: "Dinner postgres://secret.example/db"
+      merchant: "Dinner postgres://secret.example/db",
+      reimbursements: [
+        {
+          counterparty: "Ryan Bearer abcdefghijklmnop",
+          dueDate: null,
+          expectedAmount: 80,
+          id: "reimb-ryan",
+          notes: null,
+          receivedAmount: 0,
+          receivedAt: null,
+          receivedTransactionId: null,
+          splitId: null,
+          status: "expected",
+          transactionId: "tx-1"
+        }
+      ]
     })
   ], { limit: 5 });
 
   assert.equal(response.items[0]?.merchant, "Dinner [redacted]");
-  assert.doesNotMatch(JSON.stringify(response), /postgres:\/\/secret\.example\/db/);
+  assert.equal(response.items[0]?.records[0]?.counterparty, "Ryan [redacted]");
+  assert.doesNotMatch(JSON.stringify(response), /postgres:\/\/secret\.example\/db|Bearer abcdefghijklmnop/);
   assertAssistantContextSafe(response);
 });
 

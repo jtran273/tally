@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     title: "Tally"
   },
   icons: {
-    apple: "/icons/tally-icon-192.png",
+    apple: "/icons/tally-apple-touch-icon.png",
     icon: "/icons/tally-icon-192.png"
   }
 };

@@ -15,7 +15,6 @@ import type {
 } from "@/lib/finance/balances";
 import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
-import { buildBudgetGuardrailSummary, type BudgetGuardrailItem } from "@/lib/finance/budget-guardrails";
 import {
   type LiabilitiesDueSummary,
   type LiabilityAccountSummary
@@ -87,7 +86,6 @@ type DashboardBalanceScope = "cash" | "cashMinusLiabilities" | "netWorth";
 type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 type ActivityMode = "after" | "before" | "point";
 type CategoryViewMode = "trend" | "month";
-type CategoryFocusMode = "top" | "rising" | "watch" | "review";
 
 interface BalanceViewOption {
   description: string;
@@ -991,6 +989,7 @@ function TrendChart({
 const categoryTrendPalette = ["#4F6A4D", "#5A7298", "#8A6620", "#A85543", "#6C8A6A"];
 
 const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
+const chartMonthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
 
 interface CategoryTrendPoint {
   amount: number;
@@ -1038,6 +1037,10 @@ function formatMonthLabel(fromDate: string) {
   return monthLabelFormatter.format(new Date(`${fromDate}T12:00:00`));
 }
 
+function formatChartMonthLabel(value: string) {
+  return chartMonthLabelFormatter.format(new Date(`${value}T12:00:00`));
+}
+
 function dateRange(fromDate: string, toDate: string) {
   const dates: string[] = [];
   const start = parseIsoDate(fromDate);
@@ -1048,6 +1051,24 @@ function dateRange(fromDate: string, toDate: string) {
   }
 
   return dates.length > 0 ? dates : [toDate];
+}
+
+function categoryTrendMonthMarkers(fromDate: string, toDate: string) {
+  const markers = new Set<string>([fromDate]);
+  const start = parseIsoDate(monthStartIso(fromDate));
+  const end = parseIsoDate(monthStartIso(toDate));
+
+  for (const date = new Date(start); date <= end; date.setMonth(date.getMonth() + 1)) {
+    const marker = isoDate(date);
+    if (marker >= fromDate && marker <= toDate) markers.add(marker);
+  }
+
+  return [...markers]
+    .sort((left, right) => left.localeCompare(right))
+    .map((date) => ({
+      date,
+      label: formatChartMonthLabel(date)
+    }));
 }
 
 function monthBoundsForOffset(asOfDate: string, monthOffset: number) {
@@ -1390,65 +1411,6 @@ function buildCategoryTrend(
   };
 }
 
-function budgetGuardrailByCategory(items: readonly BudgetGuardrailItem[]) {
-  return new Map(items.map((item) => [displayCategoryName(item.label), item]));
-}
-
-function budgetStatusRank(status: BudgetGuardrailItem["status"]) {
-  if (status === "over") return 0;
-  if (status === "near") return 1;
-  return 2;
-}
-
-function budgetStatusCopy(item: BudgetGuardrailItem) {
-  if (item.status === "over") return `Over usual by ${formatMoney(Math.abs(item.remainingAmount))}`;
-  if (item.status === "near") return `${formatMoney(Math.max(0, item.remainingAmount))} before usual pace`;
-  return "On usual pace";
-}
-
-function focusCategoryRows(
-  rows: readonly CategoryBreakdownSummary["rows"][number][],
-  focusMode: CategoryFocusMode,
-  guardrailsByCategory: ReadonlyMap<string, BudgetGuardrailItem>
-) {
-  if (focusMode === "rising") {
-    return rows
-      .filter((row) => row.deltaAmount > 0)
-      .sort((left, right) => right.deltaAmount - left.deltaAmount || right.amount - left.amount || left.label.localeCompare(right.label));
-  }
-
-  if (focusMode === "watch") {
-    return rows
-      .filter((row) => {
-        const guardrail = guardrailsByCategory.get(row.label);
-        return guardrail?.status === "over" || guardrail?.status === "near";
-      })
-      .sort((left, right) => {
-        const leftGuardrail = guardrailsByCategory.get(left.label);
-        const rightGuardrail = guardrailsByCategory.get(right.label);
-        return budgetStatusRank(leftGuardrail?.status ?? "on-track") - budgetStatusRank(rightGuardrail?.status ?? "on-track") ||
-          (rightGuardrail?.projectedPercent ?? 0) - (leftGuardrail?.projectedPercent ?? 0) ||
-          right.amount - left.amount ||
-          left.label.localeCompare(right.label);
-      });
-  }
-
-  if (focusMode === "review") {
-    return rows
-      .filter((row) => row.openReviewCount > 0)
-      .sort((left, right) => right.openReviewCount - left.openReviewCount || right.amount - left.amount || left.label.localeCompare(right.label));
-  }
-
-  return [...rows];
-}
-
-function categoryFocusEmptyCopy(focusMode: CategoryFocusMode, monthLabel: string) {
-  if (focusMode === "rising") return `No categories are up versus the previous month for ${monthLabel}.`;
-  if (focusMode === "watch") return `No category is near or over its usual monthly pace for ${monthLabel}.`;
-  if (focusMode === "review") return `No category spending needs review for ${monthLabel}.`;
-  return `No spending recorded for ${monthLabel}.`;
-}
-
 function CashInflowsPanel({
   asOfDate,
   rangeKey,
@@ -1575,7 +1537,6 @@ function CategorySpendingPanel({
   transactions: DashboardBalanceTransaction[];
 }) {
   const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
-  const [focusMode, setFocusMode] = useState<CategoryFocusMode>("top");
   const [monthIndex, setMonthIndex] = useState(0);
   const breakdowns = useMemo(
     () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate),
@@ -1588,14 +1549,6 @@ function CategorySpendingPanel({
   const trend = useMemo(
     () => buildCategoryTrend(transactions, fromDate, toDate),
     [fromDate, toDate, transactions]
-  );
-  const guardrails = useMemo(
-    () => buildBudgetGuardrailSummary(transactions, { asOfDate }),
-    [asOfDate, transactions]
-  );
-  const guardrailsByCategory = useMemo(
-    () => budgetGuardrailByCategory(guardrails.items),
-    [guardrails.items]
   );
   const width = 560;
   const height = 220;
@@ -1610,20 +1563,25 @@ function CategorySpendingPanel({
     { label: trend.maxAmount / 2, y: padding.top + plotHeight / 2 },
     { label: 0, y: padding.top + plotHeight }
   ];
+  const trendDateIndex = useMemo(
+    () => new Map(trend.dates.map((date, index) => [date, index])),
+    [trend.dates]
+  );
+  const monthMarkers = useMemo(
+    () => categoryTrendMonthMarkers(fromDate, toDate),
+    [fromDate, toDate]
+  );
   const pointX = (index: number) => (
     trend.dates.length === 1
     ? padding.left + plotWidth
       : padding.left + (index / (trend.dates.length - 1)) * plotWidth
   );
+  const markerX = (date: string) => pointX(trendDateIndex.get(date) ?? 0);
   const pointY = (amount: number) => padding.top + plotHeight - (amount / trend.maxAmount) * plotHeight;
   const safeMonthIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
   const breakdown = breakdowns[safeMonthIndex] ?? { fromDate: "", rows: [], toDate: "", totalAmount: 0 };
   const monthRows = breakdown.rows;
-  const focusedMonthRows = useMemo(
-    () => focusCategoryRows(monthRows, focusMode, guardrailsByCategory),
-    [focusMode, guardrailsByCategory, monthRows]
-  );
-  const maxMonthAmount = Math.max(0, ...focusedMonthRows.map((row) => row.amount));
+  const maxMonthAmount = Math.max(0, ...monthRows.map((row) => row.amount));
   const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "Month";
   const monthPeriodLabel = breakdown.fromDate
     ? safeMonthIndex === 0
@@ -1696,6 +1654,23 @@ function CategorySpendingPanel({
         <>
           <div className={styles.categoryTrendChart}>
             <svg aria-label="Category spending trend" viewBox={`0 0 ${width} ${height}`}>
+              {monthMarkers.map((marker) => {
+                const x = markerX(marker.date);
+                return (
+                  <g key={marker.date}>
+                    <line
+                      className={styles.categoryMonthMarkerLine}
+                      x1={x}
+                      x2={x}
+                      y1={padding.top}
+                      y2={padding.top + plotHeight}
+                    />
+                    <text className={styles.categoryMonthMarkerLabel} textAnchor="middle" x={x} y={height - 8}>
+                      {marker.label}
+                    </text>
+                  </g>
+                );
+              })}
               {yLabels.map(({ label, y }) => (
                 <g key={`${label}-${y}`}>
                   <line
@@ -1734,8 +1709,6 @@ function CategorySpendingPanel({
                   </g>
                 );
               })}
-              <text className={styles.categoryDateLabel} x={padding.left} y={height - 8}>{formatDate(fromDate)}</text>
-              <text className={styles.categoryDateLabel} textAnchor="end" x={width - padding.right} y={height - 8}>{formatDate(toDate)}</text>
             </svg>
           </div>
 
@@ -1781,41 +1754,6 @@ function CategorySpendingPanel({
         </>
       ) : (
         <>
-          <div className={styles.categoryRangeControls} aria-label="Category focus">
-            <button
-              aria-pressed={focusMode === "top"}
-              className={focusMode === "top" ? styles.categoryRangeActive : undefined}
-              onClick={() => setFocusMode("top")}
-              type="button"
-            >
-              Top
-            </button>
-            <button
-              aria-pressed={focusMode === "rising"}
-              className={focusMode === "rising" ? styles.categoryRangeActive : undefined}
-              onClick={() => setFocusMode("rising")}
-              type="button"
-            >
-              Rising
-            </button>
-            <button
-              aria-pressed={focusMode === "watch"}
-              className={focusMode === "watch" ? styles.categoryRangeActive : undefined}
-              onClick={() => setFocusMode("watch")}
-              type="button"
-            >
-              Watch
-            </button>
-            <button
-              aria-pressed={focusMode === "review"}
-              className={focusMode === "review" ? styles.categoryRangeActive : undefined}
-              onClick={() => setFocusMode("review")}
-              type="button"
-            >
-              Review
-            </button>
-          </div>
-
           <div className={styles.categoryMonthPicker} aria-label="Month">
             {breakdowns.map((option, index) => (
               <button
@@ -1825,27 +1763,26 @@ function CategorySpendingPanel({
                 onClick={() => setMonthIndex(index)}
                 type="button"
               >
-                {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+                <span className={styles.categoryMonthLabel}>
+                  {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+                </span>
+                <span className={styles.categoryMonthAmount}>
+                  {formatMoney(option.totalAmount)}
+                </span>
               </button>
             ))}
           </div>
 
-          {focusedMonthRows.length === 0 ? (
-            <div className={styles.categoryEmpty}>{categoryFocusEmptyCopy(focusMode, monthLabel)}</div>
+          {monthRows.length === 0 ? (
+            <div className={styles.categoryEmpty}>{`No spending recorded for ${monthLabel}.`}</div>
           ) : (
             <div className={styles.categoryRows}>
-              {focusedMonthRows.map((row) => {
+              {monthRows.map((row) => {
                 const widthPercent = maxMonthAmount > 0 ? Math.max(2, (row.amount / maxMonthAmount) * 100) : 0;
                 const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
                 const deltaLabel = row.previousAmount > 0
                   ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
                   : "New this month";
-                const guardrail = guardrailsByCategory.get(row.label);
-                const rightMeta = focusMode === "watch" && guardrail
-                  ? budgetStatusCopy(guardrail)
-                  : focusMode === "review" && row.openReviewCount > 0
-                    ? `${row.openReviewCount} open ${row.openReviewCount === 1 ? "review" : "reviews"}`
-                    : deltaLabel;
                 return (
                   <Link
                     className={styles.categoryRow}
@@ -1871,7 +1808,7 @@ function CategorySpendingPanel({
                       <span>
                         {row.percent.toFixed(1)}% - {row.count} {row.count === 1 ? "transaction" : "transactions"}
                       </span>
-                      <span className={focusMode === "watch" ? undefined : deltaTone}>{rightMeta}</span>
+                      <span className={deltaTone}>{deltaLabel}</span>
                     </div>
                   </Link>
                 );

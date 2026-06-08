@@ -139,6 +139,116 @@
   outline: none;
 }
 
+.reimbursementFocusPanel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in oklab, var(--pos) 24%, var(--line));
+  border-radius: var(--radius-card);
+  padding: 14px;
+  background: color-mix(in oklab, var(--sage-soft) 55%, var(--surface));
+}
+
+.reimbursementFocusHeader {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.reimbursementFocusHeader > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.reimbursementFocusHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.reimbursementFocusHeader strong {
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.05;
+}
+
+.reimbursementFocusHeader p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--text-ui);
+  line-height: 1.35;
+}
+
+.reimbursementFocusActions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reimbursementBreakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reimbursementBreakdownItem {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 10px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.reimbursementBreakdownItem:hover,
+.reimbursementBreakdownItem:focus-visible {
+  border-color: color-mix(in oklab, var(--pos) 35%, var(--line));
+  outline: none;
+}
+
+.reimbursementBreakdownItem span,
+.reimbursementBreakdownItem strong,
+.reimbursementBreakdownItem em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reimbursementBreakdownItem span {
+  color: var(--ink);
+  font-size: var(--text-ui-sm);
+  font-weight: 600;
+}
+
+.reimbursementBreakdownItem strong {
+  color: var(--pos);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.reimbursementBreakdownItem em {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  font-style: normal;
+}
+
 .filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
@@ -1261,6 +1371,14 @@
     grid-template-columns: 1fr;
   }
 
+  .reimbursementFocusHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .reimbursementFocusActions {
+    justify-content: flex-start;
+  }
+
   .reportingControls {
     grid-column: 1;
     justify-self: start;
@@ -1320,6 +1438,14 @@
   .summaryMetrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .reimbursementFocusPanel {
+    padding: 12px;
+  }
+
+  .reimbursementBreakdownGrid {
+    grid-template-columns: 1fr;
   }
 
   .editHeader {

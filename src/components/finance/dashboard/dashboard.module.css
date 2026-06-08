@@ -688,7 +688,8 @@
   .selectedPointDateLabel,
   .selectedPointValueLabel,
   .categoryScaleLabel,
-  .categoryDateLabel {
+  .categoryDateLabel,
+  .categoryMonthMarkerLabel {
     display: none;
   }
 
@@ -1595,6 +1596,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+.categoryMonthMarkerLine {
+  stroke: color-mix(in oklab, var(--ink) 10%, var(--line-2));
+  stroke-dasharray: 2 8;
+  stroke-width: 1;
+}
+
+.categoryMonthMarkerLabel {
+  fill: var(--muted);
+  font-size: var(--text-meta);
+  font-weight: 500;
+}
+
 .categoryRows {
   display: flex;
   flex-direction: column;
@@ -1742,6 +1755,27 @@
   white-space: nowrap;
 }
 
+.categoryMonthButton {
+  display: inline-flex;
+  min-width: 88px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.08;
+}
+
+.categoryMonthLabel,
+.categoryMonthAmount {
+  display: block;
+}
+
+.categoryMonthAmount {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-kbd);
+  font-variant-numeric: tabular-nums;
+}
+
 .categoryModeControls button:hover,
 .categoryModeControls button:focus-visible,
 .categoryRangeControls button:hover,
@@ -1759,6 +1793,10 @@
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
+}
+
+.categoryMonthActive .categoryMonthAmount {
+  color: var(--ink-2);
 }
 
 .categoryRowBar {

@@ -194,6 +194,7 @@ const RAW_TRANSACTION_COLUMNS = [
   "updated_at"
 ].join(",");
 
+export const PLAID_TRANSACTION_HISTORY_DAYS = 730;
 const SYNC_PAGE_SIZE = 500;
 const UPSERT_CHUNK_SIZE = 100;
 const OPPORTUNISTIC_SYNC_RUNNING_STALE_MS = 30 * 60 * 1000;
@@ -2333,7 +2334,10 @@ export function buildPlaidLinkTokenCreateRequest({
       ? { access_token: accessToken }
       : {
         products: [Products.Transactions],
-        ...(optionalProducts.length > 0 ? { optional_products: optionalProducts } : {})
+        ...(optionalProducts.length > 0 ? { optional_products: optionalProducts } : {}),
+        transactions: {
+          days_requested: PLAID_TRANSACTION_HISTORY_DAYS
+        }
       }),
     client_name: "Tally",
     country_codes: [CountryCode.Us],

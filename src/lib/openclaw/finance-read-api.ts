@@ -60,6 +60,15 @@ export interface OpenClawReimbursementItem {
   merchant: string;
   outstandingAmount: number;
   receivedAmount: number;
+  records: Array<{
+    counterparty: string | null;
+    dueDate: string | null;
+    expectedAmount: number;
+    outstandingAmount: number;
+    receivedAmount: number;
+    receivedAt: string | null;
+    status: TransactionRecord["reimbursements"][number]["status"];
+  }>;
   state: ReturnType<typeof summarizeTransactionReimbursement>["state"];
 }
 
@@ -154,6 +163,10 @@ export function parseOpenClawLimit(value: string | number | null | undefined, de
 
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function reimbursementRecordOutstanding(record: TransactionRecord["reimbursements"][number]) {
+  return roundMoney(Math.max(0, record.expectedAmount - record.receivedAmount));
 }
 
 function safeDisplayText(value: string, fallback: string) {
@@ -260,6 +273,20 @@ export function buildOpenClawReimbursementsResponse(
     merchant: merchantName(transaction),
     outstandingAmount: reimbursement.outstandingAmount,
     receivedAmount: reimbursement.receivedAmount,
+    records: transaction.reimbursements
+      .map((record) => ({
+        counterparty: record.counterparty ? safeDisplayText(record.counterparty, "Counterparty") : null,
+        dueDate: record.dueDate,
+        expectedAmount: record.expectedAmount,
+        outstandingAmount: reimbursementRecordOutstanding(record),
+        receivedAmount: record.receivedAmount,
+        receivedAt: record.receivedAt,
+        status: record.status
+      }))
+      .sort((left, right) =>
+        right.outstandingAmount - left.outstandingAmount ||
+        right.expectedAmount - left.expectedAmount
+      ),
     state: reimbursement.state
   }));
 

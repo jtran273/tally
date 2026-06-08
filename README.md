@@ -77,6 +77,8 @@ Initial, manual, and scheduled sync can import:
 - enriched transactions,
 - review items.
 
+New Plaid connections request the maximum Transactions backfill window of 730 days. After import, Tally keeps raw and enriched transaction rows indefinitely for reporting and review history; future syncs append or update by cursor and do not trim rows just because they fall outside Plaid's current lookback window.
+
 Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
 Each initial, manual, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids.
 When Plaid fails without an item error code, sync metadata keeps safe HTTP or transport details when available. If Plaid data returns but Tally cannot finish saving it, the item records `PLAID_SYNC_INTERNAL_ERROR` with the safe failing import step instead of mislabeling it as a Plaid item error.
@@ -156,7 +158,7 @@ Tally supports a lightweight home-screen install through a web app manifest and 
 
 ### Track Recurring Spending
 
-The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`, add known recurring expenses manually, or mark an expense transaction as Recurring to create a pending monthly row that can be adjusted before confirmation.
+The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`, or mark an expense transaction as Recurring to create a pending monthly row that can be adjusted before confirmation.
 The recurring page keeps confirmed and pending rows separate from raw Plaid payloads, so upcoming fixed expenses can be reviewed without exposing provider identifiers.
 
 ### Export
@@ -175,7 +177,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Derived proposal queue for sanitized finance-agent recommendations from open review items |
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
-| `/recurring` | Recurring expense candidates, confirmed and pending recurring rows, and manual recurring entry |
+| `/recurring` | Recurring expense candidates plus confirmed and pending recurring rows |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; connection health stays in Settings |
 | `/audit` | Advanced sanitized change trail for debugging and data integrity checks |
 | `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, mobile install/notification boundary, and session access |

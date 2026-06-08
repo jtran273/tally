@@ -188,3 +188,51 @@ export function ReimbursementMatchActions({
     </div>
   );
 }
+
+export function ReimbursementCandidateActions({
+  isDemo,
+  proposalId,
+  transactionId
+}: {
+  isDemo: boolean;
+  proposalId: string;
+  transactionId: string;
+}) {
+  const [dismissState, dismissAction, dismissing] = useActionState(dismissAgentProposalAction, proposalInitialState);
+
+  return (
+    <div className={styles.actionRow}>
+      <Link className={styles.primaryButton} href={`/transactions/${transactionId}`}>
+        <ExternalLink size={14} aria-hidden />
+        Open transaction
+      </Link>
+
+      {isDemo ? (
+        <button className={styles.secondaryButton} disabled type="button">
+          <X size={14} aria-hidden />
+          Read-only demo
+        </button>
+      ) : (
+        <form action={dismissAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <button className={styles.secondaryButton} disabled={dismissing} type="submit">
+            <X size={14} aria-hidden />
+            {dismissing ? "Dismissing..." : "Dismiss"}
+          </button>
+        </form>
+      )}
+
+      {dismissState.error ? (
+        <div className={styles.inlineError} role="alert">
+          {dismissState.error}
+        </div>
+      ) : null}
+
+      {isDemo ? (
+        <div className={styles.demoActionNote}>
+          Demo proposal actions are read-only. Sign in to dismiss real reimbursement candidates.
+        </div>
+      ) : null}
+    </div>
+  );
+}
