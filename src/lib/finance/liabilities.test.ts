@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountRecord, TransactionRecord } from "@/lib/db";
-import { buildLiabilitiesDueSummary, computeTargetPayments, reportedBalanceActionReason } from "./liabilities";
+import { buildLiabilitiesDueSummary, cardNeedsReconnectForDueDates, computeTargetPayments, reportedBalanceActionReason } from "./liabilities";
 
 const userId = "user-1";
 
@@ -513,4 +513,85 @@ test("reported balance optimizer copy stays conservative and avoids exact score 
   assert.match(copy, /likely reported balance/i);
   assert.match(copy, /no score outcome is promised/i);
   assert.doesNotMatch(copy, /guarantee|boost your score|raise your score|improve your score/i);
+});
+
+test("cardNeedsReconnectForDueDates flags balance-carrying cards with no liability fields", () => {
+  assert.equal(
+    cardNeedsReconnectForDueDates({
+      amountOwed: 500,
+      dueDateIsActual: false,
+      lastStatementIssueDate: null,
+      minimumPaymentAmount: null
+    }),
+    true
+  );
+});
+
+test("cardNeedsReconnectForDueDates does not flag paid-off cards", () => {
+  assert.equal(
+    cardNeedsReconnectForDueDates({
+      amountOwed: 0,
+      dueDateIsActual: false,
+      lastStatementIssueDate: null,
+      minimumPaymentAmount: null
+    }),
+    false
+  );
+});
+
+test("cardNeedsReconnectForDueDates does not flag cards that already have liability data", () => {
+  assert.equal(
+    cardNeedsReconnectForDueDates({
+      amountOwed: 500,
+      dueDateIsActual: true,
+      lastStatementIssueDate: null,
+      minimumPaymentAmount: null
+    }),
+    false
+  );
+  assert.equal(
+    cardNeedsReconnectForDueDates({
+      amountOwed: 500,
+      dueDateIsActual: false,
+      lastStatementIssueDate: "2026-05-20",
+      minimumPaymentAmount: null
+    }),
+    false
+  );
+  assert.equal(
+    cardNeedsReconnectForDueDates({
+      amountOwed: 500,
+      dueDateIsActual: false,
+      lastStatementIssueDate: null,
+      minimumPaymentAmount: 35
+    }),
+    false
+  );
+});
+
+test("buildLiabilitiesDueSummary sets needsReconnectForDueDates per card", () => {
+  const accounts: AccountRecord[] = [
+    account({ id: "checking", type: "depository", balance: 1000 }),
+    account({ id: "no-liab", type: "credit", balance: 800, creditLimit: 4000 }),
+    account({
+      id: "has-due",
+      type: "credit",
+      balance: 800,
+      creditLimit: 4000,
+      nextPaymentDueDate: "2026-07-01"
+    }),
+    account({ id: "paid", type: "credit", balance: 0, creditLimit: 4000 })
+  ];
+
+  const summary = buildLiabilitiesDueSummary({
+    accounts,
+    asOfDate: "2026-06-04",
+    cashAvailable: 5000,
+    transactions: []
+  });
+
+  const byId = new Map(summary.rows.map((row) => [row.accountId, row]));
+  assert.equal(byId.get("no-liab")?.needsReconnectForDueDates, true);
+  assert.equal(byId.get("has-due")?.needsReconnectForDueDates, false);
+  assert.equal(byId.get("paid")?.needsReconnectForDueDates, false);
 });

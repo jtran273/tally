@@ -71,6 +71,11 @@ export interface LiabilityAccountSummary {
   highestAprPercentage?: number | null;
   // True when the due date came from Plaid liabilities, not an estimate.
   dueDateIsActual: boolean;
+  // True when this card carries a balance but has no connected liability
+  // fields (due date, statement, or minimum payment). Such cards were almost
+  // always linked Transactions-only and need a reconnect to gain due-date and
+  // minimum-payment data once the Liabilities product is enabled.
+  needsReconnectForDueDates: boolean;
   reportingDate: string | null;
   reportingDateSource: LiabilityReportingDateSource;
   reportingDateConfidence: LiabilityReportingDateConfidence;
@@ -268,6 +273,26 @@ export function reportedBalanceActionReason(action: Pick<LiabilityTargetPaymentA
   return `May help lower the likely reported balance below ${action.targetUtilizationPercent}% using ${timing}; no score outcome is promised.`;
 }
 
+/**
+ * A card "needs reconnect" for due dates when it carries a balance yet exposes
+ * no connected liability fields at all (actual due date, statement issue date,
+ * or minimum payment). These cards were linked Transactions-only and a reconnect
+ * is required to gain Liabilities consent. Cards with a $0 balance, or cards that
+ * already surface any liability field, do not get the prompt.
+ */
+export function cardNeedsReconnectForDueDates(
+  row: Pick<
+    LiabilityAccountSummary,
+    "amountOwed" | "dueDateIsActual" | "lastStatementIssueDate" | "minimumPaymentAmount"
+  >
+): boolean {
+  if (row.amountOwed <= 0) return false;
+  if (row.dueDateIsActual) return false;
+  if (row.lastStatementIssueDate) return false;
+  if (row.minimumPaymentAmount && row.minimumPaymentAmount > 0) return false;
+  return true;
+}
+
 function minimumPaymentDue(row: Pick<LiabilityAccountSummary, "amountOwed" | "minimumPaymentAmount">) {
   if (row.amountOwed <= 0) return 0;
   if (row.minimumPaymentAmount && row.minimumPaymentAmount > 0) {
@@ -435,6 +460,12 @@ export function buildLiabilitiesDueSummary({
         purchaseAprPercentage: purchaseAprPercentage(creditAprs),
         highestAprPercentage: highestAprPercentage(creditAprs),
         dueDateIsActual: Boolean(actualDueDate),
+        needsReconnectForDueDates: cardNeedsReconnectForDueDates({
+          amountOwed,
+          dueDateIsActual: Boolean(actualDueDate),
+          lastStatementIssueDate: account.lastStatementIssueDate ?? null,
+          minimumPaymentAmount: account.minimumPaymentAmount ?? null
+        }),
         mask: account.mask,
         name: account.name,
         reportingDate: reportingDate.reportingDate,

@@ -28,6 +28,7 @@ function makeRow(overrides: Partial<LiabilityAccountSummary>): LiabilityAccountS
     lastStatementBalance: null,
     minimumPaymentAmount: null,
     dueDateIsActual: false,
+    needsReconnectForDueDates: false,
     reportingDate: "2026-06-18",
     reportingDateSource: "actual_plaid_liability",
     reportingDateConfidence: "high",
@@ -113,6 +114,103 @@ test("skips due-date risk when a likely payment landed recently", () => {
   });
   const packets = buildCreditOptimizationPackets(makeSummary([row], []));
   assert.equal(packets.length, 0);
+});
+
+test("emits a payment reminder only when a real due date and minimum payment are present", () => {
+  const row = makeRow({
+    accountId: "acct-pay",
+    name: "Chase Freedom",
+    mask: "9876",
+    amountOwed: 900,
+    status: "current",
+    estimatedDueDate: "2026-06-18",
+    daysUntilDue: 14,
+    dueDateIsActual: true,
+    minimumPaymentAmount: 35,
+    lastPaymentDate: null
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  const reminder = packets.find((p) => p.trigger === "payment_reminder");
+  assert.ok(reminder, "expected a payment_reminder packet");
+  assert.equal(reminder?.amount, 35);
+  assert.equal(reminder?.payByDate, "2026-06-18");
+  assert.equal(reminder?.priority, "normal");
+  assert.match(reminder?.rationale ?? "", /minimum payment of \$35/);
+  assert.match(reminder?.rationale ?? "", /in 14 days/);
+  assert.match(reminder?.rationale ?? "", /not a credit-score prediction/);
+  assert.match(reminder?.id ?? "", /^openclaw-outbox:credit:payment-reminder:/);
+});
+
+test("does not emit a payment reminder when the due date is only estimated", () => {
+  const row = makeRow({
+    accountId: "acct-est",
+    amountOwed: 900,
+    status: "current",
+    estimatedDueDate: "2026-06-18",
+    daysUntilDue: 14,
+    dueDateIsActual: false,
+    minimumPaymentAmount: 35
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  assert.equal(packets.some((p) => p.trigger === "payment_reminder"), false);
+});
+
+test("does not emit a payment reminder when no minimum payment is reported", () => {
+  const row = makeRow({
+    accountId: "acct-nomin",
+    amountOwed: 900,
+    status: "current",
+    estimatedDueDate: "2026-06-18",
+    daysUntilDue: 14,
+    dueDateIsActual: true,
+    minimumPaymentAmount: null
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  assert.equal(packets.some((p) => p.trigger === "payment_reminder"), false);
+});
+
+test("does not emit a payment reminder when the due date is beyond the reminder horizon", () => {
+  const row = makeRow({
+    accountId: "acct-far",
+    amountOwed: 900,
+    status: "current",
+    estimatedDueDate: "2026-07-30",
+    daysUntilDue: 56,
+    dueDateIsActual: true,
+    minimumPaymentAmount: 35
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  assert.equal(packets.some((p) => p.trigger === "payment_reminder"), false);
+});
+
+test("payment reminder defers to the due-date risk packet for due-soon cards", () => {
+  const row = makeRow({
+    accountId: "acct-soon",
+    amountOwed: 900,
+    status: "due-soon",
+    estimatedDueDate: "2026-06-08",
+    daysUntilDue: 4,
+    dueDateIsActual: true,
+    minimumPaymentAmount: 35
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  assert.equal(packets.length, 1);
+  assert.equal(packets[0]?.trigger, "due_date_risk");
+});
+
+test("payment reminder packet leaks no raw payloads", () => {
+  const row = makeRow({
+    accountId: "acct-pay",
+    amountOwed: 900,
+    status: "current",
+    estimatedDueDate: "2026-06-18",
+    daysUntilDue: 14,
+    dueDateIsActual: true,
+    minimumPaymentAmount: 35
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], []));
+  const serialized = JSON.stringify(packets);
+  assert.doesNotMatch(serialized, /access_token|plaid_account_id|account_number|routing_number/i);
 });
 
 test("emits cycle-close high-utilization packet when reporting is within 14 days and cash-safe payment exists", () => {

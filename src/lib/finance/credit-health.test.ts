@@ -28,6 +28,7 @@ function row(overrides: Partial<LiabilityAccountSummary>): LiabilityAccountSumma
     mask: "1234",
     minimumPaymentAmount: 35,
     name: "Everyday Card",
+    needsReconnectForDueDates: false,
     reportingDate: "2026-06-19",
     reportingDateConfidence: "medium",
     reportingDateSource: "inferred_from_statement_cycle",

@@ -7,6 +7,7 @@ import type {
 
 export type CreditOptimizationTrigger =
   | "due_date_risk"
+  | "payment_reminder"
   | "cycle_close_high_utilization"
   | "cash_safe_under_target";
 
@@ -24,6 +25,10 @@ export interface CreditOptimizationPacket {
 }
 
 const NEAR_CYCLE_CLOSE_DAYS = 14;
+// How far ahead of a real due date we surface an advisory minimum-payment
+// reminder. Kept wider than the due-soon window so the reminder lights up as
+// soon as connected liability data (due date + minimum payment) is available.
+const PAYMENT_REMINDER_HORIZON_DAYS = 21;
 const RECENT_PAYMENT_LOOKBACK_DAYS = 14;
 const NON_CRITICAL_LIMIT = 1;
 const MAX_DISPLAY_NAME = 60;
@@ -94,6 +99,36 @@ function dueDateRiskPacket(
   };
 }
 
+function paymentReminderPacket(
+  row: LiabilityAccountSummary,
+  asOfDate: string
+): CreditOptimizationPacket | null {
+  if (row.amountOwed <= 0) return null;
+  // Only fire when real connected liability data is present: an actual Plaid
+  // due date plus a reported minimum payment. Estimated due dates never qualify.
+  if (!row.dueDateIsActual || !row.estimatedDueDate) return null;
+  if (!row.minimumPaymentAmount || row.minimumPaymentAmount <= 0) return null;
+  if (hasRecentLikelyPayment(row, asOfDate)) return null;
+
+  const days = dayDifference(asOfDate, row.estimatedDueDate);
+  if (days === null || days < 0 || days > PAYMENT_REMINDER_HORIZON_DAYS) return null;
+
+  const display = accountDisplayName(row);
+  const amount = Math.min(row.amountOwed, row.minimumPaymentAmount);
+  const timing = days === 0 ? "today" : days === 1 ? "in 1 day" : `in ${days} days`;
+
+  return {
+    id: `openclaw-outbox:credit:payment-reminder:${row.accountId}:${row.estimatedDueDate}`,
+    accountDisplayName: display,
+    amount,
+    payByDate: row.estimatedDueDate,
+    priority: "normal",
+    rationale: `${display} has a minimum payment of ${money(amount)} due ${timing} (${shortDate(row.estimatedDueDate)}). Schedule at least the minimum to stay current; this is advisory, not a credit-score prediction.`,
+    targetUtilizationPercent: null,
+    trigger: "payment_reminder"
+  };
+}
+
 function cycleCloseHighUtilizationPacket(
   row: LiabilityAccountSummary,
   asOfDate: string,
@@ -161,6 +196,12 @@ export function buildCreditOptimizationPackets(
     const due = dueDateRiskPacket(row, asOfDate);
     if (due) {
       critical.push(due);
+      continue;
+    }
+
+    const reminder = paymentReminderPacket(row, asOfDate);
+    if (reminder) {
+      critical.push(reminder);
       continue;
     }
 

@@ -470,6 +470,33 @@ function pickLeadAction(summary: LiabilitiesDueSummary): LeadAction | null {
   return null;
 }
 
+export interface CreditReconnectPrompt {
+  cardCount: number;
+  detail: string;
+  headline: string;
+}
+
+/**
+ * Returns a non-alarming prompt to reconnect cards that lack connected
+ * liability data (due dates + minimum payments). Returns null when every
+ * card with a balance already exposes liability fields, so we keep the
+ * existing "confirm issuer due date outside Tally" fallback copy untouched.
+ */
+export function creditPanelReconnectPrompt(summary: LiabilitiesDueSummary): CreditReconnectPrompt | null {
+  const reconnectCards = summary.rows.filter((row) => row.needsReconnectForDueDates);
+  if (reconnectCards.length === 0) return null;
+
+  const cardCount = reconnectCards.length;
+  const headline = cardCount === 1
+    ? "Reconnect to enable due dates & minimum payments"
+    : `Reconnect to enable due dates & minimum payments on ${cardCount} cards`;
+  const detail = cardCount === 1
+    ? `${reconnectCards[0].name} was linked without due-date access. Reconnect it from Manage connections to show its statement due date and minimum payment here.`
+    : "These cards were linked without due-date access. Reconnect them from Manage connections to show statement due dates and minimum payments here.";
+
+  return { cardCount, detail, headline };
+}
+
 function cardStatusClass(row: LiabilityAccountSummary) {
   if (row.status === "overdue") return styles.liabilityOverdue;
   if (row.status === "due-soon") return styles.liabilityDueSoon;
@@ -2012,17 +2039,20 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
   const hiddenCount = activeRows.length - visibleActive.length;
 
   const lead = pickLeadAction(summary);
+  const reconnectPrompt = creditPanelReconnectPrompt(summary);
   const activeMissingDueDates = activeRows.filter((row) => !row.estimatedDueDate).length;
   const utilizationCopy = summary.aggregateUtilizationPercent === null || summary.highestIndividualUtilizationPercent === null
     ? "Add credit limits to track utilization."
     : `Overall utilization ${summary.aggregateUtilizationPercent.toFixed(1)}% · highest card ${summary.highestIndividualUtilizationPercent.toFixed(1)}%.`;
   const calmCopy = activeRows.length === 0
     ? "All connected cards are paid."
-    : activeMissingDueDates === activeRows.length
-      ? "No utilization paydown is flagged. Due dates are not available in Tally yet, so confirm issuer minimums outside the app."
-      : activeMissingDueDates > 0
-        ? "No utilization paydown is flagged. Some issuer due dates are not available in Tally yet."
-        : "No extra payment is flagged by connected card data right now.";
+    : reconnectPrompt
+      ? "No utilization paydown is flagged. Reconnect below to surface due dates and minimum payments."
+      : activeMissingDueDates === activeRows.length
+        ? "No utilization paydown is flagged. Due dates are not available in Tally yet, so confirm issuer minimums outside the app."
+        : activeMissingDueDates > 0
+          ? "No utilization paydown is flagged. Some issuer due dates are not available in Tally yet."
+          : "No extra payment is flagged by connected card data right now.";
 
   return (
     <section aria-label="Credit card actions" className={styles.liabilityPanel} id="card-actions">
@@ -2056,6 +2086,17 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
           <span>{calmCopy}</span>
         </div>
       )}
+
+      {reconnectPrompt ? (
+        <Link className={styles.cardReconnectPrompt} href="/settings">
+          <span className={styles.cardReconnectEyebrow}>
+            <RefreshCw size={13} aria-hidden />
+            Reconnect for due dates
+          </span>
+          <strong>{reconnectPrompt.headline}</strong>
+          <span className={styles.cardReconnectDetail}>{reconnectPrompt.detail}</span>
+        </Link>
+      ) : null}
 
       {visibleActive.length > 0 ? (
         <div className={styles.cardActionGrid}>
