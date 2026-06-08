@@ -1,4 +1,4 @@
-import type { AccountRecord, TransactionRecord } from "@/lib/db";
+import type { AccountRecord, CreditAprRecord, TransactionRecord } from "@/lib/db";
 
 const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay)\b/i;
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
@@ -27,6 +27,7 @@ export interface LiabilityTargetPaymentAction {
   currentUtilizationPercent: number;
   dateConfidence: LiabilityReportingDateConfidence;
   dateSource: LiabilityReportingDateSource;
+  highestAprPercentage?: number | null;
   payByDate: string;
   projectedUtilizationPercent: number;
   reason: "reported_balance_optimization";
@@ -63,6 +64,11 @@ export interface LiabilityAccountSummary {
   lastStatementIssueDate: string | null;
   lastStatementBalance: number | null;
   minimumPaymentAmount: number | null;
+  lastPaymentSource?: "plaid_liability" | "transaction_inference" | "unknown";
+  isOverdue?: boolean | null;
+  creditAprs?: CreditAprRecord[];
+  purchaseAprPercentage?: number | null;
+  highestAprPercentage?: number | null;
   // True when the due date came from Plaid liabilities, not an estimate.
   dueDateIsActual: boolean;
   reportingDate: string | null;
@@ -169,11 +175,13 @@ function projectedUtilizationPercent(amountOwed: number, payment: number, credit
 }
 
 function paymentTargetSort(
-  a: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "reportingDate">,
-  b: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "reportingDate">
+  a: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "highestAprPercentage" | "reportingDate">,
+  b: Pick<LiabilityTargetPaymentAction, "amountToTarget" | "currentUtilizationPercent" | "highestAprPercentage" | "reportingDate">
 ) {
   const utilizationDiff = b.currentUtilizationPercent - a.currentUtilizationPercent;
   if (utilizationDiff !== 0) return utilizationDiff;
+  const aprDiff = (b.highestAprPercentage ?? -1) - (a.highestAprPercentage ?? -1);
+  if (aprDiff !== 0) return aprDiff;
   const dateDiff = a.reportingDate.localeCompare(b.reportingDate);
   if (dateDiff !== 0) return dateDiff;
   return b.amountToTarget - a.amountToTarget;
@@ -219,6 +227,7 @@ export function computeTargetPayments({
       currentUtilizationPercent: row.utilizationPercent,
       dateConfidence: row.reportingDateConfidence,
       dateSource: row.reportingDateSource,
+      highestAprPercentage: row.highestAprPercentage ?? null,
       payByDate,
       projectedUtilizationPercent: projectedUtilizationPercent(row.amountOwed, amountToTarget, row.creditLimit),
       reason: "reported_balance_optimization",
@@ -302,6 +311,18 @@ function findLastPayment(
   return null;
 }
 
+function highestAprPercentage(aprs: readonly CreditAprRecord[]) {
+  const percentages = aprs
+    .map((apr) => apr.aprPercentage)
+    .filter((value): value is number => typeof value === "number");
+  if (percentages.length === 0) return null;
+  return Math.max(...percentages);
+}
+
+function purchaseAprPercentage(aprs: readonly CreditAprRecord[]) {
+  return aprs.find((apr) => apr.aprType.toLowerCase().includes("purchase"))?.aprPercentage ?? null;
+}
+
 function reportingDateMetadata({
   asOfDate,
   lastStatementIssueDate,
@@ -367,7 +388,15 @@ export function buildLiabilitiesDueSummary({
   const rows: LiabilityAccountSummary[] = creditAccounts
     .map((account) => {
       const amountOwed = Math.max(0, Math.abs(account.balance));
-      const lastPayment = findLastPayment(account.id, sortedTransactions);
+      const inferredLastPayment = findLastPayment(account.id, sortedTransactions);
+      const plaidLastPayment =
+        account.liabilityLastPaymentDate || account.liabilityLastPaymentAmount != null
+          ? {
+              amount: account.liabilityLastPaymentAmount ?? 0,
+              date: account.liabilityLastPaymentDate ?? ""
+            }
+          : null;
+      const lastPayment = plaidLastPayment ?? inferredLastPayment;
       const actualDueDate = account.nextPaymentDueDate ?? null;
       const estimatedDueDate = actualDueDate;
       const daysUntilDue = estimatedDueDate ? dayDifference(today, estimatedDueDate) : null;
@@ -379,6 +408,14 @@ export function buildLiabilitiesDueSummary({
         lastStatementIssueDate: account.lastStatementIssueDate,
         nextPaymentDueDate: actualDueDate
       });
+      const isOverdue = account.liabilityIsOverdue ?? null;
+      const status = isOverdue && amountOwed > 0 ? "overdue" : statusForDays(daysUntilDue, amountOwed);
+      const creditAprs = account.liabilityAprs ?? [];
+      const lastPaymentSource: LiabilityAccountSummary["lastPaymentSource"] = plaidLastPayment
+        ? "plaid_liability"
+        : inferredLastPayment
+          ? "transaction_inference"
+          : "unknown";
 
       const row = {
         accountId: account.id,
@@ -388,17 +425,22 @@ export function buildLiabilitiesDueSummary({
         estimatedDueDate,
         institutionName: account.institutionName,
         lastPaymentAmount: lastPayment?.amount ?? null,
-        lastPaymentDate: lastPayment?.date ?? null,
+        lastPaymentDate: lastPayment?.date || null,
+        lastPaymentSource,
         lastStatementIssueDate: account.lastStatementIssueDate ?? null,
         lastStatementBalance: account.lastStatementBalance ?? null,
         minimumPaymentAmount: account.minimumPaymentAmount ?? null,
+        isOverdue,
+        creditAprs,
+        purchaseAprPercentage: purchaseAprPercentage(creditAprs),
+        highestAprPercentage: highestAprPercentage(creditAprs),
         dueDateIsActual: Boolean(actualDueDate),
         mask: account.mask,
         name: account.name,
         reportingDate: reportingDate.reportingDate,
         reportingDateConfidence: reportingDate.reportingDateConfidence,
         reportingDateSource: reportingDate.reportingDateSource,
-        status: statusForDays(daysUntilDue, amountOwed),
+        status,
         utilizationPercent
       };
 

@@ -146,6 +146,10 @@ export interface AccountRow {
   last_statement_balance: number | null;
   next_payment_due_date: string | null;
   minimum_payment_amount: number | null;
+  liability_is_overdue?: boolean | null;
+  liability_last_payment_date?: string | null;
+  liability_last_payment_amount?: number | null;
+  liability_aprs?: Json;
   created_at: string;
   updated_at: string;
 }
@@ -511,7 +515,18 @@ export interface AccountRecord {
   lastStatementBalance?: number | null;
   nextPaymentDueDate?: string | null;
   minimumPaymentAmount?: number | null;
+  liabilityIsOverdue?: boolean | null;
+  liabilityLastPaymentDate?: string | null;
+  liabilityLastPaymentAmount?: number | null;
+  liabilityAprs?: CreditAprRecord[];
   manualValuation?: ManualInvestmentValuationRecord;
+}
+
+export interface CreditAprRecord {
+  aprType: string;
+  aprPercentage: number | null;
+  balanceSubjectToApr: number | null;
+  interestChargeAmount: number | null;
 }
 
 export interface ManualInvestmentValuationRecord {

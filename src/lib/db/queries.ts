@@ -17,6 +17,7 @@ import type {
   BalanceSnapshotRow,
   CategoryRecord,
   CategoryRow,
+  CreditAprRecord,
   CreditScoreModel,
   CreditScoreSnapshotRecord,
   CreditScoreSnapshotRow,
@@ -385,6 +386,31 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function isCreditAprRecord(value: Json): value is Json & {
+  aprPercentage?: number | null;
+  aprType?: string;
+  balanceSubjectToApr?: number | null;
+  interestChargeAmount?: number | null;
+} {
+  return (
+    isJsonObject(value) &&
+    typeof value.aprType === "string" &&
+    (value.aprPercentage === null || typeof value.aprPercentage === "number") &&
+    (value.balanceSubjectToApr === null || typeof value.balanceSubjectToApr === "number") &&
+    (value.interestChargeAmount === null || typeof value.interestChargeAmount === "number")
+  );
+}
+
+function parseCreditAprs(value: Json): CreditAprRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isCreditAprRecord).map((row): CreditAprRecord => ({
+    aprPercentage: row.aprPercentage ?? null,
+    aprType: row.aprType ?? "unknown",
+    balanceSubjectToApr: row.balanceSubjectToApr ?? null,
+    interestChargeAmount: row.interestChargeAmount ?? null
+  }));
+}
+
 function toAccountRecord(
   row: AccountRow,
   institution?: InstitutionRow,
@@ -413,7 +439,11 @@ function toAccountRecord(
     lastStatementIssueDate: row.last_statement_issue_date,
     lastStatementBalance: row.last_statement_balance,
     nextPaymentDueDate: row.next_payment_due_date,
-    minimumPaymentAmount: row.minimum_payment_amount
+    minimumPaymentAmount: row.minimum_payment_amount,
+    liabilityIsOverdue: row.liability_is_overdue ?? null,
+    liabilityLastPaymentDate: row.liability_last_payment_date ?? null,
+    liabilityLastPaymentAmount: row.liability_last_payment_amount ?? null,
+    liabilityAprs: parseCreditAprs(row.liability_aprs ?? [])
   };
 }
 
