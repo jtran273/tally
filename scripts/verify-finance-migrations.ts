@@ -5,6 +5,7 @@ import type { Database } from "../src/lib/db/types";
 
 // Read-only verifier for issue #236. Confirms the deployed Supabase schema
 // includes the finance/OpenClaw hardening migrations the app expects:
+//   - 20260513000100_add_agent_proposals.sql
 //   - 20260604000100_add_anomaly_alerts.sql
 //   - 20260604000200_add_plaid_pending_replacement_count.sql
 //   - 20260604000300_add_review_resolution_kind.sql
@@ -56,6 +57,13 @@ async function checkAnomalyAlertsTable(client: ProbeClient): Promise<CheckResult
   return classifyProbeError(name, error.code, error.message);
 }
 
+async function checkAgentProposalsTable(client: ProbeClient): Promise<CheckResult> {
+  const name = "agent_proposals table (#20260513000100 / #20260608000200 repair)";
+  const { error } = await client.from("agent_proposals").select("id").limit(1);
+  if (!error) return { detail: "present and selectable", name, ok: true };
+  return classifyProbeError(name, error.code, error.message);
+}
+
 async function checkPlaidSyncRunsColumn(client: ProbeClient): Promise<CheckResult> {
   const name = "plaid_sync_runs.pending_transactions_replaced (#20260604000200)";
   const { error } = await client.from("plaid_sync_runs").select("pending_transactions_replaced").limit(1);
@@ -95,6 +103,7 @@ async function main() {
   const client = buildClient();
 
   const results: CheckResult[] = [
+    await checkAgentProposalsTable(client),
     await checkAnomalyAlertsTable(client),
     await checkPlaidSyncRunsColumn(client),
     await checkPlaidSyncRunItemsColumn(client),

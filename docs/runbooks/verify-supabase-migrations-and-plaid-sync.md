@@ -7,9 +7,11 @@ a live sync works.
 
 Migrations in scope:
 
+- `supabase/migrations/20260513000100_add_agent_proposals.sql`
 - `supabase/migrations/20260604000100_add_anomaly_alerts.sql`
 - `supabase/migrations/20260604000200_add_plaid_pending_replacement_count.sql`
 - `supabase/migrations/20260604000300_add_review_resolution_kind.sql`
+- `supabase/migrations/20260608000200_repair_agent_proposals_schema.sql`
 
 > Do not paste real Plaid tokens, service-role keys, database URLs, or provider
 > payloads into issues, PRs, or chat.

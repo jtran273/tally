@@ -346,7 +346,7 @@ function transactionIncludedInScope(
   return accountIncludedInScope(accountTypeById.get(transaction.accountId), scope);
 }
 
-const UTILIZATION_ACTION_PERCENT = 30;
+const UTILIZATION_ACTION_PERCENT = 10;
 
 interface CardPaydown {
   amount: number;
@@ -403,10 +403,10 @@ function cardActionLine(row: LiabilityAccountSummary) {
   }
 
   if (!row.estimatedDueDate) {
-    return "Under 30%; confirm issuer due date outside Tally.";
+    return "Under 10%; confirm issuer statement timing outside Tally.";
   }
 
-  return "Under 30%; no extra utilization payment flagged.";
+  return "Under 10%; no extra utilization payment flagged.";
 }
 
 function cardLimitLine(row: LiabilityAccountSummary) {

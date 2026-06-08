@@ -1,5 +1,6 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import {
   getEnrichedTransactionRow,
@@ -12,6 +13,7 @@ import {
   updateTransactionEnrichment,
   upsertMerchantRule,
   type CategoryRecord,
+  type Database,
   type FinanceSupabaseClient,
   type Json,
   type RawTransactionRow,
@@ -42,6 +44,7 @@ import {
 } from "@/lib/review/suggestions";
 import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { getSupabaseConfig } from "@/lib/supabase/env";
 import {
   resolveProactiveScanHistoricalLookbackDays,
   resolveProactiveScanHistoricalMaxCandidates,
@@ -112,6 +115,19 @@ function errorState(error: unknown): ReviewActionState {
   return {
     error: error instanceof Error ? error.message : "Unable to update review item."
   };
+}
+
+function serviceRoleFinanceClient(): FinanceSupabaseClient | null {
+  const config = getSupabaseConfig();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!config || !serviceRoleKey) return null;
+
+  return createClient<Database>(config.url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }) as unknown as FinanceSupabaseClient;
 }
 
 function parseMoneyCents(value: FormDataEntryValue | null) {
@@ -494,7 +510,8 @@ export async function runHistoricalReimbursementScanAction(
     const maxTransactions = resolveProactiveScanHistoricalMaxTransactions();
     const maxCandidateProposals = resolveProactiveScanHistoricalMaxCandidates();
     const lookbackDays = resolveProactiveScanHistoricalLookbackDays();
-    const scan = await runProactiveReimbursementScan(context.client, context.userId, {
+    const scanClient = serviceRoleFinanceClient() ?? context.client;
+    const scan = await runProactiveReimbursementScan(scanClient, context.userId, {
       includeDisconnectedAccounts: true,
       lookbackDays,
       maxCandidateProposals,

@@ -358,6 +358,15 @@ function expectData<T>(result: QueryResult<T>, context: string): T {
   return result.data;
 }
 
+function isMissingRelationOrSchemaCacheError(error: QueryError, relationName: string) {
+  const message = error.message.toLowerCase();
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    (message.includes("could not find the table") && message.includes(relationName.toLowerCase()))
+  );
+}
+
 function isMissingSingleRowError(error: QueryError) {
   const message = error.message.toLowerCase();
   const details = error.details?.toLowerCase() ?? "";
@@ -1928,7 +1937,12 @@ export async function listAgentProposals(
     query = query.gte("updated_at", filters.since);
   }
 
-  const rows = expectData(await query, "List agent proposals")
+  const result = await query;
+  if (result.error && isMissingRelationOrSchemaCacheError(result.error, "agent_proposals")) {
+    return [];
+  }
+
+  const rows = expectData(result, "List agent proposals")
     .map(toAgentProposalRecord)
     .filter((proposal) => isVisibleAgentProposal(proposal, { includeExpired: filters.includeExpired }));
 

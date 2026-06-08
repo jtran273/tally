@@ -132,53 +132,53 @@ function paymentReminderPacket(
 function cycleCloseHighUtilizationPacket(
   row: LiabilityAccountSummary,
   asOfDate: string,
-  target30Action: LiabilityTargetPaymentAction | null
+  targetAction: LiabilityTargetPaymentAction | null
 ): CreditOptimizationPacket | null {
   if (row.amountOwed <= 0) return null;
   if (row.utilizationPercent === null || row.utilizationPercent < 50) return null;
   if (!row.reportingDate || row.reportingDateConfidence === "unknown") return null;
-  if (!target30Action || target30Action.recommendedPayment <= 0) return null;
+  if (!targetAction || targetAction.recommendedPayment <= 0) return null;
 
   const days = dayDifference(asOfDate, row.reportingDate);
   if (days === null || days > NEAR_CYCLE_CLOSE_DAYS || days < 0) return null;
 
   const display = accountDisplayName(row);
-  const payment = target30Action.recommendedPayment;
-  const rationale = target30Action.cashShortfall <= 0
-    ? `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and reports on ${shortDate(row.reportingDate)}. A cash-safe ${money(payment)} payment by ${shortDate(target30Action.payByDate)} would bring it under ${target30Action.targetUtilizationPercent}%.`
+  const payment = targetAction.recommendedPayment;
+  const rationale = targetAction.cashShortfall <= 0
+    ? `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and reports on ${shortDate(row.reportingDate)}. A cash-safe ${money(payment)} payment by ${shortDate(targetAction.payByDate)} would bring it under ${targetAction.targetUtilizationPercent}%.`
     : `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and reports on ${shortDate(row.reportingDate)}. ${money(payment)} fits above your cash buffer and reduces the likely reported balance.`;
 
   return {
-    id: `openclaw-outbox:credit:cycle:${row.accountId}:${row.reportingDate}:${target30Action.targetUtilizationPercent}`,
+    id: `openclaw-outbox:credit:cycle:${row.accountId}:${row.reportingDate}:${targetAction.targetUtilizationPercent}`,
     accountDisplayName: display,
     amount: payment,
-    payByDate: target30Action.payByDate,
+    payByDate: targetAction.payByDate,
     priority: "high",
     rationale,
-    targetUtilizationPercent: target30Action.targetUtilizationPercent,
+    targetUtilizationPercent: targetAction.targetUtilizationPercent,
     trigger: "cycle_close_high_utilization"
   };
 }
 
 function cashSafeUnderTargetPacket(
   row: LiabilityAccountSummary,
-  target30Action: LiabilityTargetPaymentAction | null
+  targetAction: LiabilityTargetPaymentAction | null
 ): CreditOptimizationPacket | null {
   if (row.amountOwed <= 0) return null;
-  if (!target30Action) return null;
-  if (target30Action.cashShortfall > 0) return null;
-  if (target30Action.recommendedPayment <= 0) return null;
-  if (row.utilizationPercent === null || row.utilizationPercent < 30) return null;
+  if (!targetAction) return null;
+  if (targetAction.cashShortfall > 0) return null;
+  if (targetAction.recommendedPayment <= 0) return null;
+  if (row.utilizationPercent === null || row.utilizationPercent < targetAction.targetUtilizationPercent) return null;
 
   const display = accountDisplayName(row);
   return {
-    id: `openclaw-outbox:credit:cash-safe:${row.accountId}:${target30Action.reportingDate}:${target30Action.targetUtilizationPercent}`,
+    id: `openclaw-outbox:credit:cash-safe:${row.accountId}:${targetAction.reportingDate}:${targetAction.targetUtilizationPercent}`,
     accountDisplayName: display,
-    amount: target30Action.recommendedPayment,
-    payByDate: target30Action.payByDate,
+    amount: targetAction.recommendedPayment,
+    payByDate: targetAction.payByDate,
     priority: "normal",
-    rationale: `${display} can be brought under ${target30Action.targetUtilizationPercent}% with a cash-safe ${money(target30Action.recommendedPayment)} payment by ${shortDate(target30Action.payByDate)}.`,
-    targetUtilizationPercent: target30Action.targetUtilizationPercent,
+    rationale: `${display} can be brought under ${targetAction.targetUtilizationPercent}% with a cash-safe ${money(targetAction.recommendedPayment)} payment by ${shortDate(targetAction.payByDate)}.`,
+    targetUtilizationPercent: targetAction.targetUtilizationPercent,
     trigger: "cash_safe_under_target"
   };
 }
@@ -187,7 +187,10 @@ export function buildCreditOptimizationPackets(
   summary: LiabilitiesDueSummary
 ): CreditOptimizationPacket[] {
   const asOfDate = summary.asOfDate;
-  const target30Plan = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 30);
+  const target10Plan = summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 10);
+  const targetPlan = target10Plan && target10Plan.actions.length > 0
+    ? target10Plan
+    : summary.targetPaymentPlans.find((plan) => plan.targetUtilizationPercent === 30);
 
   const critical: CreditOptimizationPacket[] = [];
   const nonCritical: CreditOptimizationPacket[] = [];
@@ -205,14 +208,14 @@ export function buildCreditOptimizationPackets(
       continue;
     }
 
-    const target30Action = pickActionForAccount(target30Plan, row.accountId);
-    const cycle = cycleCloseHighUtilizationPacket(row, asOfDate, target30Action);
+    const targetAction = pickActionForAccount(targetPlan, row.accountId);
+    const cycle = cycleCloseHighUtilizationPacket(row, asOfDate, targetAction);
     if (cycle) {
       nonCritical.push(cycle);
       continue;
     }
 
-    const cashSafe = cashSafeUnderTargetPacket(row, target30Action);
+    const cashSafe = cashSafeUnderTargetPacket(row, targetAction);
     if (cashSafe) nonCritical.push(cashSafe);
   }
 

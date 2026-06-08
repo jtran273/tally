@@ -172,7 +172,7 @@ function utilizationGuidance(summary: LiabilitiesDueSummary): CreditHealthGuidan
     return {
       confidence: "medium",
       reason: `Aggregate utilization is ${aggregate.toFixed(1)}% and highest card utilization is ${highest.toFixed(1)}%.`,
-      title: "Utilization is below 30%; single digits are the optional polish target."
+      title: "Target single-digit utilization before the card may report."
     };
   }
 
