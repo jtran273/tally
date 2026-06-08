@@ -28,7 +28,13 @@ interface DisconnectResponse {
   connections: GoogleCalendarConnectionSummary[];
 }
 
-type RequestState = "idle" | "loading" | "connecting" | "disconnecting";
+interface RefreshResponse {
+  connection: GoogleCalendarConnectionSummary | null;
+  connections: GoogleCalendarConnectionSummary[];
+  eventCount: number;
+}
+
+type RequestState = "idle" | "loading" | "connecting" | "disconnecting" | "refreshing";
 
 interface GoogleCalendarConnectionPanelProps {
   initialError?: string | null;
@@ -163,7 +169,40 @@ export function GoogleCalendarConnectionPanel({
     }
   };
 
-  const isBusy = requestState === "loading" || requestState === "connecting" || requestState === "disconnecting";
+  const refreshCalendar = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    if (isDemo) {
+      setSuccessMessage("Demo calendar context is read-only.");
+      return;
+    }
+
+    setRequestState("refreshing");
+
+    try {
+      const data = await fetch("/api/calendar/refresh", {
+        cache: "no-store",
+        method: "POST"
+      }).then((response) => readJson<RefreshResponse>(response));
+      setConnections(data.connections);
+      setSuccessMessage(
+        data.connection
+          ? `Google Calendar refreshed. Read ${data.eventCount} upcoming ${data.eventCount === 1 ? "event" : "events"}.`
+          : "No Google Calendar connected."
+      );
+      router.refresh();
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Unable to refresh Google Calendar.");
+    } finally {
+      setRequestState("idle");
+    }
+  };
+
+  const isBusy =
+    requestState === "loading" ||
+    requestState === "connecting" ||
+    requestState === "disconnecting" ||
+    requestState === "refreshing";
 
   return (
     <section className="settings-panel calendar-panel">
@@ -175,9 +214,9 @@ export function GoogleCalendarConnectionPanel({
           <div className="settings-title">Calendar context</div>
         </div>
         <div className="calendar-actions">
-          <button className="btn" disabled={isBusy} onClick={() => void loadConnections()} type="button">
+          <button className="btn" disabled={isBusy} onClick={() => void refreshCalendar()} type="button">
             <RefreshCw size={14} />
-            Refresh
+            {requestState === "refreshing" ? "Refreshing" : "Refresh"}
           </button>
           <button className="btn btn-primary" disabled={isDemo || isBusy} onClick={() => void startConnection()} type="button">
             {requestState === "connecting" ? <RefreshCw size={14} /> : <Plus size={14} />}

@@ -37,6 +37,14 @@ Optional, to exercise the live signals check in the smoke script:
    `GOOGLE_CALENDAR_REDIRECT_URI` must be HTTPS and point at
    `/api/calendar/callback` (the smoke script asserts both).
 
+Production OAuth should be pinned to
+`https://personal-finance-os-jtran273s-projects.vercel.app/api/calendar/callback`.
+The app has had both `personal-finance-os-lac.vercel.app` and
+`personal-finance-os-jtran273s-projects.vercel.app` live; mixing those hosts can
+make OAuth cookies/state look missing even when the Google redirect itself
+succeeds. Start and finish the Settings connect/refresh flow on the `-jtran273s`
+host when validating production.
+
 ## 2. Run the production smoke check
 
 Start with the consolidated local/env-shape preflight:
