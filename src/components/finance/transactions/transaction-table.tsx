@@ -1,6 +1,6 @@
 import type { AccountRecord, ReviewItemRecord, ReviewReason, ReviewStatus, TransactionRecord } from "@/lib/db";
 import { displayCategoryName, isTransferCategoryName } from "@/lib/finance/classification";
-import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
+import { describeReimbursementProgress, summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
 import type { PlaidConnectionIssue } from "@/lib/plaid/status";
 import { isRecurringReview } from "@/lib/review/reasons";
 import {
@@ -286,6 +286,7 @@ export function TransactionTable({
               const actionableReview = transaction.reviewItems.find((review) => review.status === "open" && !isRecurringReview(review.reason));
               const hasRecurringSignal = transaction.reviewItems.some((review) => review.status === "open" && isRecurringReview(review.reason));
               const reimbursement = summarizeTransactionReimbursement(transaction);
+              const reimbursementProgress = describeReimbursementProgress(reimbursement);
               const transferTagged = transaction.intent === "transfer" || isTransferCategoryName(transaction.category);
               const isUncategorized = needsCategory(transaction);
               const suggestedCategory = isUncategorized ? suggestedCategoryName(transaction) : null;
@@ -341,11 +342,9 @@ export function TransactionTable({
                         <span>{compactAccountLabel(transaction)}</span>
                         <span>{formatDate(transaction.date)}</span>
                       </div>
-                      {reimbursement.state !== "none" ? (
+                      {reimbursementProgress ? (
                         <div className={styles.reimbursementLine}>
-                          {reimbursement.state === "unmatched-income"
-                            ? `${formatUnsignedMoney(reimbursement.receivedAmount)} unmatched reimbursement income`
-                            : `${formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from ${formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable`}
+                          {reimbursementProgress}
                         </div>
                       ) : null}
                       {transaction.note ? (

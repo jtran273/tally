@@ -33,6 +33,43 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+const owedMoneyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+  style: "currency"
+});
+
+function formatOwedMoney(value: number) {
+  return owedMoneyFormatter.format(Math.abs(value));
+}
+
+/**
+ * Builds the human-readable "owed" progress line for a reimbursement summary,
+ * e.g. "$40.00 of $100.00 still owed" for a partial reimbursement.
+ *
+ * This is purely descriptive (advisory) copy derived from the computed summary;
+ * it never mutates state. Returns `null` when there is nothing to surface.
+ */
+export function describeReimbursementProgress(summary: TransactionReimbursementSummary): string | null {
+  if (summary.state === "unmatched-income") {
+    return `${formatOwedMoney(summary.receivedAmount)} unmatched reimbursement income`;
+  }
+  if (summary.state === "none") {
+    return null;
+  }
+  if (summary.state === "written-off") {
+    return `${formatOwedMoney(summary.reimbursableAmount)} reimbursable · written off`;
+  }
+  if (summary.outstandingAmount <= 0) {
+    return `${formatOwedMoney(summary.reimbursableAmount)} fully reimbursed`;
+  }
+  if (summary.receivedAmount > 0) {
+    return `${formatOwedMoney(summary.outstandingAmount)} of ${formatOwedMoney(summary.reimbursableAmount)} still owed`;
+  }
+  return `${formatOwedMoney(summary.outstandingAmount)} of ${formatOwedMoney(summary.reimbursableAmount)} owed`;
+}
+
 function reimbursableSplitAmount(split: Pick<TransactionSplitRecord, "amount" | "intent">) {
   return split.intent === "reimbursable" ? Math.abs(split.amount) : 0;
 }
