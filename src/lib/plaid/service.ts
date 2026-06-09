@@ -395,12 +395,27 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
   };
 }
 
-export function isPlaidRealtimeBalanceAuthorized(item: Pick<PlaidItemRow, "available_products" | "billed_products">) {
-  const products = new Set([
+function plaidItemProductSet(item: Pick<PlaidItemRow, "available_products" | "billed_products">) {
+  return new Set([
     ...item.available_products,
     ...item.billed_products
   ].map((product) => product.toLowerCase()));
-  return products.has(Products.Balance);
+}
+
+export function isPlaidRealtimeBalanceAuthorized(item: Pick<PlaidItemRow, "available_products" | "billed_products">) {
+  return plaidItemProductSet(item).has(Products.Balance);
+}
+
+// In update mode, only collect consent for products the item does not already
+// have. Re-requesting an already-consented/billed product is unnecessary and
+// keeps `additional_consented_products` free of overlap with the item's
+// existing products.
+export function getPlaidUpdateModeConsentProducts(
+  item: Pick<PlaidItemRow, "available_products" | "billed_products">,
+  optionalProducts: Products[]
+): Products[] {
+  const existing = plaidItemProductSet(item);
+  return optionalProducts.filter((product) => !existing.has(product.toLowerCase()));
 }
 
 export function isRecentRunningPlaidSync(
@@ -2330,9 +2345,10 @@ export async function createPlaidLinkToken({
   }
 
   const item = itemId && client ? await loadPlaidItemForSync(client, userId, itemId) : null;
+  const optionalProducts = getPlaidLinkOptionalProducts();
   const response = await plaid.linkTokenCreate(buildPlaidLinkTokenCreateRequest({
     accessToken: item ? decryptPlaidAccessToken(item.access_token_ciphertext) : undefined,
-    optionalProducts: getPlaidLinkOptionalProducts(),
+    optionalProducts: item ? getPlaidUpdateModeConsentProducts(item, optionalProducts) : optionalProducts,
     redirectUri: config.redirectUri,
     userEmail,
     userId
@@ -2371,7 +2387,14 @@ export function buildPlaidLinkTokenCreateRequest({
 }): LinkTokenCreateRequest {
   return {
     ...(accessToken
-      ? { access_token: accessToken }
+      ? {
+        access_token: accessToken,
+        // Update mode cannot use `optional_products`; consent for a product added
+        // to an existing item (e.g. Liabilities) must go through
+        // `additional_consented_products` so the next liabilitiesGet succeeds
+        // without minting a brand-new item via disconnect + re-add.
+        ...(optionalProducts.length > 0 ? { additional_consented_products: optionalProducts } : {})
+      }
       : {
         products: [Products.Transactions],
         ...(optionalProducts.length > 0 ? { optional_products: optionalProducts } : {}),
