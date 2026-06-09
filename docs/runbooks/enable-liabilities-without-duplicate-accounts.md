@@ -60,6 +60,11 @@ npx tsx scripts/merge-relinked-accounts.ts --email user@example.com --execute
 Requires `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in
 `.env.local`.
 
+The script refuses to execute if it would drop duplicate-looking transactions by
+default. If the dry run shows confirmed re-link copies that should be deleted,
+re-run with `--allow-drop-duplicates`. It also refuses same-day balance snapshot
+conflicts unless `--allow-snapshot-conflicts` is passed after review.
+
 The script re-points `raw_transactions` / `enriched_transactions` /
 `balance_snapshots` (and other `account_id` FKs) from the stale duplicate onto the
 active newest row that carries the liability data, then deletes the empty dupes.
