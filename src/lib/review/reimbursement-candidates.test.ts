@@ -163,6 +163,56 @@ test("prefilterReimbursementCandidates ranks likely shared expenses and nearby p
   assert(candidates[0].reasons.some((reason) => reason.includes("Nearby positive inflow")));
 });
 
+test("prefilterReimbursementCandidates ignores inflows that cover a negligible fraction of the expense", () => {
+  const airbnb = transaction({
+    amount: -1628.56,
+    category: "Travel / Lodging",
+    date: "2026-02-22",
+    id: "tx-airbnb",
+    merchant: "Airbnb"
+  });
+  const tinyRefund = transaction({
+    amount: 32.31,
+    category: "Shopping",
+    date: "2026-03-02",
+    id: "tx-amazon",
+    merchant: "Amazon"
+  });
+
+  const candidates = prefilterReimbursementCandidates([airbnb], [tinyRefund]);
+
+  // The expense may still surface for review, but the $32 inflow is far too
+  // small (2% of the stay) to be offered as a reimbursement match.
+  const airbnbCandidate = candidates.find((candidate) => candidate.transaction.id === "tx-airbnb");
+  assert.deepEqual(airbnbCandidate?.candidateInflows ?? [], []);
+  assert(!(airbnbCandidate?.reasons ?? []).some((reason) => reason.includes("Nearby positive inflow")));
+});
+
+test("prefilterReimbursementCandidates keeps peer-payment inflows the bank tagged as transfers", () => {
+  const hotel = transaction({
+    amount: -288.94,
+    category: "Travel / Lodging",
+    date: "2026-04-24",
+    id: "tx-hotel",
+    merchant: "La Quinta Inns & Suites"
+  });
+  // Zelle reimbursement for a shared room, but the bank auto-classified the
+  // deposit as a transfer — the most common reason a true match is missed.
+  const zelle = transaction({
+    amount: 144.5,
+    category: "Transfer",
+    date: "2026-04-26",
+    id: "tx-zelle",
+    intent: "transfer",
+    merchant: "Zelle payment from Jordan"
+  });
+
+  const candidates = prefilterReimbursementCandidates([hotel], [zelle]);
+
+  const hotelCandidate = candidates.find((candidate) => candidate.transaction.id === "tx-hotel");
+  assert.deepEqual(hotelCandidate?.candidateInflows.map((inflow) => inflow.id) ?? [], ["tx-zelle"]);
+});
+
 test("prefilterReimbursementCandidates excludes already linked reimbursement inflows", () => {
   const dinner = transaction({
     amount: -182.44,

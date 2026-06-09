@@ -126,10 +126,23 @@ function isEligibleExpense(transaction: TransactionRecord) {
   return Math.abs(transaction.amount) >= amountThreshold(transaction.category);
 }
 
+function isPeerPaymentInflow(transaction: Pick<TransactionRecord, "merchant" | "note">) {
+  return PEER_PAYMENT_PATTERN.test(`${transaction.merchant} ${transaction.note ?? ""}`);
+}
+
 function isCandidateInflow(transaction: TransactionRecord) {
   if (transaction.amount <= MONEY_EPSILON) return false;
-  if (transaction.intent === "transfer" || transaction.intent === "reimbursable") return false;
   if (transaction.status === "pending") return false;
+  if (transaction.intent === "reimbursable") return false;
+
+  // A Venmo/Zelle/Cash App/PayPal deposit into checking is the clearest
+  // reimbursement tell, so keep it even when the bank auto-tagged it as a
+  // transfer or the deposit description looks like ordinary income. Without
+  // this, real peer reimbursements get filtered out before scoring (the
+  // "no strong peer-payment inflow" case on mismatched proposals).
+  if (isPeerPaymentInflow(transaction)) return true;
+
+  if (transaction.intent === "transfer") return false;
   if (/\bincome\b/i.test(transaction.category)) return false;
   if (TRUE_INCOME_PATTERN.test(`${transaction.merchant} ${transaction.category}`)) return false;
   return true;
@@ -141,9 +154,22 @@ function inflowScore(expense: TransactionRecord, inflow: TransactionRecord) {
 
   const amount = Math.abs(expense.amount);
   const ratio = inflow.amount / amount;
+  const isPeerPayment = isPeerPaymentInflow(inflow);
   const amountScore = ratio >= 0.2 && ratio <= 1.1 ? 20 : ratio > 1.1 && ratio <= 1.35 ? 8 : 0;
+
+  // Amount plausibility gate. A peer payment is itself strong evidence, so
+  // accept a partial split (a friend covering their share, down to ~5% of the
+  // bill) while still rejecting peer deposits that dwarf the expense. A
+  // non-peer inflow must plausibly cover the charge: a $32 refund against a
+  // $1,600 stay is not a reimbursement, no matter how close in time it lands.
+  if (isPeerPayment) {
+    if (ratio < 0.05 || ratio > 1.5) return 0;
+  } else if (amountScore === 0) {
+    return 0;
+  }
+
   const timingScore = days >= 0 && days <= 14 ? 22 : days >= 15 && days <= 45 ? 12 : 5;
-  const peerScore = PEER_PAYMENT_PATTERN.test(inflow.merchant) ? 24 : 0;
+  const peerScore = isPeerPayment ? 24 : 0;
   return amountScore + timingScore + peerScore;
 }
 

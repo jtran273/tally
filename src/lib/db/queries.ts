@@ -385,6 +385,32 @@ function unique(values: Array<string | null | undefined>) {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+// Supabase/PostgREST encodes `.in(col, ids)` into the request URL, so a large
+// id set (e.g. a historical reimbursement backfill spanning thousands of
+// transactions) produces a URL the transport layer rejects ("fetch failed").
+// Split the ids into bounded chunks and merge the rows back together.
+const ID_FILTER_CHUNK_SIZE = 400;
+
+function chunkIds(ids: readonly string[], size = ID_FILTER_CHUNK_SIZE) {
+  if (ids.length <= size) return [ids];
+  const chunks: Array<readonly string[]> = [];
+  for (let index = 0; index < ids.length; index += size) {
+    chunks.push(ids.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function selectByIdChunks<Row>(
+  ids: readonly string[],
+  run: (idChunk: readonly string[]) => PromiseLike<{ data: Row[] | null; error: QueryError | null }>
+): Promise<QueryResult<Row[]>> {
+  if (ids.length === 0) return { data: [], error: null };
+  const results = await Promise.all(chunkIds(ids).map((chunk) => run(chunk)));
+  const failed = results.find((result) => result.error);
+  if (failed?.error) return { data: null, error: failed.error };
+  return { data: results.flatMap((result) => result.data ?? []), error: null };
+}
+
 function slicePage<T>(rows: readonly T[], limit?: number, offset = 0) {
   if (limit === undefined) return rows.slice(offset);
   return rows.slice(offset, offset + limit);
@@ -899,18 +925,22 @@ async function hydrateTransactions(
     splitResult
   ] = await Promise.all([
     includeRawContext
-      ? client
-        .from("raw_transactions")
-        .select(RAW_TRANSACTION_CONTEXT_COLUMNS)
-        .eq("user_id", userId)
-        .in("id", rawIds)
+      ? selectByIdChunks<RawTransactionContextRow>(rawIds, (ids) =>
+        client
+          .from("raw_transactions")
+          .select(RAW_TRANSACTION_CONTEXT_COLUMNS)
+          .eq("user_id", userId)
+          .in("id", ids as string[]))
       : Promise.resolve({ data: [] as RawTransactionContextRow[], error: null }),
     client.from("accounts").select("*").eq("user_id", userId),
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
-    client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
-    client.from("reimbursement_records").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
-    client.from("transaction_splits").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds)
+    selectByIdChunks(transactionIds, (ids) =>
+      client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", ids as string[])),
+    selectByIdChunks(transactionIds, (ids) =>
+      client.from("reimbursement_records").select("*").eq("user_id", userId).in("enriched_transaction_id", ids as string[])),
+    selectByIdChunks(transactionIds, (ids) =>
+      client.from("transaction_splits").select("*").eq("user_id", userId).in("enriched_transaction_id", ids as string[]))
   ]);
 
   const rawById = byId(expectData(rawResult, "Load raw transactions"));
@@ -1975,7 +2005,13 @@ async function updateAgentProposalStatus(
   update: AgentProposalUpdate,
   context: string
 ): Promise<AgentProposalRecord> {
-  const result = await client
+  // Direct UPDATE on agent_proposals is revoked from the authenticated role
+  // (20260513000500_restrict_direct_sensitive_table_access). User-initiated
+  // dismiss/accept/answer flows pass the session client, so escalate to the
+  // service-role client the same way recordAuditEvent does. The query stays
+  // scoped to the caller's user_id, so this never crosses tenant boundaries.
+  const writeClient = createServiceRoleClient(client) ?? client;
+  const result = await writeClient
     .from("agent_proposals")
     .update(update)
     .eq("user_id", userId)
