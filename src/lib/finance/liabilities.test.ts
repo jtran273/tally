@@ -263,6 +263,31 @@ test("buildLiabilitiesDueSummary infers the next reporting date from a prior sta
   assert.equal(row?.status, "overdue", "due-date safety should still use the actual due date");
 });
 
+test("buildLiabilitiesDueSummary preserves the statement day-of-month across a 31-day month", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-21st",
+        type: "credit",
+        balance: 2525,
+        creditLimit: 19500,
+        lastStatementIssueDate: "2026-05-21",
+        nextPaymentDueDate: "2026-06-18"
+      })
+    ],
+    asOfDate: "2026-06-09",
+    cashAvailable: 5000,
+    transactions: []
+  });
+
+  const row = summary.rows[0];
+  // Statement closes on the 21st. May has 31 days, so a flat +30-day roll would
+  // wrongly land on June 20; the next cycle actually closes June 21.
+  assert.equal(row?.reportingDate, "2026-06-21");
+  assert.equal(row?.reportingDateSource, "inferred_from_statement_cycle");
+  assert.equal(row?.reportingDateConfidence, "medium");
+});
+
 test("buildLiabilitiesDueSummary falls back to a weaker reporting estimate from the due date", () => {
   const summary = buildLiabilitiesDueSummary({
     accounts: [
@@ -340,7 +365,7 @@ test("buildLiabilitiesDueSummary advances stale due-date reporting estimates", (
 
   const row = summary.rows[0];
   assert.equal(row?.estimatedDueDate, "2026-05-01");
-  assert.equal(row?.reportingDate, "2026-06-05");
+  assert.equal(row?.reportingDate, "2026-06-06");
   assert.equal(row?.reportingDateSource, "estimated_from_due_date");
   assert.equal(row?.reportingDateConfidence, "low");
   assert.equal(row?.status, "overdue", "due-date safety should still use the stale due date");
@@ -497,8 +522,10 @@ test("computeTargetPayments derives conservative pay-by dates from reporting tim
     utilizationTarget: 30
   });
 
-  assert.equal(row.reportingDate, "2026-06-04");
-  assert.equal(plan.actions[0]?.payByDate, "2026-06-01");
+  // Statement closed on the 5th, so the next cycle closes June 5 (day-of-month
+  // preserved), not June 4 as a flat 30-day roll would estimate.
+  assert.equal(row.reportingDate, "2026-06-05");
+  assert.equal(plan.actions[0]?.payByDate, "2026-06-02");
   assert.equal(plan.actions[0]?.dateSource, "inferred_from_statement_cycle");
   assert.equal(plan.actions[0]?.dateConfidence, "medium");
 });

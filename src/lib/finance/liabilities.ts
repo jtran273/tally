@@ -112,6 +112,18 @@ function addDays(value: string, days: number) {
   return isoDate(new Date(date.getTime() + days * 86_400_000));
 }
 
+// Advance by whole calendar months while preserving the day-of-month, clamping
+// to the target month's last day (e.g. Jan 31 -> Feb 28). Statement closing dates
+// are anchored to a fixed day of the month, so this is more accurate than adding a
+// flat 30 days when projecting the next cycle.
+function addMonths(value: string, months: number) {
+  const date = parseIsoDate(value);
+  const target = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1, 12));
+  const lastDayOfTargetMonth = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0, 12)).getUTCDate();
+  target.setUTCDate(Math.min(date.getUTCDate(), lastDayOfTargetMonth));
+  return isoDate(target);
+}
+
 function dayDifference(fromIso: string, toIso: string) {
   const from = parseIsoDate(fromIso).getTime();
   const to = parseIsoDate(toIso).getTime();
@@ -121,7 +133,7 @@ function dayDifference(fromIso: string, toIso: string) {
 function nextCycleDate(anchorIso: string, asOfIso: string) {
   let date = anchorIso;
   while (dayDifference(asOfIso, date) < 0) {
-    date = addDays(date, DEFAULT_BILLING_CYCLE_DAYS);
+    date = addMonths(date, 1);
   }
   return date;
 }
