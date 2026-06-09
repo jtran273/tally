@@ -271,6 +271,48 @@ const reimbursementRecords: ReimbursementRecordRow[] = [
   }
 ];
 
+const agentProposals: AgentProposalRow[] = [
+  {
+    accepted_at: null,
+    answered_at: null,
+    clarification_answer: null,
+    clarification_answer_kind: null,
+    clarification_question: null,
+    confidence: 0.74,
+    created_at: NOW,
+    dismissed_at: null,
+    evidence: {
+      heuristicReasons: ["Peer-to-peer dinner amount resembles a shared reimbursement."],
+      signals: ["Shared dining pattern"],
+      transaction: {
+        amount: -121.35,
+        category: "Uncategorized",
+        date: enrichedTransactions.find((transaction) => transaction.id === "t28")?.date ?? isoDaysFromBase(17),
+        id: "t28",
+        intent: "shared",
+        merchant: "Venmo - Chris L."
+      }
+    },
+    expires_at: null,
+    id: "demo-agent-proposal-reimbursement-candidate",
+    proposal_type: "reimbursement_candidate",
+    proposed_patch: {
+      question: "Should this Chris L. payment be tracked as reimbursable?",
+      reason: "The amount looks like a shared dinner payment that may need follow-up.",
+      suggestedIntent: "reimbursable"
+    },
+    question_fingerprint: "demo-reimbursement-candidate:t28",
+    source_agent: "ledger-reimbursement-candidate-detector",
+    source_candidate_id: "demo-candidate-t28",
+    source_context_id: "demo-reimbursement-candidate:t28",
+    status: "pending",
+    target_id: "t28",
+    target_kind: "enriched_transaction",
+    updated_at: NOW,
+    user_id: DEMO_USER_ID
+  }
+];
+
 const recurringExpenses: RecurringExpenseRow[] = ledgerData.recurring.map((expense) => ({
   account_id: accounts.find((account) => account.type === "credit")?.id ?? null,
   amount: expense.amount,
@@ -483,7 +525,7 @@ const creditScoreSnapshots: CreditScoreSnapshotRow[] = [
 
 const rows = {
   accounts,
-  agent_proposals: [] as AgentProposalRow[],
+  agent_proposals: agentProposals,
   anomaly_alerts: [],
   audit_events: auditEvents,
   balance_snapshots: balanceSnapshots,

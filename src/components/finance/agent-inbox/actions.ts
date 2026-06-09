@@ -102,6 +102,34 @@ export async function dismissAgentProposalAction(
   }
 }
 
+export async function acceptReimbursementCandidateProposalAction(
+  _state: AgentProposalActionState,
+  formData: FormData
+): Promise<AgentProposalActionState> {
+  try {
+    const proposalId = requireUuid(formData.get("proposalId"), "proposal id");
+    const transactionId = requireUuid(formData.get("transactionId"), "transaction id");
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to confirm reimbursement candidates." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to confirm real reimbursement candidates." };
+
+    await acceptAgentProposal(context.client, context.userId, proposalId, {
+      actorId: context.userId,
+      source: "agent_inbox_reimbursement_candidate_accept"
+    });
+
+    revalidatePath("/agent-inbox");
+    revalidatePath("/dashboard");
+    revalidatePath("/transactions");
+    revalidatePath(`/transactions/${transactionId}`);
+
+    return { message: "Transaction marked reimbursable from agent proposal." };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
 export async function markUnmatchedReimbursementProposalAction(
   _state: AgentProposalActionState,
   formData: FormData

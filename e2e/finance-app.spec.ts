@@ -1013,9 +1013,22 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expect(page.getByText("Demo proposals are preview-only")).toBeVisible();
   const readOnlyProposalButtons = page.getByRole("button", { name: "Read-only demo" });
   await expect(readOnlyProposalButtons.first()).toBeDisabled();
+
+  const reimbursementCandidate = page.locator("article", {
+    hasText: "Should this Chris L. payment be tracked as reimbursable?"
+  });
+  await expect(reimbursementCandidate).toContainText("AI candidate");
+  await expect(reimbursementCandidate).toContainText("Venmo - Chris L.");
+  await expect(reimbursementCandidate).toContainText("Shared dining pattern");
+  await expect(reimbursementCandidate.getByRole("button", { name: "Read-only demo" })).toHaveCount(2);
+  await expect(reimbursementCandidate.getByRole("button", { name: "Read-only demo" }).first()).toBeDisabled();
+  await expect(reimbursementCandidate.getByRole("link", { name: "Open transaction" })).toHaveAttribute("href", "/transactions/t28");
   await expectNoSensitiveFinanceText(page);
 
-  await page.locator("article").first().getByRole("link", { exact: true, name: "Review" }).click();
+  await page.locator("article", { has: page.getByRole("link", { exact: true, name: "Review" }) })
+    .first()
+    .getByRole("link", { exact: true, name: "Review" })
+    .click();
   await expect(page).toHaveURL(/\/review#review-demo-review-/);
   await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
 

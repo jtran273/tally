@@ -9,6 +9,7 @@ import {
   type ReviewActionState
 } from "@/components/finance/review/actions";
 import {
+  acceptReimbursementCandidateProposalAction,
   dismissAgentProposalAction,
   linkReimbursementMatchProposalAction,
   markUnmatchedReimbursementProposalAction,
@@ -198,11 +199,29 @@ export function ReimbursementCandidateActions({
   proposalId: string;
   transactionId: string;
 }) {
+  const [acceptState, acceptAction, accepting] = useActionState(acceptReimbursementCandidateProposalAction, proposalInitialState);
   const [dismissState, dismissAction, dismissing] = useActionState(dismissAgentProposalAction, proposalInitialState);
+  const busy = accepting || dismissing;
 
   return (
     <div className={styles.actionRow}>
-      <Link className={styles.primaryButton} href={`/transactions/${transactionId}`}>
+      {isDemo ? (
+        <button className={styles.primaryButton} disabled type="button">
+          <Check size={14} aria-hidden />
+          Read-only demo
+        </button>
+      ) : (
+        <form action={acceptAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <input name="transactionId" type="hidden" value={transactionId} />
+          <button className={styles.primaryButton} disabled={busy} type="submit">
+            <Check size={14} aria-hidden />
+            {accepting ? "Marking..." : "Mark reimbursable"}
+          </button>
+        </form>
+      )}
+
+      <Link className={styles.secondaryButton} href={`/transactions/${transactionId}`}>
         <ExternalLink size={14} aria-hidden />
         Open transaction
       </Link>
@@ -215,16 +234,16 @@ export function ReimbursementCandidateActions({
       ) : (
         <form action={dismissAction}>
           <input name="proposalId" type="hidden" value={proposalId} />
-          <button className={styles.secondaryButton} disabled={dismissing} type="submit">
+          <button className={styles.secondaryButton} disabled={busy} type="submit">
             <X size={14} aria-hidden />
             {dismissing ? "Dismissing..." : "Dismiss"}
           </button>
         </form>
       )}
 
-      {dismissState.error ? (
+      {acceptState.error || dismissState.error ? (
         <div className={styles.inlineError} role="alert">
-          {dismissState.error}
+          {acceptState.error ?? dismissState.error}
         </div>
       ) : null}
 

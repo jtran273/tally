@@ -1748,6 +1748,16 @@ function reimbursementMatchInputFromProposal(proposal: AgentProposalRecord): Pic
   return { appliedAmount, receivedTransactionId, reimbursementId };
 }
 
+function reimbursementCandidateIntentFromProposal(
+  proposal: AgentProposalRecord
+): Extract<TransactionIntent, "reimbursable" | "shared"> {
+  const patch = proposalPatchObject(proposal);
+  if (patch.suggestedIntent === "reimbursable" || patch.suggestedIntent === "shared") {
+    return patch.suggestedIntent;
+  }
+  return "reimbursable";
+}
+
 function assertPendingAgentProposal(proposal: AgentProposalRecord, context: string) {
   if (proposal.status !== "pending") {
     throw new FinanceDbError(context, { message: "Agent proposal is not pending." });
@@ -2155,6 +2165,43 @@ export async function acceptAgentProposal(
       ...input,
       actorId: options.actorId ?? userId,
       source: options.source ?? "agent_proposal_acceptance"
+    });
+  } else if (before.proposalType === "reimbursement_candidate") {
+    if (before.targetKind !== "enriched_transaction") {
+      throw new FinanceDbError("Accept reimbursement candidate proposal", { message: "Reimbursement candidates must target a transaction." });
+    }
+    const transaction = await getEnrichedTransactionRow(client, userId, before.targetId);
+    if (!transaction) {
+      throw new FinanceDbError("Accept reimbursement candidate proposal", { message: "Transaction was not found." });
+    }
+    if (transaction.amount >= 0) {
+      throw new FinanceDbError("Accept reimbursement candidate proposal", { message: "Only expense transactions can be marked reimbursable from a candidate." });
+    }
+    const intent = reimbursementCandidateIntentFromProposal(before);
+    const updated = await updateTransactionEnrichment(client, userId, transaction.id, {
+      intent,
+      reviewedAt: new Date().toISOString(),
+      source: "manual"
+    });
+
+    await recordAuditEvent(client, userId, {
+      action: "reimbursement.candidate_confirmed",
+      actorId: options.actorId ?? userId,
+      afterData: {
+        intent: updated.intent,
+        reviewedAt: updated.reviewedAt
+      },
+      beforeData: {
+        intent: transaction.intent,
+        reviewedAt: transaction.reviewed_at
+      },
+      entityId: transaction.id,
+      entityTable: "enriched_transactions",
+      metadata: {
+        proposalId: before.id,
+        source: options.source ?? "agent_proposal_acceptance",
+        transactionId: transaction.id
+      }
     });
   } else {
     throw new FinanceDbError("Accept agent proposal", { message: `Agent proposal type ${before.proposalType} does not have an acceptance path yet.` });
