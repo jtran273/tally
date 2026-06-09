@@ -103,7 +103,7 @@ export interface CategorySuggestion {
 
 /**
  * Providers return suggestion records only. Persistence is owned by app-level
- * policies, which may auto-apply only conservative import-time cleanup.
+ * policies, which require explicit approval for model-originated suggestions.
  */
 export interface TransactionAiSuggestion {
   suggestionId: string;

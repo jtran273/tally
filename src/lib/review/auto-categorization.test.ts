@@ -93,17 +93,12 @@ function decision(overrides: Partial<Parameters<typeof evaluateAutoCategorizatio
   });
 }
 
-test("evaluateAutoCategorization auto-applies high-confidence ordinary categorization", () => {
+test("evaluateAutoCategorization leaves OpenAI suggestions for explicit approval", () => {
   const result = decision();
 
-  assert.equal(result.shouldApply, true);
-  assert.equal(result.reason, "auto-applied-high-confidence-categorization");
-  assert.equal(result.patch?.categoryId, "cat-ai-tools");
-  assert.equal(result.patch?.categoryName, "Software / AI Tools");
-  assert.equal(result.patch?.intent, "business");
-  assert.equal(result.patch?.merchantName, "OpenAI");
-  assert.equal(result.patch?.reviewedAt, reviewedAt);
-  assert.equal(result.patch?.source, "ai");
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+  assert.equal(result.patch, null);
 });
 
 test("evaluateAutoCategorization auto-applies high-confidence Entertainment suggestions", () => {
@@ -160,13 +155,13 @@ test("evaluateAutoCategorization auto-applies high-confidence Entertainment sugg
   assert.equal(result.patch?.source, "ai");
 });
 
-test("evaluateAutoCategorization leaves low-confidence suggestions for review", () => {
+test("evaluateAutoCategorization leaves low-confidence OpenAI suggestions for approval", () => {
   const result = decision({
     suggestion: suggestion({ confidence: AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD - 0.01 })
   });
 
   assert.equal(result.shouldApply, false);
-  assert.equal(result.reason, "low-confidence");
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
 });
 
 test("evaluateAutoCategorization leaves peer-to-peer transactions for review", () => {
@@ -186,7 +181,7 @@ test("evaluateAutoCategorization leaves peer-to-peer transactions for review", (
   }).reason, "peer-to-peer");
 });
 
-test("evaluateAutoCategorization auto-applies high-confidence large transactions", () => {
+test("evaluateAutoCategorization leaves high-confidence large OpenAI suggestions for review", () => {
   const result = decision({
     transaction: {
       amount: -750,
@@ -197,11 +192,11 @@ test("evaluateAutoCategorization auto-applies high-confidence large transactions
     }
   });
 
-  assert.equal(result.shouldApply, true);
-  assert.equal(result.patch?.categoryName, "Software / AI Tools");
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
 });
 
-test("evaluateAutoCategorization keeps manual-intent and unknown categories out of auto apply", () => {
+test("evaluateAutoCategorization keeps OpenAI manual-intent and unknown categories approval-gated", () => {
   assert.equal(decision({
     suggestion: suggestion({
       intent: {
@@ -211,7 +206,7 @@ test("evaluateAutoCategorization keeps manual-intent and unknown categories out 
         value: "shared"
       }
     })
-  }).reason, "manual-intent");
+  }).reason, "ai-suggestion-requires-approval");
 
   assert.equal(decision({
     suggestion: suggestion({
@@ -225,5 +220,5 @@ test("evaluateAutoCategorization keeps manual-intent and unknown categories out 
         }
       }
     })
-  }).reason, "unknown-category");
+  }).reason, "ai-suggestion-requires-approval");
 });

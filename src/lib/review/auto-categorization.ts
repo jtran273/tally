@@ -76,6 +76,7 @@ export function evaluateAutoCategorization(input: AutoCategorizationInput): Auto
   if (!hasReviewSuggestionValue(suggestion)) return fail("no-accept-ready-suggestion");
   if (input.transaction.status !== "posted" || input.rawTransaction?.status !== "posted") return fail("pending-transaction");
   if (PEER_TO_PEER_PATTERN.test(peerToPeerEvidence(input))) return fail("peer-to-peer");
+  if (suggestion.sourceKind === "openai") return fail("ai-suggestion-requires-approval");
   if (suggestion.confidence === undefined || suggestion.confidence < AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD) {
     return fail("low-confidence");
   }
