@@ -483,10 +483,13 @@ export interface CreditReconnectPrompt {
 }
 
 /**
- * Returns a non-alarming prompt to reconnect cards that lack connected
- * liability data (due dates + minimum payments). Returns null when every
- * card with a balance already exposes liability fields, so we keep the
- * existing "confirm issuer due date outside Tally" fallback copy untouched.
+ * Returns a non-alarming prompt to enable due dates on cards that lack connected
+ * liability data (due dates + minimum payments). Points users at the
+ * non-destructive "Enable due dates" (Plaid update mode) flow in Settings rather
+ * than a disconnect + re-add, which would mint duplicate account rows (#303).
+ * Returns null when every card with a balance already exposes liability fields,
+ * so we keep the existing "confirm issuer due date outside Tally" fallback copy
+ * untouched.
  */
 export function creditPanelReconnectPrompt(summary: LiabilitiesDueSummary): CreditReconnectPrompt | null {
   const reconnectCards = summary.rows.filter((row) => row.needsReconnectForDueDates);
@@ -494,11 +497,11 @@ export function creditPanelReconnectPrompt(summary: LiabilitiesDueSummary): Cred
 
   const cardCount = reconnectCards.length;
   const headline = cardCount === 1
-    ? "Reconnect to enable due dates & minimum payments"
-    : `Reconnect to enable due dates & minimum payments on ${cardCount} cards`;
+    ? "Enable due dates & minimum payments"
+    : `Enable due dates & minimum payments on ${cardCount} cards`;
   const detail = cardCount === 1
-    ? `${reconnectCards[0].name} was linked without due-date access. Reconnect it from Manage connections to show its statement due date and minimum payment here.`
-    : "These cards were linked without due-date access. Reconnect them from Manage connections to show statement due dates and minimum payments here.";
+    ? `${reconnectCards[0].name} was linked without due-date access. Use "Enable due dates" in Manage connections to show its statement due date and minimum payment here — no need to disconnect.`
+    : "These cards were linked without due-date access. Use \"Enable due dates\" in Manage connections to show statement due dates and minimum payments here — no need to disconnect.";
 
   return { cardCount, detail, headline };
 }
@@ -2053,7 +2056,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
   const calmCopy = activeRows.length === 0
     ? "All connected cards are paid."
     : reconnectPrompt
-      ? "No utilization paydown is flagged. Reconnect below to surface due dates and minimum payments."
+      ? "No utilization paydown is flagged. Use \"Enable due dates\" below to surface due dates and minimum payments."
       : activeMissingDueDates === activeRows.length
         ? "No utilization paydown is flagged. These issuers did not report due dates, so confirm minimums outside the app."
         : activeMissingDueDates > 0
@@ -2097,7 +2100,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
         <Link className={styles.cardReconnectPrompt} href="/settings">
           <span className={styles.cardReconnectEyebrow}>
             <RefreshCw size={13} aria-hidden />
-            Reconnect for due dates
+            Enable due dates
           </span>
           <strong>{reconnectPrompt.headline}</strong>
           <span className={styles.cardReconnectDetail}>{reconnectPrompt.detail}</span>
