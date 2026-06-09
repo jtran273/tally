@@ -1,0 +1,47 @@
+name: DB Migrate
+
+# Applies Supabase migrations to production after they merge to main, closing
+# the long-standing gap where Vercel deployed app code but schema changes were
+# never pushed (see issues #299 / #284 history). Runs only when migration files
+# change. Uses the SESSION POOLER connection string (GitHub runners are IPv4-only
+# and the direct db.<ref> host is IPv6-only) stored in the SUPABASE_DB_URL secret.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+
+permissions:
+  contents: read
+
+# Never cancel a migration that is mid-flight.
+concurrency:
+  group: db-migrate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Apply Supabase migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      - name: Show pending migrations (dry run)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npx --yes supabase@2.105.0 db push --dry-run --db-url "$SUPABASE_DB_URL"
+
+      - name: Apply migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: npx --yes supabase@2.105.0 db push --db-url "$SUPABASE_DB_URL"
