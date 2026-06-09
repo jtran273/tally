@@ -5,6 +5,7 @@ import { AccountType as PlaidAccountType, Products, type AccountBase, type Trans
 import {
   buildPlaidLinkTokenCreateRequest,
   getPlaidLinkOptionalProducts,
+  getPlaidUpdateModeConsentProducts,
   deletePlaidItemLedgerData,
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
@@ -178,10 +179,46 @@ test("Plaid Link token request uses update mode without product creation fields"
   assert.equal(request.access_token, "access-sandbox-update");
   assert.equal("products" in request, false);
   assert.equal("transactions" in request, false);
+  assert.equal("additional_consented_products" in request, false);
   assert.equal(request.redirect_uri, "https://app.example.com/settings");
   assert.ok(request.user);
   assert.equal(request.user.client_user_id, userId);
   assert.equal(request.user.email_address, undefined);
+});
+
+test("Plaid update mode collects consent for optional products via additional_consented_products", () => {
+  const request = buildPlaidLinkTokenCreateRequest({
+    accessToken: "access-sandbox-update",
+    optionalProducts: [Products.Liabilities],
+    redirectUri: null,
+    userEmail: null,
+    userId
+  });
+
+  // Update mode adds products through consent, not creation: no optional_products,
+  // and additional_consented_products carries the opt-in product so the next
+  // liabilitiesGet succeeds on the existing item (no disconnect + re-add).
+  assert.equal("products" in request, false);
+  assert.equal("optional_products" in request, false);
+  assert.deepEqual(request.additional_consented_products, [Products.Liabilities]);
+});
+
+test("update mode consent products exclude products the item already has", () => {
+  assert.deepEqual(
+    getPlaidUpdateModeConsentProducts(
+      { available_products: ["transactions"], billed_products: ["liabilities"] },
+      [Products.Liabilities]
+    ),
+    []
+  );
+
+  assert.deepEqual(
+    getPlaidUpdateModeConsentProducts(
+      { available_products: ["transactions"], billed_products: [] },
+      [Products.Liabilities]
+    ),
+    [Products.Liabilities]
+  );
 });
 
 test("pending raw transaction is planned for in-place posted replacement", () => {
