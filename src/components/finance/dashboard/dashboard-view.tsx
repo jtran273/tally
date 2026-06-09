@@ -375,10 +375,16 @@ function cardUtilizationPaydown(row: LiabilityAccountSummary): CardPaydown | nul
 }
 
 function cardStatementTiming(row: LiabilityAccountSummary) {
-  if (row.reportingDate && row.reportingDateConfidence !== "unknown") {
+  if (!row.reportingDate || row.reportingDateConfidence === "unknown") {
+    return "before the next statement closes";
+  }
+  // Plaid does not expose the next statement closing date, so medium/low
+  // confidence dates are inferred from the last statement cycle. Present those
+  // as estimates ("around") rather than a firm "by" that can be a day off.
+  if (row.reportingDateConfidence === "high") {
     return `by ${formatDate(row.reportingDate)}`;
   }
-  return "before the next statement closes";
+  return `before it reports (around ${formatDate(row.reportingDate)})`;
 }
 
 function cardActionLine(row: LiabilityAccountSummary) {

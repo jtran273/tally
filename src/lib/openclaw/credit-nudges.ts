@@ -144,9 +144,14 @@ function cycleCloseHighUtilizationPacket(
 
   const display = accountDisplayName(row);
   const payment = targetAction.recommendedPayment;
+  // Plaid does not provide the next statement close, so inferred dates are
+  // estimates — say "around" unless the date came straight from Plaid.
+  const reportsPhrase = row.reportingDateConfidence === "high"
+    ? `reports on ${shortDate(row.reportingDate)}`
+    : `reports around ${shortDate(row.reportingDate)}`;
   const rationale = targetAction.cashShortfall <= 0
-    ? `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and reports on ${shortDate(row.reportingDate)}. A cash-safe ${money(payment)} payment by ${shortDate(targetAction.payByDate)} would bring it under ${targetAction.targetUtilizationPercent}%.`
-    : `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and reports on ${shortDate(row.reportingDate)}. ${money(payment)} fits above your cash buffer and reduces the likely reported balance.`;
+    ? `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and ${reportsPhrase}. A cash-safe ${money(payment)} payment by ${shortDate(targetAction.payByDate)} would bring it under ${targetAction.targetUtilizationPercent}%.`
+    : `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and ${reportsPhrase}. ${money(payment)} fits above your cash buffer and reduces the likely reported balance.`;
 
   return {
     id: `openclaw-outbox:credit:cycle:${row.accountId}:${row.reportingDate}:${targetAction.targetUtilizationPercent}`,
