@@ -238,9 +238,15 @@ test("credit accounts missing a due date are grouped by plaid item", () => {
   assert.equal(counts.get("item-b"), 1);
 });
 
-test("canConnectionEnableLiabilities requires the flag, a live item, and a missing due date", () => {
-  const base = { creditAccountsMissingDueDate: 1, liabilitiesEnabled: true, status: "active" as const };
+test("canConnectionEnableLiabilities requires missing consent, the flag, a live item, and a missing due date", () => {
+  const base = {
+    creditAccountsMissingDueDate: 1,
+    hasLiabilitiesProduct: false,
+    liabilitiesEnabled: true,
+    status: "active" as const
+  };
   assert.equal(canConnectionEnableLiabilities(base), true);
+  assert.equal(canConnectionEnableLiabilities({ ...base, hasLiabilitiesProduct: true }), false);
   assert.equal(canConnectionEnableLiabilities({ ...base, liabilitiesEnabled: false }), false);
   assert.equal(canConnectionEnableLiabilities({ ...base, creditAccountsMissingDueDate: 0 }), false);
   assert.equal(canConnectionEnableLiabilities({ ...base, status: "revoked" }), false);
@@ -275,6 +281,30 @@ test("listPlaidConnections does not flag connections once due dates are populate
       plaid_items: [plaidItemRow("ciphertext")],
       accounts: [
         row("card-due", { plaid_item_id: "item-old", type: "credit", is_active: true, next_payment_due_date: "2026-07-01" })
+      ]
+    });
+
+    const [connection] = await listPlaidConnections(client.asClient(), userId);
+    assert.equal(connection?.canEnableLiabilities, false);
+  } finally {
+    if (previous === undefined) delete process.env.PLAID_ENABLE_LIABILITIES;
+    else process.env.PLAID_ENABLE_LIABILITIES = previous;
+  }
+});
+
+test("listPlaidConnections does not flag connections that already have Liabilities consent", async () => {
+  const previous = process.env.PLAID_ENABLE_LIABILITIES;
+  process.env.PLAID_ENABLE_LIABILITIES = "true";
+  try {
+    const client = new PurgeFinanceClient({
+      institutions: [institutionRow()],
+      plaid_items: [{
+        ...plaidItemRow("ciphertext"),
+        available_products: ["liabilities"],
+        billed_products: ["transactions"]
+      }],
+      accounts: [
+        row("card-no-due", { plaid_item_id: "item-old", type: "credit", is_active: true, next_payment_due_date: null })
       ]
     });
 
