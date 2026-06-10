@@ -392,6 +392,7 @@ function toConnectionSummary(
     billedProducts: item.billed_products,
     canEnableLiabilities: canConnectionEnableLiabilities({
       creditAccountsMissingDueDate: options?.creditAccountsMissingDueDate ?? 0,
+      hasLiabilitiesProduct: plaidItemProductSet(item).has(Products.Liabilities),
       liabilitiesEnabled: options?.liabilitiesEnabled ?? false,
       status
     }),
@@ -411,17 +412,21 @@ function toConnectionSummary(
 
 // A connection can be upgraded to credit-card due dates through Link update mode
 // when Liabilities is enabled and it still has active credit accounts without a
-// due date. The signal is account-based so it self-clears once due dates land.
+// due date. Once the item already has Liabilities consent, update mode cannot
+// grant anything else, so keep the no-op button hidden even if Plaid omits a
+// due date for that issuer/card state.
 export function canConnectionEnableLiabilities({
   creditAccountsMissingDueDate,
+  hasLiabilitiesProduct,
   liabilitiesEnabled,
   status
 }: {
   creditAccountsMissingDueDate: number;
+  hasLiabilitiesProduct: boolean;
   liabilitiesEnabled: boolean;
   status: PlaidItemRow["status"];
 }): boolean {
-  return liabilitiesEnabled && status !== "revoked" && creditAccountsMissingDueDate > 0;
+  return liabilitiesEnabled && !hasLiabilitiesProduct && status !== "revoked" && creditAccountsMissingDueDate > 0;
 }
 
 // Group active credit-card accounts that have no due date by their plaid item id.
