@@ -1022,11 +1022,10 @@ test("proposals section keeps context sanitized and links back to review and tra
   // duplicate review cards in "Field suggestions" above don't collide.
   const proposalsSection = page.locator('section[aria-labelledby="review-section-proposals"]');
 
-  await expect(page.getByLabel("Agent inbox summary")).toContainText("Proposals");
-  await expect(page.getByLabel("Agent inbox safety")).toContainText("sanitized");
+  await expect(page.getByLabel("Agent inbox summary")).toContainText("shown");
+  await expect(page.getByLabel("Agent inbox safety")).toHaveCount(0);
   await expect(proposalsSection.locator("article").first()).toBeVisible();
   await expect(proposalsSection.locator("article").first()).toContainText(/Accept ready|Needs review|AI candidate/);
-  await expect(page.getByText("Demo proposals are preview-only")).toBeVisible();
   const readOnlyProposalButtons = proposalsSection.getByRole("button", { name: "Read-only demo" });
   await expect(readOnlyProposalButtons.first()).toBeDisabled();
 

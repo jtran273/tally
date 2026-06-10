@@ -15,7 +15,11 @@ import {
   type CategoryRecord,
   type TransactionRecord
 } from "@/lib/db";
-import { buildAgentInboxProposals, type AgentInboxProposal } from "@/lib/agents/proposal-inbox";
+import {
+  applyAgentInboxDisplayPolicy,
+  buildAgentInboxProposals,
+  type AgentInboxProposal
+} from "@/lib/agents/proposal-inbox";
 import { listDemoPlaidConnections } from "@/lib/demo/finance-client";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import { listPlaidConnections, type PlaidConnectionSummary } from "@/lib/plaid/service";
@@ -68,7 +72,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         const agentProposals: AgentProposalRecord[] = await listAgentProposals(context.client, context.userId, {
           status: "pending"
         });
-        reimbursementProposals = buildAgentInboxProposals([], agentProposals)
+        reimbursementProposals = applyAgentInboxDisplayPolicy(buildAgentInboxProposals([], agentProposals)).proposals
           .filter((proposal) =>
             proposal.action === "reimbursement-candidate" ||
             proposal.action === "reimbursement-match"

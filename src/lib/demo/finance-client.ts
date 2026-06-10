@@ -282,6 +282,15 @@ const agentProposals: AgentProposalRow[] = [
     created_at: NOW,
     dismissed_at: null,
     evidence: {
+      candidateInflows: [
+        {
+          amount: 60,
+          category: "Transfer",
+          date: enrichedTransactions.find((transaction) => transaction.id === "t45")?.date ?? isoDaysFromBase(16),
+          id: "t45",
+          merchant: "Venmo - Chris L."
+        }
+      ],
       heuristicReasons: ["Peer-to-peer dinner amount resembles a shared reimbursement."],
       signals: ["Shared dining pattern"],
       transaction: {

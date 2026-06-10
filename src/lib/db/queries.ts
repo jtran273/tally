@@ -332,6 +332,27 @@ export interface AnomalyAlertListFilters {
 
 export interface AcceptAgentProposalOptions {
   actorId?: string | null;
+  feedback?: AgentProposalFeedbackInput;
+  source?: string;
+}
+
+export type AgentProposalFeedbackReason =
+  | "bad_amount"
+  | "bad_date"
+  | "confirmed_reimbursable"
+  | "duplicate_or_reused_inflow"
+  | "merchant_refund_or_income"
+  | "not_reimbursement"
+  | "wrong_counterparty";
+
+export interface AgentProposalFeedbackInput {
+  outcome: "accepted" | "dismissed";
+  reason: AgentProposalFeedbackReason;
+}
+
+export interface DismissAgentProposalOptions {
+  actorId?: string | null;
+  feedback?: AgentProposalFeedbackInput;
   source?: string;
 }
 
@@ -2036,7 +2057,7 @@ export async function dismissAgentProposal(
   client: FinanceSupabaseClient,
   userId: string,
   proposalId: string,
-  options: { actorId?: string | null; source?: string } = {}
+  options: DismissAgentProposalOptions = {}
 ): Promise<AgentProposalRecord> {
   const before = await getAgentProposalById(client, userId, proposalId);
   if (!before) {
@@ -2067,6 +2088,18 @@ export async function dismissAgentProposal(
     entityTable: "agent_proposals",
     metadata: {
       proposalId: dismissed.id,
+      ...(options.feedback
+        ? {
+          feedback: {
+            confidence: before.confidence,
+            outcome: options.feedback.outcome,
+            proposalType: before.proposalType,
+            reason: options.feedback.reason,
+            targetId: before.targetId,
+            targetKind: before.targetKind
+          }
+        }
+        : {}),
       source: options.source ?? "agent_proposal_store"
     }
   });
@@ -2227,6 +2260,18 @@ export async function acceptAgentProposal(
     entityTable: "agent_proposals",
     metadata: {
       proposalId: accepted.id,
+      ...(options.feedback
+        ? {
+          feedback: {
+            confidence: before.confidence,
+            outcome: options.feedback.outcome,
+            proposalType: before.proposalType,
+            reason: options.feedback.reason,
+            targetId: before.targetId,
+            targetKind: before.targetKind
+          }
+        }
+        : {}),
       source: options.source ?? "agent_proposal_store"
     }
   });

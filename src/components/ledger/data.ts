@@ -272,6 +272,11 @@ export const ledgerData: LedgerData = (() => {
         confidence: 0.75,
         reason: "Small repeat Apple charge looks like a subscription candidate."
       }
+    }),
+    txn("t45", 16, "Venmo - Chris L.", 60, "a1", "Transfer", "personal", {
+      plaidCategory: "Transfer",
+      plaidMerchant: "VENMO CASHOUT CHRIS L",
+      confidence: 0.91
     })
   ];
 
@@ -301,7 +306,7 @@ export const ledgerData: LedgerData = (() => {
     ["NYC Rent", -2400, "Housing", "personal"]
   ];
 
-  let nextId = 45;
+  let nextId = 46;
   for (let day = 35; day <= 360; day += 1) {
     if (rng() < 0.57) continue;
     const [merchant, base, category, intent] = merchants[Math.floor(rng() * merchants.length)];

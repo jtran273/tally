@@ -160,6 +160,7 @@ export function ReimbursementMatchActions({
       {!isDemo ? (
         <form action={dismissAction}>
           <input name="proposalId" type="hidden" value={proposalId} />
+          <input name="feedbackReason" type="hidden" value="not_reimbursement" />
           <button className={styles.secondaryButton} disabled={busy} type="submit">
             <X size={14} aria-hidden />
             {dismissing ? "Dismissing..." : "Dismiss"}
@@ -232,8 +233,21 @@ export function ReimbursementCandidateActions({
           Read-only demo
         </button>
       ) : (
-        <form action={dismissAction}>
+        <form action={dismissAction} className={styles.dismissFeedbackForm}>
           <input name="proposalId" type="hidden" value={proposalId} />
+          <select
+            aria-label="Dismiss reason"
+            className={styles.feedbackSelect}
+            defaultValue="not_reimbursement"
+            name="feedbackReason"
+          >
+            <option value="not_reimbursement">Not reimbursed</option>
+            <option value="bad_amount">Bad amount</option>
+            <option value="bad_date">Bad date</option>
+            <option value="wrong_counterparty">Wrong person</option>
+            <option value="duplicate_or_reused_inflow">Duplicate inflow</option>
+            <option value="merchant_refund_or_income">Refund or income</option>
+          </select>
           <button className={styles.secondaryButton} disabled={busy} type="submit">
             <X size={14} aria-hidden />
             {dismissing ? "Dismissing..." : "Dismiss"}

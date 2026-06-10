@@ -1,5 +1,6 @@
 import { UnifiedReviewView } from "@/components/finance/review/unified-review-view";
 import {
+  applyAgentInboxDisplayPolicy,
   buildAgentInboxProposals,
   summarizeAgentInbox,
   type AgentInboxProposal
@@ -204,6 +205,7 @@ export default async function ReviewPage() {
   let reviewItems: ReviewQueueItem[] = [];
   let agentProposals: AgentProposalRecord[] = [];
   let proposals: AgentInboxProposal[] = [];
+  let hiddenLowerConfidenceProposalCount = 0;
   const aiStatus = getAiProviderStatus();
 
   const context = await getFinanceServerContext();
@@ -253,7 +255,9 @@ export default async function ReviewPage() {
       }
 
       // Proposals (agent inbox) draw from the full open review list plus agent proposals.
-      proposals = buildAgentInboxProposals(reviewItems, agentProposals);
+      const displayPolicy = applyAgentInboxDisplayPolicy(buildAgentInboxProposals(reviewItems, agentProposals));
+      proposals = displayPolicy.proposals;
+      hiddenLowerConfidenceProposalCount = displayPolicy.hiddenLowerConfidenceCount;
 
       // Field suggestions show only the actionable (non-recurring) review items.
       reviewItems = actionableReviewItems(reviewItems);
@@ -272,7 +276,9 @@ export default async function ReviewPage() {
       isDemo={isDemo}
       isSignedIn={isSignedIn}
       proposals={proposals}
-      proposalSummary={summarizeAgentInbox(proposals)}
+      proposalSummary={summarizeAgentInbox(proposals, {
+        hiddenLowerConfidenceCount: hiddenLowerConfidenceProposalCount
+      })}
       reviewItems={reviewItems}
     />
   );

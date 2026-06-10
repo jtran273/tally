@@ -6,10 +6,34 @@
   gap: 16px;
 }
 
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+.proposalStatus {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.statusPill,
+.mutedStatus {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  background: var(--surface);
+}
+
+.statusPill {
+  color: var(--ink-2);
+}
+
+.mutedStatus {
+  background: var(--surface-2);
 }
 
 .summaryTile {
@@ -203,6 +227,8 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .summaryTile,
+  .statusPill,
+  .mutedStatus,
   .safetyPanel,
   .proposalCard,
   .primaryButton,
@@ -390,6 +416,26 @@
   gap: 8px;
   align-items: center;
   margin-top: 14px;
+}
+
+.dismissFeedbackForm {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.feedbackSelect {
+  min-height: 34px;
+  max-width: 180px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--text-ui-sm);
 }
 
 .demoActionNote {

@@ -2,9 +2,6 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
-  ShieldCheck,
-  Sparkles,
-  TriangleAlert,
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
@@ -67,25 +64,18 @@ function formatConfidence(value: number | null | undefined) {
   return value === null || value === undefined ? "Unknown" : `${Math.round(value * 100)}%`;
 }
 
-function SummaryTile({
+function StatusPill({
   detail,
-  icon: Icon,
-  tone,
-  value
+  icon: Icon
 }: {
   detail: string;
   icon: LucideIcon;
-  tone?: "ok" | "warn";
-  value: string;
 }) {
   return (
-    <div className={`${styles.summaryTile} ${tone ? styles[tone] : ""}`}>
-      <span>
-        <Icon size={13} aria-hidden />
-        {detail}
-      </span>
-      <strong>{value}</strong>
-    </div>
+    <span className={styles.statusPill}>
+      <Icon size={13} aria-hidden />
+      {detail}
+    </span>
   );
 }
 
@@ -373,34 +363,21 @@ export function AgentInboxView({
 
   return (
     <div className={styles.shell}>
-      <section className={styles.summaryGrid} aria-label="Agent inbox summary">
-        <SummaryTile detail="Proposals" icon={ClipboardList} value={summary.totalCount.toLocaleString("en-US")} />
-        <SummaryTile
-          detail="Accept ready"
-          icon={ShieldCheck}
-          value={summary.acceptReadyCount.toLocaleString("en-US")}
-          tone={summary.acceptReadyCount > 0 ? "ok" : undefined}
+      <section className={styles.proposalStatus} aria-label="Agent inbox summary">
+        <StatusPill
+          detail={`${summary.totalCount.toLocaleString("en-US")} shown`}
+          icon={ClipboardList}
         />
-        <SummaryTile
-          detail="Needs review"
-          icon={TriangleAlert}
-          value={summary.manualReviewCount.toLocaleString("en-US")}
-          tone={summary.manualReviewCount > 0 ? "warn" : undefined}
-        />
-        <SummaryTile detail="Fields proposed" icon={Sparkles} value={summary.proposedFieldCount.toLocaleString("en-US")} />
-      </section>
-
-      <section className={styles.safetyPanel} aria-label="Agent inbox safety">
-        <ShieldCheck size={17} aria-hidden />
-        <div>
-          <h2>Proposal-first finance changes</h2>
-          <p>
-            Approvals apply stored review suggestions to enriched transaction fields. This inbox shows sanitized
-            context only and does not expose raw Plaid payloads, provider identifiers, tokens, or secrets.
-            Reimbursement candidates are draft-only until you open or approve the underlying transaction workflow.
-            {isDemo ? " Demo proposals are preview-only; sign in to a real workspace before approving or dismissing finance changes." : ""}
-          </p>
-        </div>
+        {summary.hiddenLowerConfidenceCount > 0 ? (
+          <span className={styles.mutedStatus}>
+            {summary.hiddenLowerConfidenceCount.toLocaleString("en-US")} lower-confidence hidden
+          </span>
+        ) : null}
+        {summary.acceptReadyCount > 0 ? (
+          <span className={styles.mutedStatus}>
+            {summary.acceptReadyCount.toLocaleString("en-US")} ready
+          </span>
+        ) : null}
       </section>
 
       {!isConfigured ? (

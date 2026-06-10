@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentProposalRecord, Json, ReviewQueueItem, ReviewReason, TransactionRecord } from "@/lib/db";
 import {
+  applyAgentInboxDisplayPolicy,
   buildAgentInboxProposals,
   summarizeAgentInbox
 } from "./proposal-inbox";
@@ -198,6 +199,103 @@ test("agent inbox surfaces AI reimbursement candidates as draft-only proposals",
   assert.equal("plaidTransactionId" in proposal, false);
 });
 
+test("agent inbox default display hides weak reimbursement candidates", () => {
+  const proposals = buildAgentInboxProposals([], [
+    agentProposal({
+      confidence: 0.86,
+      evidence: {
+        candidateInflows: [
+          {
+            amount: 44,
+            category: "Transfer",
+            date: "2026-06-02",
+            id: "tx-venmo-good",
+            merchant: "Venmo Maya R"
+          }
+        ],
+        heuristicReasons: ["Peer payment closely matches this expense amount."],
+        transaction: {
+          amount: -67.21,
+          category: "Food / Restaurants",
+          date: "2026-06-01",
+          id: "tx-milestone",
+          intent: "personal",
+          merchant: "Milestone Tavern"
+        }
+      },
+      id: "proposal-good",
+      proposedPatch: {
+        question: "Did Maya pay you back for Milestone Tavern?",
+        reason: "Nearby Venmo inflow is close in date and amount.",
+        suggestedInflowIds: ["tx-venmo-good"],
+        suggestedIntent: "reimbursable"
+      },
+      targetId: "tx-milestone"
+    }),
+    agentProposal({
+      confidence: 0.62,
+      evidence: {
+        candidateInflows: [
+          {
+            amount: 28.12,
+            category: "Transfer",
+            date: "2026-04-20",
+            id: "tx-venmo-weak",
+            merchant: "Venmo"
+          }
+        ],
+        heuristicReasons: ["Nearby positive inflow could be a reimbursement."],
+        transaction: {
+          amount: -431.09,
+          category: "Shopping",
+          date: "2026-04-12",
+          id: "tx-target",
+          intent: "personal",
+          merchant: "Target"
+        }
+      },
+      id: "proposal-weak",
+      proposedPatch: {
+        question: "Was Target reimbursed?",
+        reason: "Weak nearby inflow.",
+        suggestedInflowIds: ["tx-venmo-weak"],
+        suggestedIntent: "reimbursable"
+      },
+      targetId: "tx-target"
+    }),
+    agentProposal({
+      confidence: 0.7,
+      evidence: {
+        candidateInflows: [],
+        transaction: {
+          amount: -180,
+          category: "Shopping",
+          date: "2026-04-10",
+          id: "tx-no-inflow",
+          intent: "personal",
+          merchant: "Amazon"
+        }
+      },
+      id: "proposal-no-inflow",
+      proposedPatch: {
+        question: "Was Amazon reimbursed?",
+        reason: "No matching inflow.",
+        suggestedInflowIds: [],
+        suggestedIntent: "reimbursable"
+      },
+      targetId: "tx-no-inflow"
+    })
+  ]);
+
+  const display = applyAgentInboxDisplayPolicy(proposals);
+
+  assert.deepEqual(display.proposals.map((proposal) => proposal.merchant), ["Milestone Tavern"]);
+  assert.equal(display.hiddenLowerConfidenceCount, 2);
+  assert.equal(summarizeAgentInbox(display.proposals, {
+    hiddenLowerConfidenceCount: display.hiddenLowerConfidenceCount
+  }).hiddenLowerConfidenceCount, 2);
+});
+
 test("agent inbox summary counts proposals and changed fields", () => {
   const proposals = buildAgentInboxProposals([
     reviewItem({
@@ -214,6 +312,7 @@ test("agent inbox summary counts proposals and changed fields", () => {
 
   assert.deepEqual(summarizeAgentInbox(proposals), {
     acceptReadyCount: 1,
+    hiddenLowerConfidenceCount: 0,
     manualReviewCount: 1,
     proposedFieldCount: 4,
     totalCount: 2
