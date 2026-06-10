@@ -66,6 +66,31 @@ const TRUE_INCOME_PATTERN = /\b(payroll|salary|direct deposit|paycheck|interest|
 const SHARED_CATEGORY_PATTERN = /\b(food|restaurant|dining|event|entertainment|travel|hotel|flight|airfare|rent|housing|utilities)\b/i;
 const MONEY_EPSILON = 0.01;
 
+// --- Match-quality tuning constants -----------------------------------------
+// Reimbursements normally arrive AFTER the expense within a short window. A
+// small negative tolerance covers a friend pre-paying a day or two before the
+// charge actually posts. Anything past ~2 weeks is almost never a genuine peer
+// reimbursement (the old +45-day window let a 32-day-stale merchant refund
+// slip through).
+const MIN_DAYS_BEFORE_EXPENSE = -3;
+const MAX_DAYS_AFTER_EXPENSE = 14;
+const STRONG_TIMING_DAYS = 7;
+
+// Amount fit: you can't be repaid more than you paid (plus a little tip
+// tolerance), and a sliver of the bill (a $32 inflow against a $1,600 stay) is
+// not a reimbursement. Clean even splits (½, ⅓, ¼) are the common shared-bill
+// shapes and are scored as strongly as a full repayment.
+const MAX_AMOUNT_RATIO = 1.05;
+const MIN_AMOUNT_RATIO = 0.18;
+const AMOUNT_TOLERANCE = 0.08; // ±8% around the full amount or a clean split.
+const CLEAN_SPLIT_DIVISORS = [1, 2, 3, 4] as const;
+
+// Score weights. Confidence is derived from the same three signals so ranking
+// reflects real match quality instead of a flat value.
+const WEIGHT_AMOUNT = 0.5;
+const WEIGHT_TIMING = 0.3;
+const WEIGHT_PEER = 0.2;
+
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -135,56 +160,168 @@ function isCandidateInflow(transaction: TransactionRecord) {
   if (transaction.status === "pending") return false;
   if (transaction.intent === "reimbursable") return false;
 
-  // A Venmo/Zelle/Cash App/PayPal deposit into checking is the clearest
-  // reimbursement tell, so keep it even when the bank auto-tagged it as a
-  // transfer or the deposit description looks like ordinary income. Without
-  // this, real peer reimbursements get filtered out before scoring (the
-  // "no strong peer-payment inflow" case on mismatched proposals).
-  if (isPeerPaymentInflow(transaction)) return true;
+  // Reimbursements are peer payments. Only Venmo / Zelle / Cash App / PayPal /
+  // Apple Cash deposits count — this is the clearest reimbursement tell, and we
+  // keep it even when the bank auto-tagged the deposit as a transfer or the
+  // description looks like ordinary income (the most common reason a true match
+  // is missed). We DROPPED the old branch that accepted arbitrary non-peer
+  // positive inflows: that is what let merchant refunds like a stale
+  // "Ticketmaster +$187" masquerade as a roommate paying you back.
+  if (!isPeerPaymentInflow(transaction)) return false;
 
-  if (transaction.intent === "transfer") return false;
+  // Even a peer-payment description shouldn't override an explicit true-income
+  // signal (e.g. a deposit miscategorised as Income/payroll).
   if (/\bincome\b/i.test(transaction.category)) return false;
   if (TRUE_INCOME_PATTERN.test(`${transaction.merchant} ${transaction.category}`)) return false;
   return true;
 }
 
-function inflowScore(expense: TransactionRecord, inflow: TransactionRecord) {
-  const days = daysBetween(expense.date, inflow.date);
-  if (days < -2 || days > 45) return 0;
-
-  const amount = Math.abs(expense.amount);
-  const ratio = inflow.amount / amount;
-  const isPeerPayment = isPeerPaymentInflow(inflow);
-  const amountScore = ratio >= 0.2 && ratio <= 1.1 ? 20 : ratio > 1.1 && ratio <= 1.35 ? 8 : 0;
-
-  // Amount plausibility gate. A peer payment is itself strong evidence, so
-  // accept a partial split (a friend covering their share, down to ~5% of the
-  // bill) while still rejecting peer deposits that dwarf the expense. A
-  // non-peer inflow must plausibly cover the charge: a $32 refund against a
-  // $1,600 stay is not a reimbursement, no matter how close in time it lands.
-  if (isPeerPayment) {
-    if (ratio < 0.05 || ratio > 1.5) return 0;
-  } else if (amountScore === 0) {
-    return 0;
-  }
-
-  const timingScore = days >= 0 && days <= 14 ? 22 : days >= 15 && days <= 45 ? 12 : 5;
-  const peerScore = isPeerPayment ? 24 : 0;
-  return amountScore + timingScore + peerScore;
+interface AmountFit {
+  /** 0..1, how well the bundle total fits the expense (full repay or clean split). */
+  score: number;
+  /** Which clean-split divisor (1 = full, 2 = half, …) the total best fits, if any. */
+  divisor: number | null;
+  /** True when the total lands on a clean full-repay or even split. */
+  clean: boolean;
 }
 
-function nearbyInflows(expense: TransactionRecord, inflows: readonly TransactionRecord[]) {
-  return inflows
-    .filter(isCandidateInflow)
-    .map((inflow) => ({ inflow, score: inflowScore(expense, inflow) }))
-    .filter(({ score }) => score > 0)
-    .sort((left, right) =>
-      right.score - left.score ||
-      Math.abs(daysBetween(expense.date, left.inflow.date)) - Math.abs(daysBetween(expense.date, right.inflow.date)) ||
-      left.inflow.id.localeCompare(right.inflow.id)
-    )
-    .slice(0, 5)
-    .map(({ inflow }) => safeInflow(inflow));
+const NO_FIT: AmountFit = { score: 0, divisor: null, clean: false };
+
+// Score how well an inflow (or summed bundle) total fits an expense. The total
+// must be plausible: at least a meaningful fraction of the bill (so a $32 inflow
+// vs a $1,600 stay scores 0) and no more than the bill plus a small tip.
+//
+//  - A clean full repay OR a clean even split (½, ⅓, ¼) within tolerance scores
+//    near the top (these are the canonical shared-bill shapes).
+//  - Any other plausible partial — a friend covering an uneven share, e.g.
+//    $44 of a $67 dinner — still matches, but at a lower score so clean fits and
+//    full repays win when both are available.
+function amountFit(expenseAmount: number, total: number): AmountFit {
+  const ratio = total / expenseAmount;
+  if (ratio > MAX_AMOUNT_RATIO || ratio < MIN_AMOUNT_RATIO) return NO_FIT;
+
+  for (const divisor of CLEAN_SPLIT_DIVISORS) {
+    const target = expenseAmount / divisor;
+    const relativeError = Math.abs(total - target) / target;
+    if (relativeError > AMOUNT_TOLERANCE) continue;
+    // Closer to the clean target => higher; a tight full-repay (÷1) and a tight
+    // even split both top out near 1, but a full repay edges out a split.
+    const fit = (1 - relativeError / AMOUNT_TOLERANCE) * (divisor === 1 ? 1 : 0.92);
+    return { score: Math.max(fit, 0.8), divisor, clean: true };
+  }
+
+  // Plausible-but-uneven partial. Score by how much of the bill it covers,
+  // capped below the clean-fit floor so clean matches always rank higher.
+  const coverage = Math.min(ratio, 1);
+  return { score: 0.3 + 0.45 * coverage, divisor: null, clean: false };
+}
+
+// Continuous date proximity score in [0, 1]: closer is higher, strongly
+// preferring same-week arrivals, 0 outside the window.
+function timingFit(daysAfterExpense: number): number {
+  if (daysAfterExpense < MIN_DAYS_BEFORE_EXPENSE || daysAfterExpense > MAX_DAYS_AFTER_EXPENSE) return 0;
+  const distance = daysAfterExpense < 0 ? Math.abs(daysAfterExpense) : daysAfterExpense;
+  if (distance <= STRONG_TIMING_DAYS) {
+    // 1.0 same day, easing to ~0.7 at the edge of the strong window.
+    return 1 - (distance / STRONG_TIMING_DAYS) * 0.3;
+  }
+  // Beyond the strong window, decay from ~0.7 down toward 0 at the hard edge.
+  const span = MAX_DAYS_AFTER_EXPENSE - STRONG_TIMING_DAYS;
+  return 0.7 * (1 - (distance - STRONG_TIMING_DAYS) / span);
+}
+
+// Extract a normalized counterparty name from a peer-payment description so two
+// Venmos from the same person can be aggregated into one multi-transfer match.
+function counterpartyKey(transaction: TransactionRecord): string {
+  const text = `${transaction.merchant} ${transaction.note ?? ""}`;
+  const cleaned = text
+    .replace(PEER_PAYMENT_PATTERN, " ")
+    .replace(/\b(payment|transfer|from|to|received|sent|deposit|inst|xfer|p2p|id)\b/gi, " ")
+    .replace(/[^a-z\s]/gi, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return cleaned || transaction.merchant.trim().toLowerCase();
+}
+
+interface CandidateMatch {
+  expense: TransactionRecord;
+  inflows: TransactionRecord[];
+  inflowIds: string[];
+  total: number;
+  fit: AmountFit;
+  timing: number;
+  /** Combined match quality in [0, 1], used for both ranking and confidence. */
+  quality: number;
+}
+
+// Build every plausible (expense -> inflow-bundle) match. For each expense we
+// consider each in-window peer inflow on its own, and the SUM of all in-window
+// inflows from a single counterparty (multi-transfer aggregation). Bundles with
+// no amount fit or no timing fit are discarded.
+function buildCandidateMatches(
+  expense: TransactionRecord,
+  candidateInflows: readonly TransactionRecord[]
+): CandidateMatch[] {
+  const expenseAmount = Math.abs(expense.amount);
+  const inWindow = candidateInflows.filter((inflow) => {
+    const days = daysBetween(expense.date, inflow.date);
+    return days >= MIN_DAYS_BEFORE_EXPENSE && days <= MAX_DAYS_AFTER_EXPENSE;
+  });
+
+  const bundles: TransactionRecord[][] = [];
+
+  // Single-inflow bundles.
+  for (const inflow of inWindow) {
+    bundles.push([inflow]);
+  }
+
+  // Multi-transfer bundles: same counterparty, 2+ inflows summed.
+  const byCounterparty = new Map<string, TransactionRecord[]>();
+  for (const inflow of inWindow) {
+    const key = counterpartyKey(inflow);
+    const list = byCounterparty.get(key) ?? [];
+    list.push(inflow);
+    byCounterparty.set(key, list);
+  }
+  for (const list of byCounterparty.values()) {
+    if (list.length >= 2) bundles.push([...list]);
+  }
+
+  const matches: CandidateMatch[] = [];
+  for (const inflows of bundles) {
+    const total = roundMoney(inflows.reduce((sum, inflow) => sum + inflow.amount, 0));
+    const fit = amountFit(expenseAmount, total);
+    if (fit.score <= 0) continue;
+
+    // Earliest inflow drives timing (when the repayment first started arriving).
+    const earliestDate = inflows.reduce(
+      (earliest, inflow) => (inflow.date < earliest ? inflow.date : earliest),
+      inflows[0].date
+    );
+    const timing = timingFit(daysBetween(expense.date, earliestDate));
+    if (timing <= 0) continue;
+
+    // Every candidate inflow here is a peer payment by construction. A full
+    // repay (the whole bill came back, possibly via several transfers) is the
+    // strongest signal; a clean even split is next; an uneven partial is
+    // weakest. This ordering lets a $100+$100 aggregation that fully repays a
+    // $200 bill outrank the $100 half-split single it contains.
+    const peer = fit.divisor === 1 ? 1 : fit.clean ? 0.85 : 0.7;
+    const quality = WEIGHT_AMOUNT * fit.score + WEIGHT_TIMING * timing + WEIGHT_PEER * peer;
+
+    matches.push({
+      expense,
+      inflows,
+      inflowIds: inflows.map((inflow) => inflow.id),
+      total,
+      fit,
+      timing,
+      quality
+    });
+  }
+
+  return matches;
 }
 
 function categoryScore(category: string) {
@@ -193,14 +330,48 @@ function categoryScore(category: string) {
   return 6;
 }
 
+// Greedy, globally-consistent 1:1 assignment. We score every plausible
+// (expense -> inflow-bundle) match across ALL eligible expenses, then assign in
+// descending quality order, skipping any match whose expense is already taken
+// or whose inflows have already been consumed by a better match. This is what
+// eliminates the old inflow-reuse bug, where one +$126 Venmo backed five
+// different expenses at once.
+function assignMatchesGlobally(
+  expenses: readonly TransactionRecord[],
+  candidateInflows: readonly TransactionRecord[]
+): Map<string, CandidateMatch> {
+  const allMatches = expenses.flatMap((expense) => buildCandidateMatches(expense, candidateInflows));
+  allMatches.sort((left, right) =>
+    right.quality - left.quality ||
+    // Tie-break: a tighter amount fit, then a tighter timing, then stable ids so
+    // the assignment is deterministic.
+    right.fit.score - left.fit.score ||
+    right.timing - left.timing ||
+    left.expense.id.localeCompare(right.expense.id) ||
+    left.inflowIds.join(",").localeCompare(right.inflowIds.join(","))
+  );
+
+  const assignedByExpense = new Map<string, CandidateMatch>();
+  const consumedInflowIds = new Set<string>();
+
+  for (const match of allMatches) {
+    if (assignedByExpense.has(match.expense.id)) continue;
+    if (match.inflowIds.some((id) => consumedInflowIds.has(id))) continue;
+    assignedByExpense.set(match.expense.id, match);
+    for (const id of match.inflowIds) consumedInflowIds.add(id);
+  }
+
+  return assignedByExpense;
+}
+
 function buildHeuristicCandidate(
   transaction: TransactionRecord,
-  inflows: readonly TransactionRecord[],
+  assignedMatch: CandidateMatch | undefined,
   historicalPatterns: readonly ReimbursementCandidateHistoricalPattern[]
 ): ReimbursementCandidateHeuristic | null {
   if (!isEligibleExpense(transaction)) return null;
 
-  const candidateInflows = nearbyInflows(transaction, inflows);
+  const candidateInflows = (assignedMatch?.inflows ?? []).map(safeInflow);
   const amount = Math.abs(transaction.amount);
   const reasons: string[] = [];
   let score = categoryScore(transaction.category);
@@ -212,8 +383,20 @@ function buildHeuristicCandidate(
     score += 12;
     reasons.push("Expense amount is high enough to merit reimbursement review.");
   }
-  if (candidateInflows.length > 0) {
-    score += candidateInflows.some((inflow) => PEER_PAYMENT_PATTERN.test(inflow.merchant)) ? 36 : 18;
+
+  // Match-quality drives the heuristic score AND the confidence so candidates
+  // are ranked by how good the inflow match actually is, instead of a flat
+  // ~0.62. `matchQuality` is in [0, 1]; with no assigned inflow it is 0.
+  const matchQuality = assignedMatch?.quality ?? 0;
+  if (assignedMatch) {
+    score += Math.round(40 * matchQuality);
+    if (assignedMatch.inflows.length > 1) {
+      reasons.push(`${assignedMatch.inflows.length} peer payments from the same person add up to this expense.`);
+    } else if (assignedMatch.fit.divisor && assignedMatch.fit.divisor > 1) {
+      reasons.push(`Peer payment matches a clean 1/${assignedMatch.fit.divisor} split of this expense.`);
+    } else {
+      reasons.push("Peer payment closely matches this expense amount.");
+    }
     reasons.push("Nearby positive inflow could be a reimbursement.");
   }
 
@@ -228,9 +411,14 @@ function buildHeuristicCandidate(
 
   if (score < 36) return null;
 
+  // Confidence is derived from real match quality (date closeness + amount fit
+  // + peer signal). A reviewable expense with no inflow still surfaces but at a
+  // floor; a tight peer match lands near the ceiling.
+  const baseConfidence = assignedMatch ? 0.45 + 0.5 * matchQuality : 0.4;
+
   return {
     candidateInflows,
-    confidence: roundConfidence(clamp(score / 100, 0.35, 0.86)),
+    confidence: roundConfidence(clamp(baseConfidence, 0.35, 0.95)),
     reasons,
     score,
     transaction: safeTransaction(transaction)
@@ -381,9 +569,17 @@ export function prefilterReimbursementCandidates(
   const maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
   const now = options.now ?? new Date();
 
-  return transactions
-    .filter((transaction) => !hasExistingActiveProposal(transaction.id, existingProposals, now))
-    .map((transaction) => buildHeuristicCandidate(transaction, inflows, historicalPatterns))
+  // Only expenses without an active proposal can receive a fresh assignment, but
+  // the global 1:1 assignment must run across all of them at once so a single
+  // inflow can never back more than one expense.
+  const reviewableExpenses = transactions.filter(
+    (transaction) => !hasExistingActiveProposal(transaction.id, existingProposals, now) && isEligibleExpense(transaction)
+  );
+  const candidateInflows = inflows.filter(isCandidateInflow);
+  const assignmentByExpense = assignMatchesGlobally(reviewableExpenses, candidateInflows);
+
+  return reviewableExpenses
+    .map((transaction) => buildHeuristicCandidate(transaction, assignmentByExpense.get(transaction.id), historicalPatterns))
     .filter((candidate): candidate is ReimbursementCandidateHeuristic => candidate !== null)
     .sort((left, right) =>
       right.score - left.score ||
