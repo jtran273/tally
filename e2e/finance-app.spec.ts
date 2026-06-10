@@ -606,6 +606,10 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const cardActions = page.getByRole("region", { name: "Credit card actions" });
   await expect(cardActions).toBeVisible();
   await expect(cardActions).toContainText(/utilization/i);
+  const dueDatePrompt = cardActions.getByRole("link", { name: /Enable due dates/i });
+  await expect(dueDatePrompt).toContainText("Enable due dates & minimum payments");
+  await expect(dueDatePrompt).toContainText("no need to disconnect");
+  await expect(dueDatePrompt).toHaveAttribute("href", "/settings");
   await expect(page.getByLabel("Spendable comparison")).toHaveCount(0);
   const selectedTransactionsHref = await page
     .getByLabel("Selected balance transactions")
