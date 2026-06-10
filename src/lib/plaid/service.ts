@@ -496,6 +496,12 @@ function expectData<T>(
   context: string
 ): T {
   if (result.error || result.data === null) {
+    // Persisted sync errors only keep the step name; log the Postgres error
+    // code (safe — never row data) so server logs can explain the failure.
+    console.error("plaid_sync_query_failed", {
+      code: result.error?.code ?? null,
+      context
+    });
     throw new Error(`${context}: ${result.error?.message ?? "No data returned."}`);
   }
 
@@ -1279,7 +1285,12 @@ export function isSkippablePlaidTransactionsError(error: unknown) {
 
 export function isSkippablePlaidLiabilitiesError(error: unknown) {
   const code = getSafePlaidError(error).code;
-  return code === "INVALID_PRODUCT" || code === "PRODUCT_NOT_ENABLED" || code === "PRODUCT_NOT_READY";
+  // ADDITIONAL_CONSENT_REQUIRED means the item was linked before Liabilities was
+  // part of the consent set; the "Enable due dates" update-mode flow grants it.
+  return code === "INVALID_PRODUCT"
+    || code === "PRODUCT_NOT_ENABLED"
+    || code === "PRODUCT_NOT_READY"
+    || code === "ADDITIONAL_CONSENT_REQUIRED";
 }
 
 async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initialCursor: string | null) {
@@ -1363,12 +1374,14 @@ async function fetchItemLiabilities(
         .map((row) => [row.account_id, row])
     );
   } catch (error) {
-    // Liabilities product may not be enabled for this item, or the institution
-    // doesn't support it. Do not hide configuration or credential failures.
+    // Liabilities product may not be enabled for this item, the item may not
+    // have consented to it yet, or the institution doesn't support it. Do not
+    // hide configuration or credential failures.
     if (!isSkippablePlaidLiabilitiesError(error)) {
       throw error;
     }
 
+    console.warn("plaid_liabilities_fetch_skipped", getSafePlaidError(error));
     return new Map();
   }
 }
@@ -1712,6 +1725,29 @@ export function shouldRefreshImportedEnrichment(existing: Pick<EnrichedTransacti
   return (existing.source === "plaid" || existing.source === "rule") && !existing.reviewed_at;
 }
 
+// Large sync batches (e.g. a freshly relinked item importing full history) must
+// not put every raw id into a single `in` filter: the resulting request URL can
+// exceed PostgREST limits and fail the whole save step.
+export async function loadEnrichedTransactionRowsByRawIds(
+  client: FinanceSupabaseClient,
+  userId: string,
+  rawIds: string[]
+) {
+  const rows: EnrichedTransactionRow[] = [];
+
+  for (const batch of chunk(rawIds, UPSERT_CHUNK_SIZE)) {
+    const result = await client
+      .from("enriched_transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .in("raw_transaction_id", batch);
+
+    rows.push(...expectData(result, "Load Plaid enriched transactions") as EnrichedTransactionRow[]);
+  }
+
+  return rows;
+}
+
 async function seedEnrichedTransactions({
   client,
   rawRows,
@@ -1731,12 +1767,8 @@ async function seedEnrichedTransactions({
   }
 
   const rawIds = rawRows.map((row) => row.id);
-  const [existingResult, categoryRows, merchantRulesResult] = await Promise.all([
-    client
-      .from("enriched_transactions")
-      .select("*")
-      .eq("user_id", userId)
-      .in("raw_transaction_id", rawIds),
+  const [existingRows, categoryRows, merchantRulesResult] = await Promise.all([
+    loadEnrichedTransactionRowsByRawIds(client, userId, rawIds),
     loadCategoryRows(client, userId),
     client
       .from("merchant_rules")
@@ -1745,7 +1777,6 @@ async function seedEnrichedTransactions({
       .eq("enabled", true)
       .order("priority")
   ]);
-  const existingRows = expectData(existingResult, "Load Plaid enriched transactions") as EnrichedTransactionRow[];
   const merchantRules = expectData(merchantRulesResult, "Load merchant rules for Plaid enrichment") as MerchantRuleRow[];
   const existingByRawId = new Map(existingRows.map((row) => [row.raw_transaction_id, row]));
   const categoryByName = new Map(categoryRows.map((row) => [row.name.toLowerCase(), row]));

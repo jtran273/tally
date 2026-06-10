@@ -17,6 +17,7 @@ import {
   isRecentSuccessfulPlaidSync,
   isSkippablePlaidTransactionsError,
   listPlaidConnections,
+  loadEnrichedTransactionRowsByRawIds,
   mergePlaidAccountSourcesForSync,
   persistedSyncError,
   PLAID_TRANSACTION_HISTORY_DAYS,
@@ -458,7 +459,42 @@ test("liabilities availability errors can be skipped but configuration failures 
   assert.equal(isSkippablePlaidLiabilitiesError({
     response: { data: { error_code: "PRODUCT_NOT_READY" } }
   }), true);
+  assert.equal(isSkippablePlaidLiabilitiesError({
+    response: {
+      data: { error_code: "ADDITIONAL_CONSENT_REQUIRED", error_type: "INVALID_INPUT" },
+      status: 400
+    }
+  }), true);
   assert.equal(isSkippablePlaidLiabilitiesError(new PlaidConfigurationError("missing env")), false);
+});
+
+test("loading existing enriched rows chunks raw ids to keep request URLs bounded", async () => {
+  const batchSizes: number[] = [];
+  const rawIds = Array.from({ length: 209 }, (_, index) => `raw-${index}`);
+  const client = {
+    from(table: string) {
+      assert.equal(table, "enriched_transactions");
+      return {
+        select: () => ({
+          eq: () => ({
+            in: (_column: string, batch: string[]) => {
+              batchSizes.push(batch.length);
+              return Promise.resolve({
+                data: batch.map((id) => ({ raw_transaction_id: id })),
+                error: null
+              });
+            }
+          })
+        })
+      };
+    }
+  } as unknown as SupabaseClient;
+
+  const rows = await loadEnrichedTransactionRowsByRawIds(client, userId, rawIds);
+
+  assert.deepEqual(batchSizes, [100, 100, 9]);
+  assert.equal(rows.length, 209);
+  assert.equal(rows[0]?.raw_transaction_id, "raw-0");
 });
 
 test("Plaid fallback category confidence stays reviewable when provider confidence is absent", () => {
