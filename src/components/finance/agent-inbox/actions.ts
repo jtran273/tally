@@ -69,6 +69,7 @@ export async function linkReimbursementMatchProposalAction(
     });
 
     revalidatePath("/agent-inbox");
+    revalidatePath("/review");
     revalidatePath("/dashboard");
     revalidatePath("/transactions");
 
@@ -95,6 +96,7 @@ export async function dismissAgentProposalAction(
     });
 
     revalidatePath("/agent-inbox");
+    revalidatePath("/review");
 
     return { message: "Proposal dismissed." };
   } catch (error) {
@@ -120,6 +122,7 @@ export async function acceptReimbursementCandidateProposalAction(
     });
 
     revalidatePath("/agent-inbox");
+    revalidatePath("/review");
     revalidatePath("/dashboard");
     revalidatePath("/transactions");
     revalidatePath(`/transactions/${transactionId}`);
@@ -196,6 +199,7 @@ export async function markUnmatchedReimbursementProposalAction(
     });
 
     revalidatePath("/agent-inbox");
+    revalidatePath("/review");
     revalidatePath("/dashboard");
     revalidatePath("/transactions");
     revalidatePath(`/transactions/${transactionId}`);

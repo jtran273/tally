@@ -1,10 +1,17 @@
-import { ReviewQueueView } from "@/components/finance/review/review-queue-view";
+import { UnifiedReviewView } from "@/components/finance/review/unified-review-view";
 import {
+  buildAgentInboxProposals,
+  summarizeAgentInbox,
+  type AgentInboxProposal
+} from "@/lib/agents/proposal-inbox";
+import {
+  listAgentProposals,
   listCategories,
   recordAuditEvent,
   resolveReviewItem,
   listReviewItems,
   updateTransactionEnrichment,
+  type AgentProposalRecord,
   type CategoryRecord,
   type EnrichedTransactionRow,
   type FinanceSupabaseClient,
@@ -195,6 +202,8 @@ export default async function ReviewPage() {
   let isSignedIn = false;
   let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
+  let agentProposals: AgentProposalRecord[] = [];
+  let proposals: AgentInboxProposal[] = [];
   const aiStatus = getAiProviderStatus();
 
   const context = await getFinanceServerContext();
@@ -209,9 +218,10 @@ export default async function ReviewPage() {
         await ensureMissingCategoryReviews(context.client, context.userId);
       }
 
-      [categories, reviewItems] = await Promise.all([
+      [categories, reviewItems, agentProposals] = await Promise.all([
         listCategories(context.client, context.userId),
-        listReviewItems(context.client, context.userId, "open")
+        listReviewItems(context.client, context.userId, "open"),
+        listAgentProposals(context.client, context.userId, { status: "pending" })
       ]);
 
       const autoFixedCount = context.isDemo
@@ -242,6 +252,10 @@ export default async function ReviewPage() {
         reviewItems = await listReviewItems(context.client, context.userId, "open");
       }
 
+      // Proposals (agent inbox) draw from the full open review list plus agent proposals.
+      proposals = buildAgentInboxProposals(reviewItems, agentProposals);
+
+      // Field suggestions show only the actionable (non-recurring) review items.
       reviewItems = actionableReviewItems(reviewItems);
 
     } catch (loadError) {
@@ -250,13 +264,15 @@ export default async function ReviewPage() {
   }
 
   return (
-    <ReviewQueueView
+    <UnifiedReviewView
       aiProviderKind={aiStatus.activeKind}
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
+      proposals={proposals}
+      proposalSummary={summarizeAgentInbox(proposals)}
       reviewItems={reviewItems}
     />
   );

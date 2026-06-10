@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ClipboardList,
   History,
   Home,
   Inbox,
@@ -27,7 +26,7 @@ import {
   useState
 } from "react";
 
-type RouteKey = "dashboard" | "transactions" | "agentInbox" | "review" | "recurring" | "accounts" | "audit" | "settings";
+type RouteKey = "dashboard" | "transactions" | "review" | "recurring" | "accounts" | "audit" | "settings";
 
 type RouteMeta = {
   eyebrow: string;
@@ -46,7 +45,6 @@ interface OpportunisticSyncResponse {
 
 const routeHref: Record<RouteKey, string> = {
   accounts: "/accounts",
-  agentInbox: "/agent-inbox",
   audit: "/audit",
   dashboard: "/dashboard",
   recurring: "/recurring",
@@ -67,12 +65,6 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
     icon: List,
     label: "Transactions",
     title: "Transactions"
-  },
-  agentInbox: {
-    eyebrow: "Proposed finance changes",
-    icon: ClipboardList,
-    label: "Agent inbox",
-    title: "Agent inbox"
   },
   review: {
     eyebrow: "Items needing your attention",
@@ -106,7 +98,7 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
   }
 };
 
-const navigation: RouteKey[] = ["dashboard", "transactions", "agentInbox", "review", "recurring", "accounts", "audit", "settings"];
+const navigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "audit", "settings"];
 const primaryNavigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
 
 function currentRoute(pathname: string): RouteKey {

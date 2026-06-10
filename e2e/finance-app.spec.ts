@@ -5,7 +5,6 @@ const DEMO_COOKIE_NAME = "ledger_demo";
 const responsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
-  { path: "/agent-inbox", heading: "Agent inbox" },
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
   { path: "/accounts", heading: "Accounts" },
@@ -980,7 +979,13 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await expect(page.getByRole("heading", { name: /peer-to-peer/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Categorize/i })).toBeVisible();
 
-  const peerCard = page.locator("article", { has: page.getByRole("heading", { name: "Venmo - Maya R." }) });
+  // "Field suggestions" (the review queue) and "Proposals" both surface the same
+  // demo transactions, so scope these assertions to the field-suggestions section
+  // to avoid colliding with the duplicate proposal cards below.
+  const fieldSuggestions = page.locator('section[aria-labelledby="review-section-field-suggestions"]');
+  await expect(fieldSuggestions.getByRole("heading", { name: /Field suggestions/i })).toBeVisible();
+
+  const peerCard = fieldSuggestions.locator("article", { has: page.getByRole("heading", { name: "Venmo - Maya R." }) });
   await expect(peerCard).toContainText("Explain what this payment was for");
   await expect(peerCard).toContainText("preview-only in demo mode");
   await expect(peerCard.getByText("Fully allocated")).toBeVisible();
@@ -990,7 +995,7 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await peerCard.getByRole("button", { name: /add split/i }).click();
   await expect(peerCard.getByRole("button", { name: /remove split row 2/i })).toBeVisible();
 
-  const aiCard = page.locator("article", { has: page.getByRole("heading", { name: "Delta Air Lines" }) });
+  const aiCard = fieldSuggestions.locator("article", { has: page.getByRole("heading", { name: "Delta Air Lines" }) });
   await expect(aiCard).toContainText("Demo review actions are read-only");
   await expect(aiCard.getByRole("button", { name: /preview suggestion/i })).toBeDisabled();
   await expect(aiCard.getByRole("button", { name: /read-only demo/i }).first()).toBeDisabled();
@@ -1005,20 +1010,27 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await expectNoPageOverflow(page);
 });
 
-test("agent inbox keeps proposal context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
+test("proposals section keeps context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/agent-inbox");
+  // /agent-inbox now redirects into the unified Review tab.
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
+
+  // The Proposals section reuses the agent-inbox view; scope to it so the
+  // duplicate review cards in "Field suggestions" above don't collide.
+  const proposalsSection = page.locator('section[aria-labelledby="review-section-proposals"]');
 
   await expect(page.getByLabel("Agent inbox summary")).toContainText("Proposals");
   await expect(page.getByLabel("Agent inbox safety")).toContainText("sanitized");
-  await expect(page.locator("article").first()).toBeVisible();
-  await expect(page.locator("article").first()).toContainText(/Accept ready|Needs review/);
+  await expect(proposalsSection.locator("article").first()).toBeVisible();
+  await expect(proposalsSection.locator("article").first()).toContainText(/Accept ready|Needs review|AI candidate/);
   await expect(page.getByText("Demo proposals are preview-only")).toBeVisible();
-  const readOnlyProposalButtons = page.getByRole("button", { name: "Read-only demo" });
+  const readOnlyProposalButtons = proposalsSection.getByRole("button", { name: "Read-only demo" });
   await expect(readOnlyProposalButtons.first()).toBeDisabled();
 
-  const reimbursementCandidate = page.locator("article", {
+  const reimbursementCandidate = proposalsSection.locator("article", {
     hasText: "Should this Chris L. payment be tracked as reimbursable?"
   });
   await expect(reimbursementCandidate).toContainText("AI candidate");
@@ -1029,7 +1041,7 @@ test("agent inbox keeps proposal context sanitized and links back to review and 
   await expect(reimbursementCandidate.getByRole("link", { name: "Open transaction" })).toHaveAttribute("href", "/transactions/t28");
   await expectNoSensitiveFinanceText(page);
 
-  await page.locator("article", { has: page.getByRole("link", { exact: true, name: "Review" }) })
+  await proposalsSection.locator("article", { has: page.getByRole("link", { exact: true, name: "Review" }) })
     .first()
     .getByRole("link", { exact: true, name: "Review" })
     .click();
@@ -1056,8 +1068,11 @@ test("audit, settings, and agent inbox expose accessible names for controls", as
   await expect(page.getByRole("heading", { exact: true, name: "Settings" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /Sync on app open is (on|off)/ })).toBeDisabled();
 
+  // Agent inbox is now the "Proposals" section of the unified Review tab; /agent-inbox redirects there.
   await page.goto("/agent-inbox");
-  await expect(page.getByRole("heading", { exact: true, name: "Agent inbox" })).toBeVisible();
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /Open transaction for/i }).first()).toBeVisible();
 });
 
