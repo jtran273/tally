@@ -82,6 +82,10 @@ The outbox returns text-ready packets for:
 
 Monthly budget proposals may be compiled from historical budget guardrails, upcoming cashflow totals, open-review/reimbursement uncertainty, and the minimized calendar-pressure summary. The compiler persists only an advisory `agent_proposals` row with `proposal_type = monthly_budget_proposal` and `target_kind = monthly_budget`; it does not create confirmed budget rows or apply any budget changes.
 
+The compiler runs through `POST /api/agents/monthly-budget-proposal/scheduled`, which requires an `Authorization: Bearer <CRON_SECRET>` token and stays off until `MONTHLY_BUDGET_PROPOSAL_ENABLED=true`. The run targets the user from `MONTHLY_BUDGET_PROPOSAL_USER_ID` (falling back to `OPENCLAW_USER_ID`) and responds with a bounded summary only: run status, proposal id/status, month, total, and category count.
+
+Replies to a `budget_proposal` message post to `/api/openclaw/replies` like any other reply action. For `monthly_budget_proposal` rows the reply text is recorded on the proposal (status `answered`, kind `approve`/`adjust`/`other`) with an audit event; the proposed patch is never modified and no budget is applied by the reply itself.
+
 Outbox packets are delivery-neutral. They do not contain phone numbers, Twilio credentials, push tokens, provider payloads, Plaid ids, service-role keys, or direct write authority. OpenClaw can forward the `body` through its own notification channel, but finance mutations still require Tally-owned reply or approval endpoints.
 
 Optional query parameters:

@@ -239,3 +239,64 @@ test("handleOpenClawReply returns a conflict for proposals without questions", a
     OpenClawReplyConflictError
   );
 });
+
+test("handleOpenClawReply records monthly budget proposal approvals without touching the patch", async () => {
+  const client = new FakeFinanceClient();
+  const budgetProposalId = "55555555-5555-4555-8555-555555555555";
+  client.agentProposals.push(agentProposal({
+    clarification_question: null,
+    id: budgetProposalId,
+    proposal_type: "monthly_budget_proposal",
+    proposed_patch: {
+      action: "review_monthly_budget_proposal",
+      directFinanceWritesAllowed: false,
+      month: "2026-07",
+      totalAmount: 875
+    },
+    target_kind: "monthly_budget"
+  }));
+
+  const response = await handleOpenClawReply(client.asClient(), userId, {
+    proposal_id: budgetProposalId,
+    raw_text: "Approve"
+  });
+
+  assert.equal(response.status, "answered");
+  assert.equal(response.answer_kind, "approve");
+  assert.deepEqual(response.applied_patch, {
+    action: "review_monthly_budget_proposal",
+    directFinanceWritesAllowed: false,
+    month: "2026-07",
+    totalAmount: 875
+  });
+  assert.equal(client.agentProposals[0].clarification_answer, "Approve");
+  assert.equal(client.agentProposals[0].status, "answered");
+  assert.equal(client.auditEvents.length, 1);
+  assert.equal(client.auditEvents[0].action, "agent_proposal.monthly_budget_reply_recorded");
+  assert.deepEqual(client.auditEvents[0].metadata, {
+    answerKind: "approve",
+    proposalId: budgetProposalId,
+    source: "openclaw_replies_api"
+  });
+});
+
+test("handleOpenClawReply classifies monthly budget adjustment replies", async () => {
+  const client = new FakeFinanceClient();
+  const budgetProposalId = "66666666-6666-4666-8666-666666666666";
+  client.agentProposals.push(agentProposal({
+    clarification_question: null,
+    id: budgetProposalId,
+    proposal_type: "monthly_budget_proposal",
+    proposed_patch: { month: "2026-07" },
+    target_kind: "monthly_budget"
+  }));
+
+  const response = await handleOpenClawReply(client.asClient(), userId, {
+    proposal_id: budgetProposalId,
+    raw_text: "dining 450"
+  });
+
+  assert.equal(response.status, "answered");
+  assert.equal(response.answer_kind, "adjust");
+  assert.equal(client.agentProposals[0].clarification_answer, "dining 450");
+});

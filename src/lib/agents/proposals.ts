@@ -58,3 +58,22 @@ export function normalizeAgentClarificationAnswer(answer: string): NormalizedAge
     rawAnswer: normalized.rawAnswer
   };
 }
+
+export type MonthlyBudgetProposalReplyKind = "approve" | "adjust" | "other";
+
+export interface NormalizedMonthlyBudgetProposalReply {
+  answerKind: MonthlyBudgetProposalReplyKind;
+  rawAnswer: string;
+}
+
+export function normalizeMonthlyBudgetProposalReply(answer: string): NormalizedMonthlyBudgetProposalReply {
+  const rawAnswer = answer.trim().replace(/\s+/g, " ");
+  const normalized = rawAnswer.toLowerCase();
+  if (/^(approve|approved|accept|accepted|confirm|confirmed|yes|ok|okay|lgtm|looks good)[.!]*$/.test(normalized)) {
+    return { answerKind: "approve", rawAnswer };
+  }
+  if (/[a-z].*\$?\d/.test(normalized)) {
+    return { answerKind: "adjust", rawAnswer };
+  }
+  return { answerKind: "other", rawAnswer };
+}

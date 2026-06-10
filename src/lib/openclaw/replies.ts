@@ -1,7 +1,9 @@
 import { assertAssistantContextSafe } from "@/lib/agents";
 import {
   FinanceDbError,
+  getAgentProposalById,
   recordClarificationAnswer,
+  recordMonthlyBudgetProposalReply,
   type FinanceSupabaseClient
 } from "@/lib/db";
 import type { OpenClawReplyRequest, OpenClawReplyResponse } from "./types";
@@ -87,7 +89,18 @@ export async function handleOpenClawReply(
   }
 
   try {
-    const answered = await recordClarificationAnswer(
+    const proposal = await getAgentProposalById(client, userId, parsed.proposal_id);
+    if (!proposal) {
+      throw new OpenClawReplyNotFoundError("Proposal was not found.");
+    }
+
+    // Monthly budget proposals carry a reply action without a clarification
+    // question; their replies are recorded for Tally-owned approval flows
+    // instead of running the reimbursement clarification parser.
+    const recordReply = proposal.proposalType === "monthly_budget_proposal" && !proposal.clarificationQuestion
+      ? recordMonthlyBudgetProposalReply
+      : recordClarificationAnswer;
+    const answered = await recordReply(
       client,
       userId,
       parsed.proposal_id,

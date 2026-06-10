@@ -55,6 +55,7 @@ import {
   isJsonObject,
   isVisibleAgentProposal,
   normalizeAgentClarificationAnswer,
+  normalizeMonthlyBudgetProposalReply,
   type AgentProposalJsonObject
 } from "../agents/proposals";
 import { assertAssistantContextSafe } from "../agents/assistant-contract";
@@ -2150,6 +2151,53 @@ export async function recordClarificationAnswer(
     entityTable: "agent_proposals",
     metadata: {
       answerKind: answer.answerKind,
+      proposalId: answered.id,
+      source: options.source ?? "agent_proposal_store"
+    }
+  });
+
+  return answered;
+}
+
+export async function recordMonthlyBudgetProposalReply(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string,
+  rawAnswer: string,
+  options: { actorId?: string | null; source?: string } = {}
+): Promise<AgentProposalRecord> {
+  const before = await getAgentProposalById(client, userId, proposalId);
+  if (!before) {
+    throw new FinanceDbError("Record monthly budget proposal reply", { message: "Agent proposal was not found." });
+  }
+  assertPendingAgentProposal(before, "Record monthly budget proposal reply");
+  if (before.proposalType !== "monthly_budget_proposal") {
+    throw new FinanceDbError("Record monthly budget proposal reply", { message: "Agent proposal is not a monthly budget proposal." });
+  }
+
+  const reply = normalizeMonthlyBudgetProposalReply(rawAnswer);
+  const answered = await updateAgentProposalStatus(
+    client,
+    userId,
+    proposalId,
+    {
+      answered_at: new Date().toISOString(),
+      clarification_answer: reply.rawAnswer,
+      clarification_answer_kind: reply.answerKind,
+      status: "answered"
+    },
+    "Record monthly budget proposal reply"
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "agent_proposal.monthly_budget_reply_recorded",
+    actorId: options.actorId ?? userId,
+    afterData: agentProposalAuditData(answered),
+    beforeData: agentProposalAuditData(before),
+    entityId: answered.id,
+    entityTable: "agent_proposals",
+    metadata: {
+      answerKind: reply.answerKind,
       proposalId: answered.id,
       source: options.source ?? "agent_proposal_store"
     }
