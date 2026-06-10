@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import {
   emptyUpcomingCalendarContext,
   loadUpcomingCalendarContext,
@@ -7,7 +8,7 @@ import {
   type UpcomingCalendarContext,
   type UpcomingCalendarSuspectedCategory
 } from "@/lib/calendar";
-import type { AccountRecord, AgentProposalRecord, Json, RecurringExpenseRecord, ReviewQueueItem, TransactionRecord } from "@/lib/db";
+import type { AccountRecord, AgentProposalRecord, Database, Json, RecurringExpenseRecord, ReviewQueueItem, TransactionRecord } from "@/lib/db";
 import {
   listAccounts,
   listRecurringExpenses,
@@ -22,8 +23,16 @@ import {
   type BudgetGuardrailItem,
   type BudgetGuardrailSummary
 } from "@/lib/finance/budget-guardrails";
+import { getSupabaseConfig } from "@/lib/supabase/env";
 import { assertAssistantContextSafe } from "./assistant-contract";
 import { buildWeeklyPlanningContext, type WeeklyPlanningContext } from "./weekly-planning-context";
+
+export class MonthlyBudgetProposalConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MonthlyBudgetProposalConfigurationError";
+  }
+}
 
 export interface MonthlyBudgetProposalCategory {
   amount: number;
@@ -55,6 +64,36 @@ export interface PersistMonthlyBudgetProposalResult {
 const SOURCE_AGENT = "ledger-monthly-budget-proposal-generator";
 const MAX_PROPOSAL_CATEGORIES = 8;
 const MIN_CATEGORY_BUDGET_AMOUNT = 50;
+
+export function resolveMonthlyBudgetProposalEnabled(value = process.env.MONTHLY_BUDGET_PROPOSAL_ENABLED) {
+  return value?.trim().toLowerCase() === "true";
+}
+
+export function resolveMonthlyBudgetProposalUserId() {
+  return process.env.MONTHLY_BUDGET_PROPOSAL_USER_ID?.trim() || process.env.OPENCLAW_USER_ID?.trim() || null;
+}
+
+export function createMonthlyBudgetProposalServiceContext(): { client: FinanceSupabaseClient; userId: string } {
+  const config = getSupabaseConfig();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const userId = resolveMonthlyBudgetProposalUserId();
+
+  if (!config || !serviceRoleKey || !userId) {
+    throw new MonthlyBudgetProposalConfigurationError(
+      "Missing monthly budget proposal configuration. Set MONTHLY_BUDGET_PROPOSAL_USER_ID or OPENCLAW_USER_ID plus SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
+
+  return {
+    client: createClient<Database>(config.url, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }) as unknown as FinanceSupabaseClient,
+    userId
+  };
+}
 
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
