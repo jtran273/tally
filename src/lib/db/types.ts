@@ -45,7 +45,8 @@ export type AgentProposalType =
   | "reimbursement_match"
   | "safe_to_spend_warning"
   | "clarification_request"
-  | "openclaw_briefing";
+  | "openclaw_briefing"
+  | "monthly_budget_proposal";
 export type AgentTargetKind =
   | "review_item"
   | "enriched_transaction"

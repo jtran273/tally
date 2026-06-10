@@ -45,6 +45,30 @@ function pendingProposalSignal(input: Partial<OpenClawProposalSignal> = {}): Ope
   };
 }
 
+function monthlyBudgetProposalSignal(input: Partial<OpenClawProposalSignal> = {}): OpenClawProposalSignal {
+  return pendingProposalSignal({
+    id: "budget-2026-07",
+    evidence: {
+      baselineMonths: 3,
+      uncertaintyNotes: ["2 open reviews could shift dining."]
+    },
+    proposalType: "monthly_budget_proposal" as AgentProposalType,
+    proposedPatch: {
+      categories: [
+        { amount: 500, label: "Dining" },
+        { amount: 450, label: "Groceries" },
+        { amount: 200, label: "Rideshare" },
+        { amount: 120, label: "Entertainment" }
+      ],
+      month: "2026-07",
+      totalAmount: 1270
+    },
+    targetId: "budget:2026-07",
+    targetKind: "openclaw_briefing",
+    ...input
+  });
+}
+
 function signalsWithCalendar(events: CalendarEventInput[]) {
   const now = new Date(OUTBOX_GENERATED_AT);
   return buildOpenClawSignalsResponse({
@@ -479,6 +503,130 @@ test("OpenClaw outbox does not double-surface candidates already asked as clarif
   }).messages.filter((message) => message.kind === "reimbursement_detected");
 
   assert.equal(detectedMessages.length, 0);
+});
+
+test("OpenClaw outbox surfaces a pending monthly budget proposal as an approval-gated budget_proposal", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.pendingProposals = [monthlyBudgetProposalSignal()];
+
+  const outbox = buildOpenClawOutboxResponse(signals, {
+    includeBudgetBriefing: false,
+    minPriority: "high"
+  });
+
+  const proposals = outbox.messages.filter((message) => message.kind === "budget_proposal");
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0]?.priority, "high");
+  assert.match(proposals[0]?.body ?? "", /Tally budget proposal: July 2026 plan \$1,270 across 4 categories/);
+  assert.match(proposals[0]?.body ?? "", /Top: Dining \$500, Groceries \$450, Rideshare \$200/);
+  assert.doesNotMatch(proposals[0]?.body ?? "", /Entertainment/);
+  assert.match(proposals[0]?.body ?? "", /Note: 2 open reviews could shift dining/);
+  assert.match(proposals[0]?.body ?? "", /Reply approve to accept, or adjust a line like 'dining 450'/);
+  assert.match(proposals[0]?.body ?? "", /Nothing changes until you confirm/);
+  assert.equal(proposals[0]?.replyAction?.endpoint, "/api/openclaw/replies");
+  assert.equal(proposals[0]?.replyAction?.method, "POST");
+  assert.equal(proposals[0]?.replyAction?.proposalId, "budget-2026-07");
+  assert.match(proposals[0]?.replyAction?.prompt ?? "", /Approve the July 2026 budget \(\$1,270\) or reply with adjustments/);
+  assert.equal(outbox.safety.directFinanceWritesAllowed, false);
+  assertAssistantContextSafe(outbox);
+});
+
+test("OpenClaw outbox emits at most one budget proposal and skips unparseable ones", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.pendingProposals = [
+    monthlyBudgetProposalSignal({ id: "budget-empty", proposedPatch: { categories: [], month: "2026-07" } }),
+    monthlyBudgetProposalSignal({ id: "budget-first" }),
+    monthlyBudgetProposalSignal({ id: "budget-second" })
+  ];
+
+  const proposals = buildOpenClawOutboxResponse(signals, {
+    includeBudgetBriefing: false,
+    messageLimit: 10
+  }).messages.filter((message) => message.kind === "budget_proposal");
+
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0]?.replyAction?.proposalId, "budget-first");
+});
+
+test("budget proposal copy is capped and never leaks secret-looking evidence", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.pendingProposals = [
+    monthlyBudgetProposalSignal({
+      evidence: {
+        rawProviderPayload: "access-production-0123456789abcdef",
+        secretNote: "ssn 123-45-6789 token sk-proj-abcdefghijklmnopqrstuvwx",
+        uncertaintyNotes: [
+          "token sk-proj-abcdefghijklmnopqrstuvwx leaked into a note",
+          `dining history is short ${"and noisy ".repeat(40)}`,
+          "reimbursements are still settling",
+          "third note beyond the cap"
+        ]
+      },
+      proposedPatch: {
+        categories: [
+          { amount: 900, label: `Groceries ${"plus a very long label tail ".repeat(8)}` },
+          { amount: 800, label: "sk-proj-abcdefghijklmnopqrstuvwx" },
+          { amount: 700, label: "Dining" },
+          { amount: 600, label: "Dining" },
+          { amount: -50.4, label: "Rideshare" }
+        ],
+        month: "not-a-month"
+      }
+    })
+  ];
+
+  const outbox = buildOpenClawOutboxResponse(signals, { includeBudgetBriefing: false });
+  const proposal = outbox.messages.find((message) => message.kind === "budget_proposal");
+
+  assert.ok(proposal);
+  assert.ok(proposal.body.length <= 320);
+  assert.match(proposal.body, /next month plan/);
+  assert.doesNotMatch(proposal.body, /sk-proj-|access-production-|123-45-6789|leaked into a note|third note beyond the cap/i);
+  assert.doesNotMatch(proposal.replyAction?.prompt ?? "", /sk-proj-|access-production-/i);
+  assertAssistantContextSafe(outbox);
+});
+
+test("budget proposal mentions calendar pressure only when present in proposal evidence", () => {
+  const now = new Date(OUTBOX_GENERATED_AT);
+  const busyCalendar = buildUpcomingCalendarContext(
+    [
+      { allDay: true, end: "2026-05-17", location: "SFO Airport", start: "2026-05-16", title: "Flight to Phoenix" },
+      { allDay: false, end: "2026-05-17T18:00:00.000Z", location: "Phoenix, AZ", start: "2026-05-17T15:00:00.000Z", title: "Hotel check-in" }
+    ],
+    { generatedAt: OUTBOX_GENERATED_AT, now }
+  );
+
+  const withoutEvidence = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  withoutEvidence.openClarificationQuestions = [];
+  withoutEvidence.calendarContext = busyCalendar;
+  withoutEvidence.pendingProposals = [monthlyBudgetProposalSignal()];
+  const quietBody = buildOpenClawOutboxResponse(withoutEvidence, { includeBudgetBriefing: false })
+    .messages.find((message) => message.kind === "budget_proposal")?.body ?? "";
+
+  assert.doesNotMatch(quietBody, /Calendar pressure/i);
+  assert.doesNotMatch(quietBody, /Phoenix|SFO|Flight|Hotel/i);
+
+  const withEvidence = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  withEvidence.openClarificationQuestions = [];
+  withEvidence.pendingProposals = [
+    monthlyBudgetProposalSignal({
+      evidence: {
+        calendarPressure: {
+          categories: ["travel", "dining", "not-an-allowed-category"],
+          level: "high"
+        }
+      }
+    })
+  ];
+  const outbox = buildOpenClawOutboxResponse(withEvidence, { includeBudgetBriefing: false });
+  const body = outbox.messages.find((message) => message.kind === "budget_proposal")?.body ?? "";
+
+  assert.match(body, /Calendar pressure high \(travel and dining ahead\)/);
+  assert.doesNotMatch(body, /not-an-allowed-category/);
+  assertAssistantContextSafe(outbox);
 });
 
 test("budget-threshold and reimbursement-detected nudges never leak seeded secret-looking data", () => {

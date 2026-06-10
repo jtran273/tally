@@ -78,6 +78,7 @@ The outbox returns text-ready packets for:
 - `review_queue_alert`: a high-priority cleanup prompt for open review items.
 - `anomaly_alert`: a high-priority persisted anomaly alert for deterministic finance exceptions.
 - `budget_briefing`: a compact budget summary using weekly spending, upcoming bills, projected cash when available, open review count, and reimbursement outstanding amount.
+- `budget_proposal`: a pending `monthly_budget_proposal` agent proposal surfaced for approval. The body carries only sanitized category labels and rounded amounts, capped uncertainty notes, and — only when present in the proposal evidence — a bounded calendar-pressure summary (level plus allowlisted spend categories; never raw events, titles, descriptions, or attendees). The message includes a `replyAction` so James can reply "approve" or send adjustments through `/api/openclaw/replies`. This is proposal-only behavior: no confirmed budget exists yet, nothing is written until Tally-owned approval flows run, and `directFinanceWritesAllowed` stays `false`.
 
 Outbox packets are delivery-neutral. They do not contain phone numbers, Twilio credentials, push tokens, provider payloads, Plaid ids, service-role keys, or direct write authority. OpenClaw can forward the `body` through its own notification channel, but finance mutations still require Tally-owned reply or approval endpoints.
 

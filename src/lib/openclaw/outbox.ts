@@ -4,11 +4,13 @@ import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
 import type { AccountLifecycleHint } from "@/lib/finance/account-lifecycle";
 import type { BudgetGuardrailItem, BudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import type { Json } from "@/lib/db";
+import { parseMonthlyBudgetProposal } from "./budget-proposal";
 import type { CreditOptimizationPacket } from "./credit-nudges";
 import type { OpenClawProposalSignal, OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./types";
 
 export type OpenClawOutboxMessageKind =
   | "budget_briefing"
+  | "budget_proposal"
   | "budget_threshold"
   | "anomaly_alert"
   | "credit_optimization"
@@ -19,6 +21,8 @@ export type OpenClawOutboxMessageKind =
   | "review_queue_alert";
 
 const LIFECYCLE_HINT_LIMIT = 1;
+const BUDGET_PROPOSAL_LIMIT = 1;
+const BUDGET_PROPOSAL_TOP_CATEGORY_LIMIT = 3;
 const BUDGET_THRESHOLD_LIMIT = 2;
 const REIMBURSEMENT_DETECTED_LIMIT = 2;
 export type OpenClawOutboxMessagePriority = "normal" | "high";
@@ -312,6 +316,61 @@ function reimbursementDetectedMessages(
   });
 }
 
+function budgetProposalMessages(signals: OpenClawSignalsResponse): OpenClawOutboxMessage[] {
+  const alreadyAsked = new Set(signals.openClarificationQuestions.map((question) => question.proposalId));
+  const proposals = signals.pendingProposals.filter((proposal): proposal is OpenClawProposalSignal =>
+    proposal.proposalType === "monthly_budget_proposal" &&
+    proposal.status === "pending" &&
+    !alreadyAsked.has(proposal.id)
+  );
+
+  const messages: OpenClawOutboxMessage[] = [];
+  for (const proposal of proposals) {
+    if (messages.length >= BUDGET_PROPOSAL_LIMIT) break;
+    const parsed = parseMonthlyBudgetProposal(proposal.evidence, proposal.proposedPatch);
+    if (!parsed) continue;
+
+    const monthText = parsed.monthLabel ?? "next month";
+    const topCategories = parsed.categories
+      .slice(0, BUDGET_PROPOSAL_TOP_CATEGORY_LIMIT)
+      .map((category) => `${category.label} ${money(category.amount)}`)
+      .join(", ");
+    const categoryCountText = `${parsed.categoryCount} categor${parsed.categoryCount === 1 ? "y" : "ies"}`;
+    const noteText = parsed.uncertaintyNotes.length > 0
+      ? ` Note: ${parsed.uncertaintyNotes.join("; ")}.`
+      : "";
+    const pressurePhrase = parsed.calendarPressure
+      ? calendarPressureCategoryPhrase(parsed.calendarPressure.categories.map((category) => ({ category, count: 1 })))
+      : null;
+    const pressureText = parsed.calendarPressure && pressurePhrase
+      ? ` Calendar pressure ${parsed.calendarPressure.level} (${pressurePhrase} ahead).`
+      : "";
+
+    messages.push({
+      id: `openclaw-outbox:budget-proposal:${proposal.id}`,
+      body: compact(
+        `Tally budget proposal: ${monthText} plan ${money(parsed.totalAmount)} across ${categoryCountText}. Top: ${topCategories}.${noteText}${pressureText} Reply approve to accept, or adjust a line like 'dining 450'. Nothing changes until you confirm.`,
+        MAX_MESSAGE_LENGTH
+      ),
+      createdAt: proposal.createdAt,
+      kind: "budget_proposal",
+      priority: "high",
+      replyAction: {
+        endpoint: "/api/openclaw/replies",
+        method: "POST",
+        proposalId: proposal.id,
+        prompt: compact(
+          `Approve the ${monthText} budget (${money(parsed.totalAmount)}) or reply with adjustments like 'dining 450'.`,
+          MAX_QUESTION_LENGTH
+        )
+      },
+      target: "openclaw"
+    });
+  }
+
+  return messages;
+}
+
 function anomalyAlertMessage(packet: OpenClawAnomalyPacket): OpenClawOutboxMessage {
   return {
     id: `openclaw-outbox:anomaly:${packet.id}`,
@@ -349,6 +408,7 @@ export function buildOpenClawOutboxResponse(
       .slice(0, LIFECYCLE_HINT_LIMIT)
       .map((hint) => lifecycleHintMessage(hint, signals.generatedAt)),
     ...(options.budgetGuardrails ? budgetThresholdMessages(options.budgetGuardrails, signals.generatedAt) : []),
+    ...budgetProposalMessages(signals),
     ...reimbursementDetectedMessages(signals, calendarHint),
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt, calendarHint)),
     reimbursementAlert(signals),
