@@ -7,6 +7,7 @@ import {
   getEnrichedTransactionRow,
   recordAuditEvent,
   updateTransactionEnrichment,
+  type AgentProposalFeedbackReason,
   type FinanceSupabaseClient,
   type Json,
   type TransactionIntent
@@ -20,6 +21,15 @@ export interface AgentProposalActionState {
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const proposalFeedbackReasons = new Set<AgentProposalFeedbackReason>([
+  "bad_amount",
+  "bad_date",
+  "confirmed_reimbursable",
+  "duplicate_or_reused_inflow",
+  "merchant_refund_or_income",
+  "not_reimbursement",
+  "wrong_counterparty"
+]);
 
 function cleanString(value: FormDataEntryValue | null, maxLength: number) {
   return String(value ?? "").trim().slice(0, maxLength);
@@ -35,6 +45,13 @@ function requireUuid(value: FormDataEntryValue | null, label: string) {
   const text = cleanString(value, 80);
   if (!uuidPattern.test(text)) throw new Error(`Invalid ${label}.`);
   return text;
+}
+
+function cleanFeedbackReason(value: FormDataEntryValue | null): AgentProposalFeedbackReason {
+  const reason = cleanString(value, 64);
+  return proposalFeedbackReasons.has(reason as AgentProposalFeedbackReason)
+    ? reason as AgentProposalFeedbackReason
+    : "not_reimbursement";
 }
 
 async function hasReceivedReimbursementLink(
@@ -92,6 +109,10 @@ export async function dismissAgentProposalAction(
 
     await dismissAgentProposal(context.client, context.userId, proposalId, {
       actorId: context.userId,
+      feedback: {
+        outcome: "dismissed",
+        reason: cleanFeedbackReason(formData.get("feedbackReason"))
+      },
       source: "agent_inbox_proposal_dismiss"
     });
 
@@ -118,6 +139,10 @@ export async function acceptReimbursementCandidateProposalAction(
 
     await acceptAgentProposal(context.client, context.userId, proposalId, {
       actorId: context.userId,
+      feedback: {
+        outcome: "accepted",
+        reason: "confirmed_reimbursable"
+      },
       source: "agent_inbox_reimbursement_candidate_accept"
     });
 

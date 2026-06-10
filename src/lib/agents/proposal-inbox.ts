@@ -116,10 +116,19 @@ export interface AgentInboxRecommendation {
 
 export interface AgentInboxSummary {
   acceptReadyCount: number;
+  hiddenLowerConfidenceCount: number;
   manualReviewCount: number;
   proposedFieldCount: number;
   totalCount: number;
 }
+
+export interface AgentInboxDisplayPolicyResult {
+  hiddenLowerConfidenceCount: number;
+  proposals: AgentInboxProposal[];
+}
+
+const MAX_DEFAULT_REIMBURSEMENT_CANDIDATES = 5;
+const MIN_DEFAULT_REIMBURSEMENT_CONFIDENCE = 0.58;
 
 function accountLabel(item: ReviewQueueItem) {
   return [
@@ -138,6 +147,40 @@ function proposedFieldCount(proposal: AgentInboxProposal) {
     proposal.recommendation.recurring,
     proposal.recommendation.confidence
   ].filter((value) => value !== undefined && value !== null && value !== "").length;
+}
+
+function dayGap(expenseDate: string, inflowDate: string) {
+  const expenseMs = Date.parse(`${expenseDate}T12:00:00.000Z`);
+  const inflowMs = Date.parse(`${inflowDate}T12:00:00.000Z`);
+  if (!Number.isFinite(expenseMs) || !Number.isFinite(inflowMs)) return Number.POSITIVE_INFINITY;
+  return Math.round((inflowMs - expenseMs) / 86_400_000);
+}
+
+function amountCloseness(expenseAmount: number, inflowAmount: number) {
+  const ratio = inflowAmount / expenseAmount;
+  if (ratio <= 0 || ratio > 1.08) return 0;
+
+  const splitTargets = [1, 1 / 2, 1 / 3, 1 / 4];
+  const bestTargetError = Math.min(...splitTargets.map((target) => Math.abs(ratio - target)));
+  if (bestTargetError <= 0.12) return 1 - bestTargetError / 0.12;
+  if (ratio >= 0.25) return Math.min(0.7, ratio);
+  return 0;
+}
+
+function reimbursementCandidateDisplayScore(proposal: ReimbursementCandidateAgentInboxProposal) {
+  if (proposal.candidateInflows.length === 0) return 0;
+
+  const expenseAmount = Math.abs(proposal.amount);
+  const inflowTotal = proposal.candidateInflows.reduce((total, inflow) => total + inflow.amount, 0);
+  const earliestGap = Math.min(...proposal.candidateInflows.map((inflow) => dayGap(proposal.date, inflow.date)));
+  const timingScore = earliestGap < -3 || earliestGap > 14
+    ? 0
+    : earliestGap <= 7
+      ? 1 - Math.max(0, earliestGap) / 14
+      : 0.4;
+  const confidence = proposal.confidence ?? 0;
+
+  return confidence * 0.45 + amountCloseness(expenseAmount, inflowTotal) * 0.35 + timingScore * 0.2;
 }
 
 function buildProposal(item: ReviewQueueItem): ReviewAgentInboxProposal {
@@ -348,14 +391,60 @@ export function buildAgentInboxProposals(
     });
 }
 
-export function summarizeAgentInbox(proposals: readonly AgentInboxProposal[]): AgentInboxSummary {
+export function applyAgentInboxDisplayPolicy(
+  proposals: readonly AgentInboxProposal[]
+): AgentInboxDisplayPolicyResult {
+  const alwaysVisible = proposals.filter((proposal) => proposal.action !== "reimbursement-candidate");
+  const reimbursementCandidates = proposals.filter(
+    (proposal): proposal is ReimbursementCandidateAgentInboxProposal => proposal.action === "reimbursement-candidate"
+  );
+  const eligibleCandidates = reimbursementCandidates
+    .map((proposal) => ({ proposal, score: reimbursementCandidateDisplayScore(proposal) }))
+    .filter(({ proposal, score }) =>
+      proposal.candidateInflows.length > 0 &&
+      (proposal.confidence ?? 0) >= MIN_DEFAULT_REIMBURSEMENT_CONFIDENCE &&
+      score > 0.55
+    )
+    .sort((left, right) =>
+      right.score - left.score ||
+      (right.proposal.confidence ?? 0) - (left.proposal.confidence ?? 0) ||
+      Math.abs(right.proposal.amount) - Math.abs(left.proposal.amount)
+    );
+  const visibleCandidateIds = new Set(
+    eligibleCandidates
+      .slice(0, MAX_DEFAULT_REIMBURSEMENT_CANDIDATES)
+      .map(({ proposal }) => proposal.id)
+  );
+  const visible = proposals.filter((proposal) =>
+    proposal.action !== "reimbursement-candidate" || visibleCandidateIds.has(proposal.id)
+  );
+
+  return {
+    hiddenLowerConfidenceCount: proposals.length - visible.length,
+    proposals: visible.length === alwaysVisible.length && reimbursementCandidates.length === 0
+      ? alwaysVisible
+      : visible
+  };
+}
+
+export function summarizeAgentInbox(
+  proposals: readonly AgentInboxProposal[],
+  options: { hiddenLowerConfidenceCount?: number } = {}
+): AgentInboxSummary {
   return proposals.reduce<AgentInboxSummary>(
     (summary, proposal) => ({
       acceptReadyCount: summary.acceptReadyCount + (proposal.status === "accept-ready" ? 1 : 0),
+      hiddenLowerConfidenceCount: summary.hiddenLowerConfidenceCount,
       manualReviewCount: summary.manualReviewCount + (proposal.status === "needs-review" ? 1 : 0),
       proposedFieldCount: summary.proposedFieldCount + proposedFieldCount(proposal),
       totalCount: summary.totalCount + 1
     }),
-    { acceptReadyCount: 0, manualReviewCount: 0, proposedFieldCount: 0, totalCount: 0 }
+    {
+      acceptReadyCount: 0,
+      hiddenLowerConfidenceCount: options.hiddenLowerConfidenceCount ?? 0,
+      manualReviewCount: 0,
+      proposedFieldCount: 0,
+      totalCount: 0
+    }
   );
 }

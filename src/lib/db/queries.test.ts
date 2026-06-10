@@ -1842,12 +1842,30 @@ test("dismissAgentProposal is idempotent and records audit once", async () => {
   const client = new FakeFinanceClient();
   client.agentProposals.push(agentProposalRow());
 
-  const dismissed = await dismissAgentProposal(client.asClient(), userId, "proposal-1");
+  const dismissed = await dismissAgentProposal(client.asClient(), userId, "proposal-1", {
+    feedback: {
+      outcome: "dismissed",
+      reason: "bad_amount"
+    },
+    source: "test_feedback"
+  });
   const dismissedAgain = await dismissAgentProposal(client.asClient(), userId, "proposal-1");
 
   assert.equal(dismissed.status, "dismissed");
   assert.equal(dismissedAgain.status, "dismissed");
   assert.equal(client.auditEvents.length, 1);
+  assert.deepEqual(client.auditEvents[0]?.metadata, {
+    feedback: {
+      confidence: 0.74,
+      outcome: "dismissed",
+      proposalType: "clarification_request",
+      reason: "bad_amount",
+      targetId: "11111111-1111-1111-1111-111111111111",
+      targetKind: "enriched_transaction"
+    },
+    proposalId: "proposal-1",
+    source: "test_feedback"
+  });
 });
 
 test("recordClarificationAnswer normalizes terse replies and stores answered status", async () => {
