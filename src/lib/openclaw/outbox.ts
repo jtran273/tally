@@ -256,7 +256,7 @@ function budgetThresholdMessages(summary: BudgetGuardrailSummary, generatedAt: s
       body: budgetThresholdBody(item, summary),
       createdAt: generatedAt,
       kind: "budget_threshold" as const,
-      priority: "high" as const,
+      priority: item.status === "over" ? "high" as const : "normal" as const,
       replyAction: null,
       target: "openclaw" as const
     }));
@@ -294,10 +294,10 @@ function reimbursementDetectedMessages(
     const amountText = amount === null ? "a recent charge" : money(amount);
     const merchantText = merchant ? ` at ${merchant}` : "";
     const hint = calendarHint ? ` ${calendarHint}` : "";
-    const prompt = `Mark ${amountText}${merchantText} as reimbursable?`;
+    const prompt = `Treat ${amountText}${merchantText} as reimbursable?`;
     return {
       id: `openclaw-outbox:reimbursement-detected:${proposal.id}`,
-      body: compact(`Tally spotted a possible reimbursement: ${amountText}${merchantText} might be owed back. Want me to mark it? Reply yes/no or a name.${hint}`, MAX_MESSAGE_LENGTH),
+      body: compact(`Tally spotted a possible reimbursement: ${amountText}${merchantText} might be owed back. Reply yes/no or a name; Tally keeps it approval-gated.${hint}`, MAX_MESSAGE_LENGTH),
       createdAt: proposal.createdAt,
       kind: "reimbursement_detected" as const,
       priority: "high" as const,

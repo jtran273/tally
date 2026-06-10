@@ -361,52 +361,62 @@ test("budget briefing calendar phrase never leaks event details", () => {
   assert.doesNotMatch(body, /alex@example\.com|Market St|meet\.google\.com|secret-project-orion|Dinner with|Phoenix/);
 });
 
-test("OpenClaw outbox emits high-priority budget-threshold nudges for near and over categories", () => {
+test("OpenClaw outbox emits budget-threshold nudges but reserves high priority for over-budget categories", () => {
+  const budgetGuardrails = guardrailSummary([
+    {
+      budgetAmount: 500,
+      currentAmount: 436,
+      id: "cat-dining",
+      label: "Dining",
+      openReviewCount: 0,
+      percentUsed: 87.2,
+      projectedAmount: 1040,
+      projectedPercent: 208,
+      remainingAmount: 64,
+      status: "near",
+      transactionCount: 12,
+      trustedAmount: 436,
+      unresolvedReviewAmount: 0
+    },
+    {
+      budgetAmount: 200,
+      currentAmount: 260,
+      id: "cat-rideshare",
+      label: "Rideshare",
+      openReviewCount: 0,
+      percentUsed: 130,
+      projectedAmount: 620,
+      projectedPercent: 310,
+      remainingAmount: -60,
+      status: "over",
+      transactionCount: 9,
+      trustedAmount: 260,
+      unresolvedReviewAmount: 0
+    }
+  ]);
+
   const outbox = buildOpenClawOutboxResponse(openClawSignalsFixture, {
-    includeBudgetBriefing: false,
-    minPriority: "high",
-    budgetGuardrails: guardrailSummary([
-      {
-        budgetAmount: 500,
-        currentAmount: 436,
-        id: "cat-dining",
-        label: "Dining",
-        openReviewCount: 0,
-        percentUsed: 87.2,
-        projectedAmount: 1040,
-        projectedPercent: 208,
-        remainingAmount: 64,
-        status: "near",
-        transactionCount: 12,
-        trustedAmount: 436,
-        unresolvedReviewAmount: 0
-      },
-      {
-        budgetAmount: 200,
-        currentAmount: 260,
-        id: "cat-rideshare",
-        label: "Rideshare",
-        openReviewCount: 0,
-        percentUsed: 130,
-        projectedAmount: 620,
-        projectedPercent: 310,
-        remainingAmount: -60,
-        status: "over",
-        transactionCount: 9,
-        trustedAmount: 260,
-        unresolvedReviewAmount: 0
-      }
-    ])
+    budgetGuardrails,
+    includeBudgetBriefing: false
   });
 
   const thresholdMessages = outbox.messages.filter((message) => message.kind === "budget_threshold");
   assert.equal(thresholdMessages.length, 2);
-  assert.equal(thresholdMessages[0]?.priority, "high");
+  assert.equal(thresholdMessages[0]?.priority, "normal");
   assert.equal(thresholdMessages[0]?.replyAction, null);
   assert.match(thresholdMessages[0]?.body ?? "", /87% through your Dining budget/);
   assert.match(thresholdMessages[0]?.body ?? "", /\$436 of \$500/);
   assert.match(thresholdMessages[0]?.body ?? "", /18 days left this month/);
+  assert.equal(thresholdMessages[1]?.priority, "high");
   assert.match(thresholdMessages[1]?.body ?? "", /over your Rideshare budget/);
+
+  const highOnly = buildOpenClawOutboxResponse(openClawSignalsFixture, {
+    budgetGuardrails,
+    includeBudgetBriefing: false,
+    minPriority: "high"
+  }).messages.filter((message) => message.kind === "budget_threshold");
+  assert.equal(highOnly.length, 1);
+  assert.match(highOnly[0]?.body ?? "", /over your Rideshare budget/);
   assertAssistantContextSafe(outbox);
 });
 
@@ -456,6 +466,9 @@ test("OpenClaw outbox surfaces detected reimbursement candidates as approval-gat
   assert.match(detected[0]?.body ?? "", /Tally spotted a possible reimbursement/);
   assert.match(detected[0]?.body ?? "", /\$84 at Sushi House/);
   assert.match(detected[0]?.body ?? "", /Reply yes\/no or a name/);
+  assert.match(detected[0]?.body ?? "", /approval-gated/);
+  assert.doesNotMatch(detected[0]?.body ?? "", /Want me to mark it/);
+  assert.match(detected[0]?.replyAction?.prompt ?? "", /Treat \$84 at Sushi House as reimbursable/);
   assert.equal(outbox.safety.directFinanceWritesAllowed, false);
   assertAssistantContextSafe(outbox);
 });
