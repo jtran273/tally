@@ -106,7 +106,7 @@ export async function runAiReviewCleanup({
   let suggestionsStored = 0;
   let autoApplied = 0;
 
-  for (const { item } of updates) {
+  for (const { item, trustedSourceKind } of updates) {
     if (!item.id) continue;
 
     const result = await client
@@ -134,7 +134,8 @@ export async function runAiReviewCleanup({
       reviewReason: item.reason,
       reviewedAt,
       suggestion: item.ai_suggestion,
-      transaction
+      transaction,
+      trustedSuggestionSourceKind: trustedSourceKind
     });
 
     if (!decision.shouldApply || !decision.patch) continue;

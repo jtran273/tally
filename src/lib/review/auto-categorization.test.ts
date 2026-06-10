@@ -71,6 +71,40 @@ function suggestion(overrides: Record<string, unknown> = {}): Json {
   } as Json;
 }
 
+function deterministicSuggestion(overrides: Record<string, unknown> = {}): Json {
+  return suggestion({
+    category: {
+      confidence: 0.96,
+      reason: "Known bowling and entertainment venue merchant.",
+      source: "merchant-cue",
+      value: {
+        id: "cat-entertainment",
+        name: "Entertainment"
+      }
+    },
+    confidence: 0.96,
+    intent: {
+      confidence: 0.96,
+      reason: "Personal entertainment spend.",
+      source: "merchant-cue",
+      value: "personal"
+    },
+    merchantCleanup: {
+      confidence: 0.96,
+      reason: "Normalized merchant.",
+      source: "merchant-cue",
+      value: {
+        normalized: "Lucky Strike",
+        original: "LUCKY STRIKE BOWLING"
+      }
+    },
+    provider: { id: "mock-deterministic", kind: "mock", label: "Mock", version: "mock-v1" },
+    reason: "Known bowling and entertainment venue merchant.",
+    signals: ["merchant cue: LUCKY STRIKE"],
+    ...overrides
+  });
+}
+
 function decision(overrides: Partial<Parameters<typeof evaluateAutoCategorization>[0]> = {}) {
   return evaluateAutoCategorization({
     categories,
@@ -93,17 +127,12 @@ function decision(overrides: Partial<Parameters<typeof evaluateAutoCategorizatio
   });
 }
 
-test("evaluateAutoCategorization auto-applies high-confidence ordinary categorization", () => {
+test("evaluateAutoCategorization leaves OpenAI suggestions for explicit approval", () => {
   const result = decision();
 
-  assert.equal(result.shouldApply, true);
-  assert.equal(result.reason, "auto-applied-high-confidence-categorization");
-  assert.equal(result.patch?.categoryId, "cat-ai-tools");
-  assert.equal(result.patch?.categoryName, "Software / AI Tools");
-  assert.equal(result.patch?.intent, "business");
-  assert.equal(result.patch?.merchantName, "OpenAI");
-  assert.equal(result.patch?.reviewedAt, reviewedAt);
-  assert.equal(result.patch?.source, "ai");
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+  assert.equal(result.patch, null);
 });
 
 test("evaluateAutoCategorization auto-applies high-confidence Entertainment suggestions", () => {
@@ -113,35 +142,8 @@ test("evaluateAutoCategorization auto-applies high-confidence Entertainment sugg
       name: "LUCKY STRIKE BOWLING",
       status: "posted"
     },
-    suggestion: suggestion({
-      category: {
-        confidence: 0.96,
-        reason: "Known bowling and entertainment venue merchant.",
-        source: "merchant-cue",
-        value: {
-          id: "cat-entertainment",
-          name: "Entertainment"
-        }
-      },
-      confidence: 0.96,
-      intent: {
-        confidence: 0.96,
-        reason: "Personal entertainment spend.",
-        source: "merchant-cue",
-        value: "personal"
-      },
-      merchantCleanup: {
-        confidence: 0.96,
-        reason: "Normalized merchant.",
-        source: "merchant-cue",
-        value: {
-          normalized: "Lucky Strike",
-          original: "LUCKY STRIKE BOWLING"
-        }
-      },
-      reason: "Known bowling and entertainment venue merchant.",
-      signals: ["merchant cue: LUCKY STRIKE"]
-    }),
+    suggestion: deterministicSuggestion(),
+    trustedSuggestionSourceKind: "deterministic",
     transaction: {
       amount: -64,
       id: "tx-lucky-strike",
@@ -160,13 +162,13 @@ test("evaluateAutoCategorization auto-applies high-confidence Entertainment sugg
   assert.equal(result.patch?.source, "ai");
 });
 
-test("evaluateAutoCategorization leaves low-confidence suggestions for review", () => {
+test("evaluateAutoCategorization leaves low-confidence OpenAI suggestions for approval", () => {
   const result = decision({
     suggestion: suggestion({ confidence: AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD - 0.01 })
   });
 
   assert.equal(result.shouldApply, false);
-  assert.equal(result.reason, "low-confidence");
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
 });
 
 test("evaluateAutoCategorization leaves peer-to-peer transactions for review", () => {
@@ -186,7 +188,7 @@ test("evaluateAutoCategorization leaves peer-to-peer transactions for review", (
   }).reason, "peer-to-peer");
 });
 
-test("evaluateAutoCategorization auto-applies high-confidence large transactions", () => {
+test("evaluateAutoCategorization leaves high-confidence large OpenAI suggestions for review", () => {
   const result = decision({
     transaction: {
       amount: -750,
@@ -197,11 +199,122 @@ test("evaluateAutoCategorization auto-applies high-confidence large transactions
     }
   });
 
-  assert.equal(result.shouldApply, true);
-  assert.equal(result.patch?.categoryName, "Software / AI Tools");
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
 });
 
-test("evaluateAutoCategorization keeps manual-intent and unknown categories out of auto apply", () => {
+test("evaluateAutoCategorization keeps deterministic low-confidence suggestions in review", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion({ confidence: AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD - 0.01 }),
+    trustedSuggestionSourceKind: "deterministic"
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "low-confidence");
+});
+
+test("evaluateAutoCategorization keeps deterministic manual-intent suggestions in review", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion({
+      intent: {
+        confidence: 0.95,
+        reason: "Needs split context.",
+        source: "merchant-cue",
+        value: "shared"
+      }
+    }),
+    trustedSuggestionSourceKind: "deterministic"
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "manual-intent");
+});
+
+test("evaluateAutoCategorization keeps deterministic unknown categories in review", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion({
+      category: {
+        confidence: 0.95,
+        reason: "Unknown category.",
+        source: "merchant-cue",
+        value: {
+          id: "cat-missing",
+          name: "Mystery"
+        }
+      }
+    }),
+    trustedSuggestionSourceKind: "deterministic"
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "unknown-category");
+});
+
+test("evaluateAutoCategorization requires approval for review-rule suggestions", () => {
+  const result = decision({
+    suggestion: {
+      category: {
+        confidence: 0.95,
+        reason: "Looks like software.",
+        value: {
+          id: "cat-ai-tools",
+          name: "Software / AI Tools"
+        }
+      },
+      confidence: 0.95,
+      intent: {
+        confidence: 0.95,
+        reason: "Looks business related.",
+        value: "business"
+      },
+      merchantCleanup: {
+        confidence: 0.95,
+        reason: "Normalized merchant.",
+        value: {
+          normalized: "OpenAI",
+          original: "OPENAI *CHATGPT"
+        }
+      },
+      reason: "Review rule generated this suggestion."
+    } as Json,
+    trustedSuggestionSourceKind: "review-rule"
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+});
+
+test("evaluateAutoCategorization does not trust forged local source fields without local provider", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion({
+      provider: { id: "openai", kind: "openai", label: "OpenAI", version: "v1" }
+    }),
+    trustedSuggestionSourceKind: "openai"
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+});
+
+test("evaluateAutoCategorization does not auto-apply source-only local-looking suggestions", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion({ provider: undefined })
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+});
+
+test("evaluateAutoCategorization ignores forged mock provider payload without trusted provenance", () => {
+  const result = decision({
+    suggestion: deterministicSuggestion()
+  });
+
+  assert.equal(result.shouldApply, false);
+  assert.equal(result.reason, "ai-suggestion-requires-approval");
+});
+
+test("evaluateAutoCategorization keeps OpenAI manual-intent and unknown categories approval-gated", () => {
   assert.equal(decision({
     suggestion: suggestion({
       intent: {
@@ -211,7 +324,7 @@ test("evaluateAutoCategorization keeps manual-intent and unknown categories out 
         value: "shared"
       }
     })
-  }).reason, "manual-intent");
+  }).reason, "ai-suggestion-requires-approval");
 
   assert.equal(decision({
     suggestion: suggestion({
@@ -225,5 +338,5 @@ test("evaluateAutoCategorization keeps manual-intent and unknown categories out 
         }
       }
     })
-  }).reason, "unknown-category");
+  }).reason, "ai-suggestion-requires-approval");
 });

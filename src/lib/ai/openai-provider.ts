@@ -502,7 +502,7 @@ function buildSystemPrompt(request: TransactionSuggestionRequest) {
     "- intent ∈ {personal, business, shared, reimbursable, transfer}. Default to personal unless evidence says otherwise.",
     "- merchantName: human-friendly normalization (e.g. 'AMZN MKTP US*ABC' → 'Amazon').",
     "- recurring: true only for clearly repeating subscriptions/bills.",
-    "- confidence ∈ [0,1]. ≥0.85 = sure (auto-apply). 0.7–0.85 = likely. <0.7 = user should review.",
+    "- confidence ∈ [0,1]. ≥0.85 = sure. 0.7–0.85 = likely. <0.7 = user should review.",
     "- reason: ONE short sentence (< 80 chars) citing the evidence you used.",
     "",
     `Available categories: ${categoryList.join(", ") || "Shopping"}`

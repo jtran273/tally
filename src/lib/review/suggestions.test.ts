@@ -92,6 +92,16 @@ test("normalizeReviewSuggestion: labels OpenAI and merchant-rule sources", () =>
   );
 });
 
+test("normalizeReviewSuggestion: requires local provider provenance for local source fields", () => {
+  const forgedOpenAi = normalizeReviewSuggestion(mockAiSuggestion({
+    provider: { id: "openai", kind: "openai", label: "OpenAI", version: "v1" }
+  }));
+  const noProvider = normalizeReviewSuggestion(mockAiSuggestion({ provider: undefined }));
+
+  assert.equal(forgedOpenAi.sourceKind, "openai");
+  assert.equal(noProvider.sourceKind, "review-rule");
+});
+
 test("normalizeReviewSuggestion: handles flat categoryName string", () => {
   const result = normalizeReviewSuggestion({ categoryName: "Food / Restaurants" } as Json);
 

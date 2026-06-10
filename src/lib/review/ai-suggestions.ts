@@ -13,6 +13,7 @@ import type {
   ReviewReason
 } from "@/lib/db";
 import { isPeerToPeerReview } from "./reasons";
+import type { ReviewSuggestionSourceKind } from "./suggestions";
 
 export interface ReviewAiSuggestionItem {
   ai_suggestion?: Json;
@@ -36,6 +37,7 @@ export interface AttachAiReviewSuggestionsOptions {
 export interface ReviewAiSuggestionUpdate<TItem extends ReviewAiSuggestionItem> {
   item: TItem;
   original: TItem;
+  trustedSourceKind: ReviewSuggestionSourceKind;
 }
 
 const DEFAULT_MAX_AI_REVIEW_SUGGESTIONS = 40;
@@ -43,6 +45,22 @@ const DEFAULT_AI_REVIEW_SUGGESTION_CONCURRENCY = 4;
 
 function toJsonSuggestion(suggestion: TransactionAiSuggestion): Json {
   return JSON.parse(JSON.stringify(suggestion)) as Json;
+}
+
+export function trustedReviewSuggestionSourceKind(
+  suggestion: TransactionAiSuggestion
+): ReviewSuggestionSourceKind {
+  if (suggestion.provider.kind === "openai" || suggestion.provider.kind === "openclaw") return "openai";
+  if (suggestion.provider.kind !== "mock") return "unknown";
+
+  const sources = [
+    suggestion.category.source,
+    suggestion.intent.source,
+    suggestion.merchantCleanup.source,
+    suggestion.recurring?.source
+  ];
+
+  return sources.includes("merchant-rule") ? "merchant-rule" : "deterministic";
 }
 
 function shouldRequestAiSuggestion(item: ReviewAiSuggestionItem) {
@@ -130,7 +148,8 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
       } as TItem;
       return {
         item: updatedItem,
-        original: item
+        original: item,
+        trustedSourceKind: trustedReviewSuggestionSourceKind(suggestion)
       };
     } catch (error) {
       console.warn("review_ai_suggestion_failed", {

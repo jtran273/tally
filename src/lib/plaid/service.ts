@@ -34,6 +34,7 @@ import type { TransactionEnrichmentPatch } from "../db/queries";
 import { createAutoReviewTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { evaluateAutoCategorization } from "../review/auto-categorization";
+import type { ReviewSuggestionSourceKind } from "../review/suggestions";
 import { displayCategoryName } from "../finance/classification";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildTransactionReviewItemsForImport } from "../review/heuristics";
@@ -1826,7 +1827,14 @@ async function insertGeneratedReviewItems(
     transactions
   });
   const reviewItemsWithSuggestions = applyReviewSuggestionUpdates(reviewItems, aiUpdates);
-  const autoAppliedKeys = await autoApplyReviewSuggestions(client, reviewItemsWithSuggestions, transactions, context);
+  const trustedSourceKindByReviewKey = new Map(aiUpdates.flatMap((update) => {
+    const key = reviewItemKey(update.item);
+    return key ? [[key, update.trustedSourceKind] as const] : [];
+  }));
+  const autoAppliedKeys = await autoApplyReviewSuggestions(client, reviewItemsWithSuggestions, transactions, {
+    ...context,
+    trustedSourceKindByReviewKey
+  });
   const openReviewItems = reviewItemsWithSuggestions.filter((item) => {
     const key = reviewItemKey(item);
     return !key || !autoAppliedKeys.has(key);
@@ -1946,6 +1954,7 @@ async function autoApplyReviewSuggestions(
   context: {
     categoryRows: CategoryRow[];
     rawRows: RawTransactionRow[];
+    trustedSourceKindByReviewKey?: Map<string, ReviewSuggestionSourceKind>;
   }
 ) {
   const categories = context.categoryRows.map(toCategoryRecordForAi);
@@ -1964,13 +1973,15 @@ async function autoApplyReviewSuggestions(
     const raw = transaction ? rawById.get(transaction.raw_transaction_id) ?? null : null;
     if (!key || !transaction || !item.reason) continue;
 
+    const trustedSuggestionSourceKind = context.trustedSourceKindByReviewKey?.get(key);
     const decision = evaluateAutoCategorization({
       categories,
       rawTransaction: raw,
       reviewReason: item.reason,
       reviewedAt,
       suggestion: item.ai_suggestion ?? {},
-      transaction
+      transaction,
+      trustedSuggestionSourceKind
     });
     if (!decision.shouldApply || !decision.patch) continue;
 

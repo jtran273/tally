@@ -160,15 +160,15 @@ function normalizeSuggestionSource(record: Record<string, unknown>): Pick<
     };
   }
 
-  if (sources.includes("merchant-rule")) {
-    return {
-      sourceDetail: "Matched a saved merchant rule before any model output.",
-      sourceKind: "merchant-rule",
-      sourceLabel: "Saved merchant rule"
-    };
-  }
+  if (providerKind === "mock") {
+    if (sources.includes("merchant-rule")) {
+      return {
+        sourceDetail: "Matched a saved merchant rule before any model output.",
+        sourceKind: "merchant-rule",
+        sourceLabel: "Saved merchant rule"
+      };
+    }
 
-  if (providerKind === "mock" || sources.length > 0) {
     return {
       sourceDetail: "Generated locally from merchant, amount, Plaid category, and rule cues.",
       sourceKind: "deterministic",
