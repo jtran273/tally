@@ -53,7 +53,8 @@ export type AgentTargetKind =
   | "reimbursement_record"
   | "merchant_rule"
   | "recurring_expense"
-  | "openclaw_briefing";
+  | "openclaw_briefing"
+  | "monthly_budget";
 export type AnomalyAlertSeverity = "info" | "warning" | "critical";
 export type AnomalyAlertStatus = "pending" | "dismissed" | "resolved";
 export type AnomalyAlertReasonCode =
