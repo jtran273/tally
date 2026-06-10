@@ -429,6 +429,22 @@ export interface AnomalyAlertRow {
   updated_at: string;
 }
 
+export type MonthlyBudgetStatus = "confirmed" | "superseded";
+
+export interface MonthlyBudgetRow {
+  id: string;
+  user_id: string;
+  month: string;
+  status: MonthlyBudgetStatus;
+  total_amount: number;
+  categories: Json;
+  source_proposal_id: string | null;
+  confirmed_at: string;
+  superseded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AuditEventRow {
   id: string;
   user_id: string;
@@ -464,6 +480,7 @@ export type Database = {
       insights: TableDefinition<InsightRow>;
       agent_proposals: TableDefinition<AgentProposalRow>;
       anomaly_alerts: TableDefinition<AnomalyAlertRow>;
+      monthly_budgets: TableDefinition<MonthlyBudgetRow>;
       audit_events: TableDefinition<AuditEventRow>;
     };
     Views: Record<never, never>;
@@ -671,6 +688,25 @@ export interface AnomalyAlertRecord {
   lastSeenAt: string;
   dismissedAt: string | null;
   resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyBudgetCategory {
+  amount: number;
+  label: string;
+}
+
+export interface MonthlyBudgetRecord {
+  id: string;
+  userId: string;
+  month: string;
+  status: MonthlyBudgetStatus;
+  totalAmount: number;
+  categories: MonthlyBudgetCategory[];
+  sourceProposalId: string | null;
+  confirmedAt: string;
+  supersededAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

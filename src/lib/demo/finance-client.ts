@@ -545,6 +545,7 @@ const rows = {
   insights,
   institutions,
   merchant_rules: [],
+  monthly_budgets: [],
   plaid_items: plaidItems,
   plaid_sync_run_items: plaidSyncRunItems,
   plaid_sync_runs: plaidSyncRuns,
