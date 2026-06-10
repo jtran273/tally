@@ -1,5 +1,9 @@
 import type { TransactionSuggestionService } from "@/lib/ai/suggestion-service";
-import type { TransactionAiSuggestion, UserCorrectionExample } from "@/lib/ai/types";
+import type {
+  RawTransactionSuggestionFields,
+  TransactionAiSuggestion,
+  UserCorrectionExample
+} from "@/lib/ai/types";
 import type {
   CategoryRecord,
   EnrichedTransactionRow,
@@ -45,6 +49,19 @@ function shouldRequestAiSuggestion(item: ReviewAiSuggestionItem) {
   return Boolean(item.enriched_transaction_id && item.reason && !isPeerToPeerReview(item.reason));
 }
 
+export function toRawTransactionSuggestionFields(raw: RawTransactionRow): RawTransactionSuggestionFields {
+  return {
+    id: raw.id,
+    name: raw.name,
+    merchant_name: raw.merchant_name,
+    amount: raw.amount,
+    iso_currency_code: raw.iso_currency_code,
+    payment_channel: raw.payment_channel,
+    plaid_category: raw.plaid_category,
+    transaction_type: raw.transaction_type
+  };
+}
+
 async function mapWithConcurrency<TInput, TOutput>(
   values: readonly TInput[],
   concurrency: number,
@@ -82,7 +99,7 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
 ): Promise<ReviewAiSuggestionUpdate<TItem>[]> {
   const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
   const rawById = new Map(rawRows.map((raw) => [raw.id, raw]));
-  const candidates: Array<{ item: TItem; raw: RawTransactionRow }> = [];
+  const candidates: Array<{ item: TItem; raw: RawTransactionSuggestionFields }> = [];
 
   for (const item of reviewItems) {
     if (candidates.length >= maxSuggestions || !shouldRequestAiSuggestion(item)) continue;
@@ -90,12 +107,12 @@ export async function attachAiSuggestionsToReviewItems<TItem extends ReviewAiSug
     const transaction = transactionById.get(item.enriched_transaction_id ?? "");
     const raw = transaction ? rawById.get(transaction.raw_transaction_id) : null;
     if (!raw) continue;
-    candidates.push({ item, raw });
+    candidates.push({ item, raw: toRawTransactionSuggestionFields(raw) });
   }
 
   const safeConcurrency = Math.max(1, Math.min(8, Math.floor(concurrency)));
   const updates = await mapWithConcurrency<
-    { item: TItem; raw: RawTransactionRow },
+    { item: TItem; raw: RawTransactionSuggestionFields },
     ReviewAiSuggestionUpdate<TItem> | null
   >(candidates, safeConcurrency, async ({ item, raw }) => {
     try {

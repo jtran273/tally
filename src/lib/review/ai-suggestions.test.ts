@@ -156,6 +156,18 @@ test("attachAiSuggestionsToReviewItems stores accept-ready AI suggestions for no
     suggestionService: {
       async suggestTransaction(request) {
         assert.equal(request.rawTransaction.id, "raw-openai");
+        assert.deepEqual(Object.keys(request.rawTransaction).sort(), [
+          "amount",
+          "id",
+          "iso_currency_code",
+          "merchant_name",
+          "name",
+          "payment_channel",
+          "plaid_category",
+          "transaction_type"
+        ]);
+        const serialized = JSON.stringify(request.rawTransaction);
+        assert.doesNotMatch(serialized, /raw_payload|payment_meta|location|plaid_item_id|plaid_transaction_id/i);
         return suggestion(request.rawTransaction.id);
       }
     },
