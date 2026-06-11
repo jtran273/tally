@@ -146,7 +146,8 @@ test("agent inbox does not surface provider diagnostics as recommendation signal
     })
   ]);
 
-  assert.deepEqual(proposal?.recommendation.signals, ["merchant cue: grocery"]);
+  assert.ok(proposal && proposal.action !== "monthly-budget");
+  assert.deepEqual(proposal.recommendation.signals, ["merchant cue: grocery"]);
 });
 
 test("agent inbox surfaces AI reimbursement candidates as draft-only proposals", () => {
@@ -317,4 +318,78 @@ test("agent inbox summary counts proposals and changed fields", () => {
     proposedFieldCount: 4,
     totalCount: 2
   });
+});
+
+test("agent inbox surfaces monthly budget proposals as accept-ready cards", () => {
+  const proposals = buildAgentInboxProposals([], [
+    agentProposal({
+      evidence: {
+        uncertaintyNotes: ["2 open reviews could shift category budgets"]
+      },
+      id: "budget-proposal-test",
+      proposalType: "monthly_budget_proposal",
+      proposedPatch: {
+        categories: [
+          { amount: 375.5, label: "Groceries" },
+          { amount: 500, label: "Dining" },
+          { amount: -10, label: "Bogus" },
+          { amount: 20, label: "Dining" }
+        ],
+        month: "2026-07"
+      },
+      targetKind: "monthly_budget"
+    })
+  ]);
+
+  assert.equal(proposals.length, 1);
+  const proposal = proposals[0];
+  assert.ok(proposal.action === "monthly-budget");
+  assert.equal(proposal.status, "accept-ready");
+  assert.equal(proposal.month, "2026-07");
+  assert.equal(proposal.monthLabel, "July 2026");
+  assert.equal(proposal.totalAmount, 875.5);
+  assert.deepEqual(proposal.categories, [
+    { amount: 500, label: "Dining" },
+    { amount: 375.5, label: "Groceries" }
+  ]);
+  assert.equal(proposal.approvedViaReply, false);
+  assert.deepEqual(proposal.uncertaintyNotes, ["2 open reviews could shift category budgets"]);
+});
+
+test("agent inbox marks OpenClaw-approved budget proposals and skips unusable ones", () => {
+  const proposals = buildAgentInboxProposals([], [
+    agentProposal({
+      clarificationAnswer: "approve",
+      clarificationAnswerKind: "approve",
+      id: "budget-approved-test",
+      proposalType: "monthly_budget_proposal",
+      proposedPatch: {
+        categories: [{ amount: 500, label: "Dining" }],
+        month: "2026-07"
+      },
+      status: "answered",
+      targetKind: "monthly_budget"
+    }),
+    agentProposal({
+      id: "budget-empty-test",
+      proposalType: "monthly_budget_proposal",
+      proposedPatch: { categories: [], month: "2026-07" },
+      targetKind: "monthly_budget"
+    }),
+    agentProposal({
+      id: "budget-dismissed-test",
+      proposalType: "monthly_budget_proposal",
+      proposedPatch: {
+        categories: [{ amount: 500, label: "Dining" }],
+        month: "2026-07"
+      },
+      status: "dismissed",
+      targetKind: "monthly_budget"
+    })
+  ]);
+
+  assert.equal(proposals.length, 1);
+  const proposal = proposals[0];
+  assert.ok(proposal.action === "monthly-budget");
+  assert.equal(proposal.approvedViaReply, true);
 });

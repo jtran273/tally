@@ -30,6 +30,9 @@ import type {
   InstitutionRow,
   Json,
   MerchantRuleRow,
+  MonthlyBudgetCategory,
+  MonthlyBudgetRecord,
+  MonthlyBudgetRow,
   PlaidItemRow,
   RawTransactionRow,
   ReimbursementRecord,
@@ -340,6 +343,8 @@ export interface AcceptAgentProposalOptions {
 export type AgentProposalFeedbackReason =
   | "bad_amount"
   | "bad_date"
+  | "budget_confirmed"
+  | "budget_not_wanted"
   | "confirmed_reimbursable"
   | "duplicate_or_reused_inflow"
   | "merchant_refund_or_income"
@@ -2206,6 +2211,165 @@ export async function recordMonthlyBudgetProposalReply(
   return answered;
 }
 
+const MONTHLY_BUDGET_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const MAX_MONTHLY_BUDGET_CATEGORIES = 12;
+
+function toMonthlyBudgetRecord(row: MonthlyBudgetRow): MonthlyBudgetRecord {
+  const categories: MonthlyBudgetCategory[] = Array.isArray(row.categories)
+    ? row.categories.flatMap((entry) => {
+      if (!isJsonObject(entry)) return [];
+      const label = typeof entry.label === "string" ? entry.label : null;
+      const amount = typeof entry.amount === "number" && Number.isFinite(entry.amount) ? entry.amount : null;
+      return label && amount !== null ? [{ amount, label }] : [];
+    })
+    : [];
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    month: row.month,
+    status: row.status,
+    totalAmount: Number(row.total_amount),
+    categories,
+    sourceProposalId: row.source_proposal_id,
+    confirmedAt: row.confirmed_at,
+    supersededAt: row.superseded_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export async function getConfirmedMonthlyBudget(
+  client: FinanceSupabaseClient,
+  userId: string,
+  month: string
+): Promise<MonthlyBudgetRecord | null> {
+  const result = await client
+    .from("monthly_budgets")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("month", month)
+    .eq("status", "confirmed");
+
+  if (result.error && isMissingRelationOrSchemaCacheError(result.error, "monthly_budgets")) {
+    return null;
+  }
+
+  const rows = expectData(result, "Load confirmed monthly budget");
+  return rows.length > 0 ? toMonthlyBudgetRecord(rows[0]) : null;
+}
+
+function monthlyBudgetPlanFromProposal(proposal: AgentProposalRecord): {
+  categories: MonthlyBudgetCategory[];
+  month: string;
+  totalAmount: number;
+} {
+  const patch = isJsonObject(proposal.proposedPatch) ? proposal.proposedPatch : {};
+  const month = typeof patch.month === "string" && MONTHLY_BUDGET_MONTH_PATTERN.test(patch.month) ? patch.month : null;
+  if (!month) {
+    throw new FinanceDbError("Accept monthly budget proposal", { message: "Proposal does not carry a valid budget month." });
+  }
+
+  const seen = new Set<string>();
+  const categories: MonthlyBudgetCategory[] = [];
+  for (const entry of Array.isArray(patch.categories) ? patch.categories : []) {
+    if (!isJsonObject(entry)) continue;
+    const label = typeof entry.label === "string" ? entry.label.trim().replace(/\s+/g, " ").slice(0, 64) : "";
+    const amount = typeof entry.amount === "number" && Number.isFinite(entry.amount) ? Math.round(entry.amount * 100) / 100 : 0;
+    if (!label || amount <= 0) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    categories.push({ amount, label });
+  }
+
+  if (categories.length === 0 || categories.length > MAX_MONTHLY_BUDGET_CATEGORIES) {
+    throw new FinanceDbError("Accept monthly budget proposal", { message: "Proposal does not carry a usable category plan." });
+  }
+
+  return {
+    categories,
+    month,
+    totalAmount: Math.round(categories.reduce((sum, category) => sum + category.amount, 0) * 100) / 100
+  };
+}
+
+async function applyMonthlyBudgetProposal(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposal: AgentProposalRecord,
+  options: AcceptAgentProposalOptions
+): Promise<MonthlyBudgetRecord> {
+  const plan = monthlyBudgetPlanFromProposal(proposal);
+  // Confirmed-budget writes are revoked from the authenticated role, so the
+  // user-approved accept escalates to the service-role client the same way
+  // updateAgentProposalStatus does, scoped to the caller's user_id.
+  const writeClient = createServiceRoleClient(client) ?? client;
+  const nowIso = new Date().toISOString();
+
+  const existing = await getConfirmedMonthlyBudget(client, userId, plan.month);
+  if (existing) {
+    const superseded = await writeClient
+      .from("monthly_budgets")
+      .update({ status: "superseded", superseded_at: nowIso })
+      .eq("user_id", userId)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+    expectData(superseded, "Supersede confirmed monthly budget");
+
+    await recordAuditEvent(client, userId, {
+      action: "monthly_budget.superseded",
+      actorId: options.actorId ?? userId,
+      afterData: { month: existing.month, status: "superseded", supersededAt: nowIso },
+      beforeData: { month: existing.month, status: existing.status, totalAmount: existing.totalAmount },
+      entityId: existing.id,
+      entityTable: "monthly_budgets",
+      metadata: {
+        proposalId: proposal.id,
+        source: options.source ?? "agent_proposal_acceptance"
+      }
+    });
+  }
+
+  const inserted = await writeClient
+    .from("monthly_budgets")
+    .insert({
+      categories: plan.categories as unknown as Json,
+      confirmed_at: nowIso,
+      month: plan.month,
+      source_proposal_id: proposal.id,
+      status: "confirmed",
+      total_amount: plan.totalAmount,
+      user_id: userId
+    })
+    .select("*")
+    .single();
+  const confirmed = toMonthlyBudgetRecord(expectData(inserted, "Confirm monthly budget"));
+
+  await recordAuditEvent(client, userId, {
+    action: "monthly_budget.confirmed",
+    actorId: options.actorId ?? userId,
+    afterData: {
+      categoryCount: confirmed.categories.length,
+      month: confirmed.month,
+      status: confirmed.status,
+      totalAmount: confirmed.totalAmount
+    },
+    beforeData: existing
+      ? { month: existing.month, status: "confirmed", totalAmount: existing.totalAmount }
+      : {},
+    entityId: confirmed.id,
+    entityTable: "monthly_budgets",
+    metadata: {
+      proposalId: proposal.id,
+      source: options.source ?? "agent_proposal_acceptance"
+    }
+  });
+
+  return confirmed;
+}
+
 export async function acceptAgentProposal(
   client: FinanceSupabaseClient,
   userId: string,
@@ -2216,7 +2380,15 @@ export async function acceptAgentProposal(
   if (!before) {
     throw new FinanceDbError("Accept agent proposal", { message: "Agent proposal was not found." });
   }
-  assertPendingAgentProposal(before, "Accept agent proposal");
+  if (before.proposalType === "monthly_budget_proposal") {
+    // Budget proposals may already be `answered` by an OpenClaw approve reply;
+    // the inbox accept is the apply step, so allow pending or answered here.
+    if (before.status !== "pending" && before.status !== "answered") {
+      throw new FinanceDbError("Accept agent proposal", { message: "Agent proposal is not pending." });
+    }
+  } else {
+    assertPendingAgentProposal(before, "Accept agent proposal");
+  }
 
   if (before.proposalType === "review_suggestion") {
     if (before.targetKind !== "review_item") {
@@ -2284,6 +2456,11 @@ export async function acceptAgentProposal(
         transactionId: transaction.id
       }
     });
+  } else if (before.proposalType === "monthly_budget_proposal") {
+    if (before.targetKind !== "monthly_budget") {
+      throw new FinanceDbError("Accept monthly budget proposal", { message: "Monthly budget proposals must target a monthly budget." });
+    }
+    await applyMonthlyBudgetProposal(client, userId, before, options);
   } else {
     throw new FinanceDbError("Accept agent proposal", { message: `Agent proposal type ${before.proposalType} does not have an acceptance path yet.` });
   }

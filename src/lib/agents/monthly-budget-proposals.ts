@@ -10,6 +10,7 @@ import {
 } from "@/lib/calendar";
 import type { AccountRecord, AgentProposalRecord, Database, Json, RecurringExpenseRecord, ReviewQueueItem, TransactionRecord } from "@/lib/db";
 import {
+  getConfirmedMonthlyBudget,
   listAccounts,
   listRecurringExpenses,
   listReviewItems,
@@ -329,6 +330,11 @@ export async function persistMonthlyBudgetProposal(
     weeklyPlanningContext
   });
   if (!compiled) return null;
+
+  // A month James already confirmed should not get a fresh advisory proposal;
+  // supersession happens only through the accept flow.
+  const confirmed = await getConfirmedMonthlyBudget(client, userId, compiled.plan.month);
+  if (confirmed) return null;
 
   return {
     plan: compiled.plan,

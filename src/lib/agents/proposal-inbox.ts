@@ -15,7 +15,8 @@ export type AgentInboxProposalAction =
   | "review-suggestion"
   | "manual-review"
   | "reimbursement-candidate"
-  | "reimbursement-match";
+  | "reimbursement-match"
+  | "monthly-budget";
 
 interface BaseAgentInboxProposal {
   action: AgentInboxProposalAction;
@@ -89,10 +90,22 @@ export interface ReimbursementCandidateAgentInboxProposal extends BaseAgentInbox
   transactionId: string;
 }
 
+export interface MonthlyBudgetAgentInboxProposal extends BaseAgentInboxProposal {
+  action: "monthly-budget";
+  approvedViaReply: boolean;
+  categories: Array<{ amount: number; label: string }>;
+  month: string;
+  monthLabel: string;
+  proposalId: string;
+  totalAmount: number;
+  uncertaintyNotes: string[];
+}
+
 export type AgentInboxProposal =
   | ReviewAgentInboxProposal
   | ReimbursementCandidateAgentInboxProposal
-  | ReimbursementMatchAgentInboxProposal;
+  | ReimbursementMatchAgentInboxProposal
+  | MonthlyBudgetAgentInboxProposal;
 
 export interface AgentInboxProposalContext {
   accountLabel: string;
@@ -138,6 +151,7 @@ function accountLabel(item: ReviewQueueItem) {
 }
 
 function proposedFieldCount(proposal: AgentInboxProposal) {
+  if (proposal.action === "monthly-budget") return proposal.categories.length;
   if (proposal.action === "reimbursement-candidate" || proposal.action === "reimbursement-match") return 1;
 
   return [
@@ -312,6 +326,66 @@ function buildReimbursementCandidateProposal(proposal: AgentProposalRecord): Rei
   return built;
 }
 
+const MONTH_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function budgetMonthLabel(month: string) {
+  return new Date(`${month}-15T12:00:00.000Z`).toLocaleDateString("en-US", {
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric"
+  });
+}
+
+function buildMonthlyBudgetInboxProposal(proposal: AgentProposalRecord): MonthlyBudgetAgentInboxProposal | null {
+  if (proposal.proposalType !== "monthly_budget_proposal") return null;
+  if (proposal.status !== "pending" && proposal.status !== "answered") return null;
+  if (!isJsonObject(proposal.proposedPatch)) return null;
+
+  const month = stringValue(proposal.proposedPatch.month);
+  if (!MONTH_KEY_PATTERN.test(month)) return null;
+
+  const seen = new Set<string>();
+  const categories = (Array.isArray(proposal.proposedPatch.categories) ? proposal.proposedPatch.categories : [])
+    .map(jsonObjectValue)
+    .filter((entry): entry is Record<string, unknown> => entry !== null)
+    .flatMap((entry) => {
+      const label = stringValue(entry.label).trim().replace(/\s+/g, " ").slice(0, 64);
+      const amount = numberValue(entry.amount);
+      if (!label || amount <= 0 || seen.has(label.toLowerCase())) return [];
+      seen.add(label.toLowerCase());
+      return [{ amount: Math.round(amount * 100) / 100, label }];
+    })
+    .sort((left, right) => right.amount - left.amount || left.label.localeCompare(right.label));
+  if (categories.length === 0) return null;
+
+  const totalAmount = Math.round(categories.reduce((sum, category) => sum + category.amount, 0) * 100) / 100;
+  const uncertaintyNotes = isJsonObject(proposal.evidence)
+    ? stringArrayValue(proposal.evidence.uncertaintyNotes).slice(0, 3).map((note) => note.slice(0, 160))
+    : [];
+
+  const built: MonthlyBudgetAgentInboxProposal = {
+    action: "monthly-budget",
+    amount: totalAmount,
+    approvedViaReply: proposal.status === "answered" && proposal.clarificationAnswerKind === "approve",
+    categories,
+    category: "Monthly budget",
+    confidence: proposal.confidence,
+    createdAt: proposal.createdAt,
+    date: proposal.createdAt.slice(0, 10),
+    id: `agent-proposal-${proposal.id}`,
+    merchant: `${budgetMonthLabel(month)} budget plan`,
+    month,
+    monthLabel: budgetMonthLabel(month),
+    proposalId: proposal.id,
+    status: "accept-ready",
+    totalAmount,
+    uncertaintyNotes
+  };
+
+  assertFinanceManifestSafe(built);
+  return built;
+}
+
 function buildReimbursementMatchProposal(proposal: AgentProposalRecord): ReimbursementMatchAgentInboxProposal | null {
   if (proposal.proposalType !== "reimbursement_match") return null;
   if (!isJsonObject(proposal.evidence) || !isJsonObject(proposal.proposedPatch)) return null;
@@ -373,6 +447,9 @@ export function buildAgentInboxProposals(
   return [
     ...reviewItems.map(buildProposal),
     ...agentProposals
+      .map(buildMonthlyBudgetInboxProposal)
+      .filter((proposal): proposal is MonthlyBudgetAgentInboxProposal => proposal !== null),
+    ...agentProposals
       .map(buildReimbursementCandidateProposal)
       .filter((proposal): proposal is ReimbursementCandidateAgentInboxProposal => proposal !== null),
     ...agentProposals
@@ -382,6 +459,8 @@ export function buildAgentInboxProposals(
     .sort((left, right) => {
       if (left.status !== right.status) return left.status === "accept-ready" ? -1 : 1;
       if (left.action !== right.action) {
+        if (left.action === "monthly-budget") return -1;
+        if (right.action === "monthly-budget") return 1;
         if (left.action === "reimbursement-match") return -1;
         if (right.action === "reimbursement-match") return 1;
         if (left.action === "reimbursement-candidate") return -1;

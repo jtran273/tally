@@ -24,6 +24,8 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const proposalFeedbackReasons = new Set<AgentProposalFeedbackReason>([
   "bad_amount",
   "bad_date",
+  "budget_confirmed",
+  "budget_not_wanted",
   "confirmed_reimbursable",
   "duplicate_or_reused_inflow",
   "merchant_refund_or_income",
@@ -153,6 +155,35 @@ export async function acceptReimbursementCandidateProposalAction(
     revalidatePath(`/transactions/${transactionId}`);
 
     return { message: "Transaction marked reimbursable from agent proposal." };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
+export async function acceptMonthlyBudgetProposalAction(
+  _state: AgentProposalActionState,
+  formData: FormData
+): Promise<AgentProposalActionState> {
+  try {
+    const proposalId = requireUuid(formData.get("proposalId"), "proposal id");
+    const context = await getFinanceServerContext();
+    if (!context.client) return { error: "Supabase is not configured." };
+    if (!context.userId) return { error: "Sign in to confirm budgets." };
+    if (context.isDemo) return { error: "Demo mode is read-only. Sign in to confirm a real budget." };
+
+    await acceptAgentProposal(context.client, context.userId, proposalId, {
+      actorId: context.userId,
+      feedback: {
+        outcome: "accepted",
+        reason: "budget_confirmed"
+      },
+      source: "agent_inbox_monthly_budget_accept"
+    });
+
+    revalidatePath("/review");
+    revalidatePath("/dashboard");
+
+    return { message: "Monthly budget confirmed." };
   } catch (error) {
     return errorState(error);
   }

@@ -118,3 +118,61 @@ function assertBudgetGuardrailFixtures(): true {
 
   return true;
 }
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+test("confirmed monthly budget amounts override historical averages", () => {
+  const summary = buildBudgetGuardrailSummary([
+    transaction({ amount: -100, category: "Food", date: "2026-04-10", id: "c-food-apr", merchant: "Market" }),
+    transaction({ amount: -100, category: "Food", date: "2026-03-10", id: "c-food-mar", merchant: "Market" }),
+    transaction({ amount: -95, category: "Food", date: "2026-05-10", id: "c-food-may", merchant: "Market" })
+  ], {
+    asOfDate: "2026-05-15",
+    baselineMonths: 3,
+    confirmedBudget: {
+      categories: [
+        { amount: 300, label: "Food" },
+        { amount: 150, label: "Gifts" }
+      ],
+      month: "2026-05"
+    }
+  });
+
+  const food = summary.items.find((item) => item.label === "Food");
+  assert.ok(food);
+  assert.equal(food.budgetAmount, 300);
+  assert.equal(food.budgetSource, "confirmed");
+  assert.equal(food.status, "on-track");
+
+  const gifts = summary.items.find((item) => item.label === "Gifts");
+  assert.ok(gifts, "confirmed categories without spend should still appear");
+  assert.equal(gifts.budgetAmount, 150);
+  assert.equal(gifts.budgetSource, "confirmed");
+  assert.equal(gifts.currentAmount, 0);
+  assert.equal(gifts.status, "on-track");
+
+  assert.equal(summary.confirmedBudgetMonth, "2026-05");
+});
+
+test("a confirmed budget for a different month is ignored", () => {
+  const summary = buildBudgetGuardrailSummary([
+    transaction({ amount: -100, category: "Food", date: "2026-04-10", id: "i-food-apr", merchant: "Market" }),
+    transaction({ amount: -100, category: "Food", date: "2026-03-10", id: "i-food-mar", merchant: "Market" }),
+    transaction({ amount: -95, category: "Food", date: "2026-05-10", id: "i-food-may", merchant: "Market" })
+  ], {
+    asOfDate: "2026-05-15",
+    baselineMonths: 3,
+    confirmedBudget: {
+      categories: [{ amount: 300, label: "Food" }],
+      month: "2026-06"
+    }
+  });
+
+  const food = summary.items.find((item) => item.label === "Food");
+  assert.ok(food);
+  assert.equal(food.budgetAmount, 100);
+  assert.equal(food.budgetSource, "historical");
+  assert.equal(summary.items.length, 1);
+  assert.equal(summary.confirmedBudgetMonth, null);
+});

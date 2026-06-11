@@ -6,7 +6,7 @@ import {
 } from "@/lib/openclaw/route-helpers";
 import { buildOpenClawAnomalyPackets } from "@/lib/anomaly/packet";
 import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
-import { FinanceDbError, listAccounts, listAnomalyAlerts, listTransactions } from "@/lib/db";
+import { FinanceDbError, getConfirmedMonthlyBudget, listAccounts, listAnomalyAlerts, listTransactions } from "@/lib/db";
 import { buildAccountLifecycleHints } from "@/lib/finance/account-lifecycle";
 import { calculateAccountTotals } from "@/lib/finance/balances";
 import { buildBudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
@@ -122,7 +122,13 @@ export async function GET(request: NextRequest) {
           date: transaction.date
         }))
       });
-      budgetGuardrails = buildBudgetGuardrailSummary(transactions, { asOfDate });
+      const confirmedBudget = await getConfirmedMonthlyBudget(client, userId, asOfDate.slice(0, 7));
+      budgetGuardrails = buildBudgetGuardrailSummary(transactions, {
+        asOfDate,
+        confirmedBudget: confirmedBudget
+          ? { categories: confirmedBudget.categories, month: confirmedBudget.month }
+          : null
+      });
     } catch (error) {
       logSafeError("openclaw_outbox_credit_nudges_failed", error);
       creditOptimizationPackets = [];
