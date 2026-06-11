@@ -14,6 +14,7 @@ import type { TransactionIntent } from "@/lib/db";
 import { getReviewReasonCopy } from "@/lib/review/reasons";
 import {
   AgentInboxActions,
+  MonthlyBudgetActions,
   ReimbursementCandidateActions,
   ReimbursementMatchActions
 } from "./agent-inbox-actions";
@@ -140,6 +141,10 @@ function SafeContext({ proposal }: { proposal: ReviewAgentInboxProposal }) {
 }
 
 function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentInboxProposal }) {
+  if (proposal.action === "monthly-budget") {
+    return <MonthlyBudgetCard isDemo={isDemo} proposal={proposal} />;
+  }
+
   if (proposal.action === "reimbursement-candidate") {
     return <ReimbursementCandidateCard isDemo={isDemo} proposal={proposal} />;
   }
@@ -192,6 +197,70 @@ function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentIn
 
       <div className={styles.auditLinkRow}>
         <Link href={`/audit?q=${encodeURIComponent(proposal.transactionId)}`}>
+          Advanced: audit trail
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function MonthlyBudgetCard({
+  isDemo,
+  proposal
+}: {
+  isDemo: boolean;
+  proposal: Extract<AgentInboxProposal, { action: "monthly-budget" }>;
+}) {
+  return (
+    <article className={styles.proposalCard}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.metaLine}>
+            <span className={proposal.approvedViaReply ? styles.readyBadge : styles.reviewBadge}>
+              {proposal.approvedViaReply ? "Approved via Tally chat" : "Budget proposal"}
+            </span>
+            <span>{formatDate(proposal.date)}</span>
+            <span>{proposal.categories.length} categor{proposal.categories.length === 1 ? "y" : "ies"}</span>
+          </div>
+          <h2>{proposal.monthLabel} budget</h2>
+          <p>
+            Tally drafted this plan from your recent spending. Nothing changes until you confirm it
+            {proposal.approvedViaReply ? " — you already approved it in chat, this applies it." : "."}
+          </p>
+        </div>
+        <div className={styles.amountBlock}>
+          <strong>{moneyFormatter.format(proposal.totalAmount)}</strong>
+          <span>planned for {proposal.monthLabel}</span>
+        </div>
+      </div>
+
+      <div className={styles.changeTable}>
+        {proposal.categories.map((category) => (
+          <div className={styles.changeRow} key={category.label}>
+            <span>{category.label}</span>
+            <div>planned</div>
+            <ArrowRight size={13} aria-hidden />
+            <strong>{moneyFormatter.format(category.amount)}</strong>
+          </div>
+        ))}
+      </div>
+
+      {proposal.uncertaintyNotes.length > 0 ? (
+        <div className={styles.signalRow}>
+          {proposal.uncertaintyNotes.map((note) => (
+            <span key={note}>{note}</span>
+          ))}
+        </div>
+      ) : null}
+
+      <MonthlyBudgetActions
+        isDemo={isDemo}
+        monthLabel={proposal.monthLabel}
+        proposalId={proposal.proposalId}
+      />
+
+      <div className={styles.auditLinkRow}>
+        <Link href={`/audit?q=${encodeURIComponent(proposal.proposalId)}`}>
           Advanced: audit trail
         </Link>
       </div>

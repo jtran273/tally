@@ -343,6 +343,8 @@ export interface AcceptAgentProposalOptions {
 export type AgentProposalFeedbackReason =
   | "bad_amount"
   | "bad_date"
+  | "budget_confirmed"
+  | "budget_not_wanted"
   | "confirmed_reimbursable"
   | "duplicate_or_reused_inflow"
   | "merchant_refund_or_income"

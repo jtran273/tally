@@ -220,11 +220,19 @@ export default async function ReviewPage() {
         await ensureMissingCategoryReviews(context.client, context.userId);
       }
 
-      [categories, reviewItems, agentProposals] = await Promise.all([
+      let answeredProposals: AgentProposalRecord[] = [];
+      [categories, reviewItems, agentProposals, answeredProposals] = await Promise.all([
         listCategories(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open"),
-        listAgentProposals(context.client, context.userId, { status: "pending" })
+        listAgentProposals(context.client, context.userId, { status: "pending" }),
+        listAgentProposals(context.client, context.userId, { status: "answered" })
       ]);
+      // Budget proposals James approved through an OpenClaw reply stay
+      // `answered` until the inbox confirm applies them, so keep them visible.
+      agentProposals = [
+        ...agentProposals,
+        ...answeredProposals.filter((proposal) => proposal.proposalType === "monthly_budget_proposal")
+      ];
 
       const autoFixedCount = context.isDemo
         ? 0

@@ -9,6 +9,7 @@ import {
   type ReviewActionState
 } from "@/components/finance/review/actions";
 import {
+  acceptMonthlyBudgetProposalAction,
   acceptReimbursementCandidateProposalAction,
   dismissAgentProposalAction,
   linkReimbursementMatchProposalAction,
@@ -185,6 +186,67 @@ export function ReimbursementMatchActions({
       {isDemo ? (
         <div className={styles.demoActionNote}>
           Demo proposal actions are read-only. Sign in to link, mark, or dismiss real reimbursement matches.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function MonthlyBudgetActions({
+  isDemo,
+  monthLabel,
+  proposalId
+}: {
+  isDemo: boolean;
+  monthLabel: string;
+  proposalId: string;
+}) {
+  const [acceptState, acceptAction, accepting] = useActionState(acceptMonthlyBudgetProposalAction, proposalInitialState);
+  const [dismissState, dismissAction, dismissing] = useActionState(dismissAgentProposalAction, proposalInitialState);
+  const busy = accepting || dismissing;
+
+  return (
+    <div className={styles.actionRow}>
+      {isDemo ? (
+        <button className={styles.primaryButton} disabled type="button">
+          <Check size={14} aria-hidden />
+          Read-only demo
+        </button>
+      ) : (
+        <form action={acceptAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <button className={styles.primaryButton} disabled={busy} type="submit">
+            <Check size={14} aria-hidden />
+            {accepting ? "Confirming..." : `Confirm ${monthLabel} budget`}
+          </button>
+        </form>
+      )}
+
+      {isDemo ? (
+        <button className={styles.secondaryButton} disabled type="button">
+          <X size={14} aria-hidden />
+          Read-only demo
+        </button>
+      ) : (
+        <form action={dismissAction}>
+          <input name="proposalId" type="hidden" value={proposalId} />
+          <input name="feedbackReason" type="hidden" value="budget_not_wanted" />
+          <button className={styles.secondaryButton} disabled={busy} type="submit">
+            <X size={14} aria-hidden />
+            {dismissing ? "Dismissing..." : "Dismiss"}
+          </button>
+        </form>
+      )}
+
+      {acceptState.error || dismissState.error ? (
+        <div className={styles.inlineError} role="alert">
+          {acceptState.error ?? dismissState.error}
+        </div>
+      ) : null}
+
+      {isDemo ? (
+        <div className={styles.demoActionNote}>
+          Demo proposal actions are read-only. Sign in to confirm a real monthly budget.
         </div>
       ) : null}
     </div>
