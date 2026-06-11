@@ -6,5 +6,10 @@
       "memory": 1024
     }
   },
-  "crons": []
+  "crons": [
+    {
+      "path": "/api/agents/monthly-budget-proposal/scheduled",
+      "schedule": "0 16 25 * *"
+    }
+  ]
 }

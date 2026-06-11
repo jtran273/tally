@@ -20,6 +20,13 @@ export async function POST(request: NextRequest) {
     return jsonNoStore({ error: "Scheduled monthly budget proposal run is not authorized." }, { status: 401 });
   }
 
+  return runScheduledMonthlyBudgetProposal();
+}
+
+// Vercel cron invocations arrive as GET with the same CRON_SECRET bearer.
+export const GET = POST;
+
+async function runScheduledMonthlyBudgetProposal() {
   if (!resolveMonthlyBudgetProposalEnabled()) {
     return jsonNoStore({ run: { proposal: null, status: "disabled" } });
   }
