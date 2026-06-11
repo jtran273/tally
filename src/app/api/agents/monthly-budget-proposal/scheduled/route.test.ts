@@ -84,3 +84,23 @@ test("scheduled monthly budget proposal reports missing configuration without le
   assert.equal(response.status, 503);
   assert.equal(body.error, "Monthly budget proposal run is not configured.");
 });
+
+test("Vercel cron GET invocations share the POST auth gate and disabled behavior", async () => {
+  process.env.CRON_SECRET = "test-cron-secret";
+  delete process.env.MONTHLY_BUDGET_PROPOSAL_ENABLED;
+
+  const { GET } = await import("./route");
+
+  const unauthorized = await GET(new Request("http://localhost/api/agents/monthly-budget-proposal/scheduled", {
+    method: "GET"
+  }) as NextRequest);
+  assert.equal(unauthorized.status, 401);
+
+  const response = await GET(new Request("http://localhost/api/agents/monthly-budget-proposal/scheduled", {
+    headers: { authorization: "Bearer test-cron-secret" },
+    method: "GET"
+  }) as NextRequest);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.run.status, "disabled");
+});
