@@ -2,6 +2,7 @@
 
 import { TallyMark } from "@/components/brand/tally-mark";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { type SupabaseConfig } from "@/lib/supabase/env";
 import { ArrowRight, FlaskConical, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,8 +12,8 @@ import styles from "./login.module.css";
 interface LoginFormProps {
   initialMessage: string | null;
   isDemoAvailable: boolean;
-  isConfigured: boolean;
   redirectTo: string;
+  supabaseConfig: SupabaseConfig | null;
   userEmail: string | null;
 }
 
@@ -25,8 +26,9 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unable to complete authentication.";
 }
 
-export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redirectTo, userEmail }: LoginFormProps) {
+export function LoginForm({ initialMessage, isDemoAvailable, redirectTo, supabaseConfig, userEmail }: LoginFormProps) {
   const router = useRouter();
+  const isConfigured = Boolean(supabaseConfig);
   const [status, setStatus] = useState<AuthStatus | null>(
     initialMessage ? { message: initialMessage, tone: "success" } : null
   );
@@ -35,9 +37,10 @@ export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redir
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!isConfigured) {
+    if (!supabaseConfig) {
       setStatus({
-        message: "Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+        message:
+          "Supabase Auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY/SUPABASE_ANON_KEY.",
         tone: "error"
       });
       return;
@@ -57,7 +60,7 @@ export function LoginForm({ initialMessage, isDemoAvailable, isConfigured, redir
     }
 
     try {
-      const supabase = createSupabaseBrowserClient();
+      const supabase = createSupabaseBrowserClient(supabaseConfig);
       const { error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {

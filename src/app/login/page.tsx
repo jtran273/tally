@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isDemoModeEnabled } from "@/lib/demo/auth";
 import { isInvalidRefreshTokenAuthError } from "@/lib/supabase/auth-errors";
+import { getSupabaseConfig, type SupabaseConfig } from "@/lib/supabase/env";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -30,11 +31,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const redirectTo = normalizeRedirectPath(params.redirectedFrom);
   const signedOut = firstParam(params.signedOut) === "1";
   let userEmail: string | null = null;
-  let isConfigured = false;
+  let supabaseConfig: SupabaseConfig | null = null;
 
   try {
+    supabaseConfig = getSupabaseConfig();
     const supabase = await createSupabaseServerClient();
-    isConfigured = Boolean(supabase);
 
     if (supabase) {
       const {
@@ -49,14 +50,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       userEmail = user?.email ?? null;
     }
   } catch {
-    isConfigured = false;
+    supabaseConfig = null;
   }
 
   return (
     <LoginForm
       initialMessage={signedOut ? "Signed out." : null}
       isDemoAvailable={isDemoModeEnabled()}
-      isConfigured={isConfigured}
+      supabaseConfig={supabaseConfig}
       redirectTo={redirectTo}
       userEmail={userEmail}
     />

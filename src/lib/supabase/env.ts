@@ -13,11 +13,11 @@ function normalizeSupabaseUrl(value: string) {
   try {
     url = new URL(value);
   } catch {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL must be a valid URL.");
+    throw new Error("Supabase URL must be a valid URL.");
   }
 
   if (isProductionRuntime() && url.protocol !== "https:") {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL must use HTTPS in production.");
+    throw new Error("Supabase URL must use HTTPS in production.");
   }
 
   url.pathname = url.pathname.replace(/\/(auth|functions|rest|storage)\/v1\/?$/i, "");
@@ -27,9 +27,18 @@ function normalizeSupabaseUrl(value: string) {
   return url.origin;
 }
 
+function firstPresentEnv(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+
+  return null;
+}
+
 export function getSupabaseConfig(): SupabaseConfig | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const url = firstPresentEnv("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL");
+  const anonKey = firstPresentEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY");
 
   if (!url || !anonKey) {
     return null;
@@ -43,7 +52,7 @@ export function getRequiredSupabaseConfig(): SupabaseConfig {
 
   if (!config) {
     throw new Error(
-      "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."
+      "Missing Supabase environment variables. Set NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY/SUPABASE_ANON_KEY."
     );
   }
 

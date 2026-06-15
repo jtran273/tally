@@ -255,6 +255,9 @@ Common local shape:
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+# Server-side aliases also work for Supabase Auth config:
+# SUPABASE_URL=
+# SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
 PLAID_CLIENT_ID=
