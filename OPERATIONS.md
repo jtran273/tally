@@ -305,6 +305,7 @@ Check:
 
 - `NEXT_PUBLIC_SUPABASE_URL`,
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+- or the non-`NEXT_PUBLIC` public config aliases `SUPABASE_URL` and `SUPABASE_ANON_KEY`,
 - Vercel environment scope,
 - production URL uses HTTPS.
 
