@@ -44,8 +44,8 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | Name | Scope | Required | Notes |
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | Browser/server | Production yes | Canonical app URL. Must be HTTPS in production. Not used as a production Plaid Link redirect fallback. |
-| `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_URL` | Browser/server | Yes | Supabase project URL. Must be HTTPS in production. The login page passes the resolved anon config to the browser when only the server-side alias is set. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_ANON_KEY` | Browser/server | Yes | Supabase anon key. Safe to expose only because RLS is required. The public `NEXT_PUBLIC_*` names remain preferred. |
+| `NEXT_PUBLIC_SUPABASE_URL` or `SUPABASE_URL` | Browser/server | Yes | Supabase project URL. Must be HTTPS in production. The login page passes the resolved anon config to the browser when only the non-`NEXT_PUBLIC` alias is set. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_ANON_KEY` | Browser/server | Yes | Supabase anon key. Safe to expose only because RLS is required; never use the service-role key here. The public `NEXT_PUBLIC_*` names remain preferred. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Plaid writes yes | Used by Plaid route handlers for controlled server writes. Never expose to client code. |
 | `SUPABASE_DB_URL` | Server/tooling | Migrations only | Direct Postgres URL for migrations and maintenance. Do not expose to browser code. |
 | `PLAID_CLIENT_ID` | Server only | Plaid yes | Plaid client id for selected Plaid app. |

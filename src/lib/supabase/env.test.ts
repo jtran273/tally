@@ -77,6 +77,26 @@ test("getSupabaseConfig prefers public Supabase env names over aliases", () => {
   });
 });
 
+test("getSupabaseConfig does not mix public and alias Supabase env pairs", () => {
+  withSupabaseEnv({
+    NEXT_PUBLIC_SUPABASE_URL: "https://public-name.supabase.co",
+    SUPABASE_ANON_KEY: "server-alias-anon-key"
+  }, () => {
+    assert.equal(getSupabaseConfig(), null);
+  });
+
+  withSupabaseEnv({
+    NEXT_PUBLIC_SUPABASE_URL: "https://stale-public-name.supabase.co",
+    SUPABASE_URL: "https://server-alias.supabase.co",
+    SUPABASE_ANON_KEY: "server-alias-anon-key"
+  }, () => {
+    assert.deepEqual(getSupabaseConfig(), {
+      anonKey: "server-alias-anon-key",
+      url: "https://server-alias.supabase.co"
+    });
+  });
+});
+
 test("getRequiredSupabaseConfig error lists both supported Supabase env names", () => {
   withSupabaseEnv({}, () => {
     assert.throws(

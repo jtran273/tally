@@ -27,18 +27,14 @@ function normalizeSupabaseUrl(value: string) {
   return url.origin;
 }
 
-function firstPresentEnv(...names: string[]) {
-  for (const name of names) {
-    const value = process.env[name]?.trim();
-    if (value) return value;
-  }
-
-  return null;
-}
-
 export function getSupabaseConfig(): SupabaseConfig | null {
-  const url = firstPresentEnv("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL");
-  const anonKey = firstPresentEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY");
+  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const publicAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const aliasUrl = process.env.SUPABASE_URL?.trim();
+  const aliasAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+
+  const url = publicUrl && publicAnonKey ? publicUrl : aliasUrl && aliasAnonKey ? aliasUrl : null;
+  const anonKey = publicUrl && publicAnonKey ? publicAnonKey : aliasUrl && aliasAnonKey ? aliasAnonKey : null;
 
   if (!url || !anonKey) {
     return null;

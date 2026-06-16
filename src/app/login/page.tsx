@@ -35,22 +35,29 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   try {
     supabaseConfig = getSupabaseConfig();
-    const supabase = await createSupabaseServerClient();
-
-    if (supabase) {
-      const {
-        data: { user },
-        error
-      } = await supabase.auth.getUser();
-
-      if (error) {
-        if (!isInvalidRefreshTokenAuthError(error)) throw error;
-      }
-
-      userEmail = user?.email ?? null;
-    }
   } catch {
     supabaseConfig = null;
+  }
+
+  if (supabaseConfig) {
+    try {
+      const supabase = await createSupabaseServerClient();
+
+      if (supabase) {
+        const {
+          data: { user },
+          error
+        } = await supabase.auth.getUser();
+
+        if (error) {
+          if (!isInvalidRefreshTokenAuthError(error)) throw error;
+        }
+
+        userEmail = user?.email ?? null;
+      }
+    } catch {
+      userEmail = null;
+    }
   }
 
   return (
