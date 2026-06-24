@@ -13,6 +13,7 @@ import {
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { isFeatureEnabled } from "@/lib/features";
 import { findRefundReversalMatch } from "@/lib/finance/refund-reversals";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -176,19 +177,25 @@ export default async function TransactionEditPage({ params, searchParams }: Tran
   return (
     <div className={styles.editPageStack}>
       <TransactionEditForm categories={categories} isDemo={isDemo} returnQuery={returnQuery} transaction={transaction} />
-      <ReimbursementStatusPanel isDemo={isDemo} transaction={transaction} />
-      <ReimbursementLinkPanel
-        isDemo={isDemo}
-        linkedReceivedReimbursements={linkedReceivedReimbursements}
-        linkOptions={reimbursementOptions}
-        refundReversalOption={refundReversalOption}
-        transaction={transaction}
-      />
-      <p className={styles.auditLinkRow}>
-        <Link href={`/audit?q=${encodeURIComponent(transaction.id)}`}>
-          Advanced: audit trail
-        </Link>
-      </p>
+      {isFeatureEnabled("reimbursements") ? (
+        <>
+          <ReimbursementStatusPanel isDemo={isDemo} transaction={transaction} />
+          <ReimbursementLinkPanel
+            isDemo={isDemo}
+            linkedReceivedReimbursements={linkedReceivedReimbursements}
+            linkOptions={reimbursementOptions}
+            refundReversalOption={refundReversalOption}
+            transaction={transaction}
+          />
+        </>
+      ) : null}
+      {isFeatureEnabled("auditPage") ? (
+        <p className={styles.auditLinkRow}>
+          <Link href={`/audit?q=${encodeURIComponent(transaction.id)}`}>
+            Advanced: audit trail
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance/classification";
 import { Pencil, Save, X } from "lucide-react";
 import { type ChangeEvent, useActionState, useState } from "react";
+import { isFeatureEnabled } from "@/lib/features";
 import { editReviewTransactionAction, type ReviewActionState } from "./actions";
 import styles from "./review.module.css";
 
@@ -139,16 +140,18 @@ export function ReviewTransactionEditForm({
             <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
             <span>Recurring</span>
           </label>
-          <label className={styles.checkboxField}>
-            <input
-              checked={tag === "reimbursable"}
-              name="isReimbursable"
-              onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
-              type="checkbox"
-              value="1"
-            />
-            <span>Reimbursable</span>
-          </label>
+          {isFeatureEnabled("reimbursements") ? (
+            <label className={styles.checkboxField}>
+              <input
+                checked={tag === "reimbursable"}
+                name="isReimbursable"
+                onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
+                type="checkbox"
+                value="1"
+              />
+              <span>Reimbursable</span>
+            </label>
+          ) : null}
           <label className={styles.checkboxField}>
             <input
               checked={tag === "transfer"}
