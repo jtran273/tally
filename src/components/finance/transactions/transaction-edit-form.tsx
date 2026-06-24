@@ -16,6 +16,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { type ChangeEvent, useActionState, useState } from "react";
 import { updateTransactionAction, type TransactionEditActionState } from "@/app/(app)/transactions/actions";
+import { isFeatureEnabled } from "@/lib/features";
 import styles from "./transactions.module.css";
 
 interface TransactionEditFormProps {
@@ -185,16 +186,18 @@ export function TransactionEditForm({ categories, isDemo, returnQuery, transacti
               <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
               <span>Recurring</span>
             </label>
-            <label className={styles.checkboxField}>
-              <input
-                checked={tag === "reimbursable"}
-                name="isReimbursable"
-                onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
-                type="checkbox"
-                value="1"
-              />
-              <span>Reimbursable</span>
-            </label>
+            {isFeatureEnabled("reimbursements") ? (
+              <label className={styles.checkboxField}>
+                <input
+                  checked={tag === "reimbursable"}
+                  name="isReimbursable"
+                  onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
+                  type="checkbox"
+                  value="1"
+                />
+                <span>Reimbursable</span>
+              </label>
+            ) : null}
             <label className={styles.checkboxField}>
               <input
                 checked={tag === "transfer"}

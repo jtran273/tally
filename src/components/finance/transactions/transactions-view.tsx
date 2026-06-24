@@ -1,6 +1,7 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import type { AgentInboxProposal } from "@/lib/agents/proposal-inbox";
 import { excludeMatchedRefundReversalTransactions } from "@/lib/finance/refund-reversals";
+import { isFeatureEnabled } from "@/lib/features";
 import { transactionSpendingAmount, type SpendingReportingMode } from "@/lib/finance/spending";
 import {
   buildReimbursementReportingSummary,
@@ -175,7 +176,11 @@ export function TransactionsView({
   reimbursementProposals,
   transactions
 }: TransactionsViewProps) {
-  const reportingMode = filters.spendingReportingMode;
+  const showNetGrossToggle = isFeatureEnabled("netGrossToggle");
+  const showReimbursements = isFeatureEnabled("reimbursements");
+  // With the net/gross toggle hidden, spending always shows the simple gross
+  // total — net-after-reimbursement only makes sense when reimbursements ship.
+  const reportingMode = showNetGrossToggle ? filters.spendingReportingMode : "gross";
   const summary = summarize(transactions, reportingMode);
   const selectedAccount = filters.accountId === "all"
     ? null
@@ -221,11 +226,11 @@ export function TransactionsView({
 
         <MetricGrid className={styles.summaryMetrics}>
           <MetricCard
-            detail={spendingDetail}
+            detail={showNetGrossToggle ? spendingDetail : "Total outflow"}
             label={(
               <>
               <WalletCards size={13} aria-hidden />
-              {reportingMode === "gross" ? "Gross spending" : "Net spending"}
+              {showNetGrossToggle ? (reportingMode === "gross" ? "Gross spending" : "Net spending") : "Spending"}
               </>
             )}
             value={formatMoney(summary.spending)}
@@ -251,26 +256,30 @@ export function TransactionsView({
             value={summary.needsReview.toLocaleString("en-US")}
           />
         </MetricGrid>
-        <div className={styles.reportingControls} aria-label="Spending reporting basis">
-          <Link
-            aria-current={reportingMode === "net-after-reimbursement" ? "true" : undefined}
-            className={reportingMode === "net-after-reimbursement" ? styles.reportingControlActive : undefined}
-            href={netHref}
-          >
-            Net
-          </Link>
-          <Link
-            aria-current={reportingMode === "gross" ? "true" : undefined}
-            className={reportingMode === "gross" ? styles.reportingControlActive : undefined}
-            href={grossHref}
-          >
-            Gross
-          </Link>
-        </div>
+        {showNetGrossToggle ? (
+          <div className={styles.reportingControls} aria-label="Spending reporting basis">
+            <Link
+              aria-current={reportingMode === "net-after-reimbursement" ? "true" : undefined}
+              className={reportingMode === "net-after-reimbursement" ? styles.reportingControlActive : undefined}
+              href={netHref}
+            >
+              Net
+            </Link>
+            <Link
+              aria-current={reportingMode === "gross" ? "true" : undefined}
+              className={reportingMode === "gross" ? styles.reportingControlActive : undefined}
+              href={grossHref}
+            >
+              Gross
+            </Link>
+          </div>
+        ) : null}
       </section>
 
       <TransactionFilters accounts={accounts} categories={categories} filters={filters} />
-      <ReimbursementFocusPanel proposals={reimbursementProposals} transactions={transactions} />
+      {showReimbursements ? (
+        <ReimbursementFocusPanel proposals={reimbursementProposals} transactions={transactions} />
+      ) : null}
       <MerchantCleanupPanel categories={categories} defaultQuery={filters.search} isDemo={isDemo} />
 
       {filters.isDateRangeInverted ? (

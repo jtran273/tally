@@ -18,6 +18,7 @@ import {
   TriangleAlert
 } from "lucide-react";
 import { HistoricalReimbursementScanForm } from "./historical-reimbursement-scan-form";
+import { isFeatureEnabled } from "@/lib/features";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
@@ -190,11 +191,13 @@ function ReviewCard({
         )}
       </div>
 
-      <div className={styles.auditLinkRow}>
-        <Link href={`/audit?q=${encodeURIComponent(item.transaction.id)}`}>
-          Advanced: audit trail
-        </Link>
-      </div>
+      {isFeatureEnabled("auditPage") ? (
+        <div className={styles.auditLinkRow}>
+          <Link href={`/audit?q=${encodeURIComponent(item.transaction.id)}`}>
+            Advanced: audit trail
+          </Link>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -263,7 +266,7 @@ export function ReviewQueueView({
         </Notice>
       ) : null}
 
-      {canShowQueue ? (
+      {canShowQueue && isFeatureEnabled("reimbursements") ? (
         <HistoricalReimbursementScanForm isDemo={isDemo} />
       ) : null}
 

@@ -1,8 +1,9 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { isFeatureEnabled } from "../src/lib/features";
 
 const DEMO_COOKIE_NAME = "ledger_demo";
 
-const responsiveRoutes = [
+const allResponsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
   { path: "/review", heading: "Review queue" },
@@ -11,6 +12,10 @@ const responsiveRoutes = [
   { path: "/audit", heading: "Advanced audit" },
   { path: "/settings", heading: "Settings" }
 ] as const;
+
+const responsiveRoutes = allResponsiveRoutes.filter((route) => (
+  route.path !== "/audit" || isFeatureEnabled("auditPage")
+));
 
 const responsiveViewports = [
   { height: 812, name: "mobile-375", width: 375 },
@@ -935,7 +940,11 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expect(page.locator("select[name='baseIntent']")).not.toContainText("Reimbursable");
   await expect(page.locator("select[name='tag']")).toHaveCount(0);
   await expect(page.getByLabel("Transaction flags").getByLabel("Recurring")).toBeVisible();
-  await expect(page.getByLabel("Transaction flags").getByLabel("Reimbursable")).toBeVisible();
+  if (isFeatureEnabled("reimbursements")) {
+    await expect(page.getByLabel("Transaction flags").getByLabel("Reimbursable")).toBeVisible();
+  } else {
+    await expect(page.getByLabel("Transaction flags").getByLabel("Reimbursable")).toHaveCount(0);
+  }
   await expect(page.getByLabel("Transaction flags").getByLabel("Transfer")).toBeVisible();
   await expect(page.locator("select[name='categoryId']")).not.toContainText("Transfer");
   await page.locator("select[name='categoryId']").selectOption("__new_category__");
@@ -947,14 +956,18 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expect(editForm).toBeVisible();
   const editFormBox = await editForm.boundingBox();
   const reimbursementApproval = page.getByLabel("Reimbursement linking");
-  await expect(reimbursementApproval).toContainText("Reimbursement approval");
-  await expect(reimbursementApproval).toContainText("Link or mark this positive inflow");
-  await expect(reimbursementApproval).toContainText("$60.00 outstanding");
-  await expect(reimbursementApproval).toContainText("preview-only");
-  await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();
-  const reimbursementBox = await reimbursementApproval.boundingBox();
   expect(editFormBox?.width).toBeGreaterThan(360);
-  expect(reimbursementBox?.y).toBeGreaterThan((editFormBox?.y ?? 0) + (editFormBox?.height ?? 0) - 1);
+  if (isFeatureEnabled("reimbursements")) {
+    await expect(reimbursementApproval).toContainText("Reimbursement approval");
+    await expect(reimbursementApproval).toContainText("Link or mark this positive inflow");
+    await expect(reimbursementApproval).toContainText("$60.00 outstanding");
+    await expect(reimbursementApproval).toContainText("preview-only");
+    await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();
+    const reimbursementBox = await reimbursementApproval.boundingBox();
+    expect(reimbursementBox?.y).toBeGreaterThan((editFormBox?.y ?? 0) + (editFormBox?.height ?? 0) - 1);
+  } else {
+    await expect(reimbursementApproval).toHaveCount(0);
+  }
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });
@@ -1011,6 +1024,8 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
 });
 
 test("proposals section keeps context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
+  test.skip(!isFeatureEnabled("agentProposals"), "agent proposals feature is disabled");
+
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/agent-inbox");
@@ -1058,10 +1073,16 @@ test("audit, settings, and agent inbox expose accessible names for controls", as
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
 
-  await page.goto("/audit");
-  await expect(page.getByRole("heading", { exact: true, name: "Advanced audit" })).toBeVisible();
-  await expect(page.getByLabel("From")).toHaveAttribute("type", "date");
-  await expect(page.getByLabel("To")).toHaveAttribute("type", "date");
+  if (isFeatureEnabled("auditPage")) {
+    await page.goto("/audit");
+    await expect(page.getByRole("heading", { exact: true, name: "Advanced audit" })).toBeVisible();
+    await expect(page.getByLabel("From")).toHaveAttribute("type", "date");
+    await expect(page.getByLabel("To")).toHaveAttribute("type", "date");
+  } else {
+    await page.goto("/audit");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("heading", { exact: true, name: "Dashboard" })).toBeVisible();
+  }
 
   await page.goto("/settings");
   await expect(page.getByRole("heading", { exact: true, name: "Settings" })).toBeVisible();
@@ -1071,8 +1092,12 @@ test("audit, settings, and agent inbox expose accessible names for controls", as
   await page.goto("/agent-inbox");
   await expect(page).toHaveURL(/\/review$/);
   await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Open transaction for/i }).first()).toBeVisible();
+  if (isFeatureEnabled("agentProposals")) {
+    await expect(page.getByRole("heading", { name: /Proposals/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Open transaction for/i }).first()).toBeVisible();
+  } else {
+    await expect(page.getByRole("heading", { name: /Proposals/i })).toHaveCount(0);
+  }
 });
 
 test("recurring and accounts pages render focused recurring rows and active accounts", async ({ baseURL, context, page }) => {
@@ -1143,6 +1168,8 @@ test("recurring and accounts pages render focused recurring rows and active acco
 });
 
 test("audit page lists demo audit events with sanitized summaries", async ({ baseURL, context, page }) => {
+  test.skip(!isFeatureEnabled("auditPage"), "audit page feature is disabled");
+
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/audit");

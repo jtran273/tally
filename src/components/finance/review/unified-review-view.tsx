@@ -4,6 +4,7 @@ import type { CategoryRecord, ReviewQueueItem } from "@/lib/db";
 import type { AgentInboxProposal, AgentInboxSummary } from "@/lib/agents/proposal-inbox";
 import { AgentInboxView } from "@/components/finance/agent-inbox/agent-inbox-view";
 import { ReviewQueueView } from "./review-queue-view";
+import { isFeatureEnabled } from "@/lib/features";
 import styles from "./unified-review.module.css";
 
 interface UnifiedReviewViewProps {
@@ -50,23 +51,25 @@ export function UnifiedReviewView({
         />
       </section>
 
-      <section className={styles.section} aria-labelledby="review-section-proposals">
-        <div className={styles.sectionHead}>
-          <h2 className={styles.sectionTitle} id="review-section-proposals">
-            <ClipboardList size={18} aria-hidden /> Proposals
-            <span className={styles.count}>{proposalSummary.totalCount.toLocaleString("en-US")}</span>
-          </h2>
-          <p>Agent proposals like reimbursement candidates and clarification requests.</p>
-        </div>
-        <AgentInboxView
-          dataError={dataError}
-          isConfigured={isConfigured}
-          isDemo={isDemo}
-          isSignedIn={isSignedIn}
-          proposals={proposals}
-          summary={proposalSummary}
-        />
-      </section>
+      {isFeatureEnabled("agentProposals") ? (
+        <section className={styles.section} aria-labelledby="review-section-proposals">
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle} id="review-section-proposals">
+              <ClipboardList size={18} aria-hidden /> Proposals
+              <span className={styles.count}>{proposalSummary.totalCount.toLocaleString("en-US")}</span>
+            </h2>
+            <p>Agent proposals like reimbursement candidates and clarification requests.</p>
+          </div>
+          <AgentInboxView
+            dataError={dataError}
+            isConfigured={isConfigured}
+            isDemo={isDemo}
+            isSignedIn={isSignedIn}
+            proposals={proposals}
+            summary={proposalSummary}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { AuditView } from "@/components/finance/audit/audit-view";
 import { allActionGroups, type AuditActionGroup } from "@/lib/audit/format";
 import { listAuditEvents, type AuditEventListFilters, type AuditEventRow } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { isFeatureEnabled } from "@/lib/features";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +60,12 @@ interface AuditPageProps {
 }
 
 export default async function AuditPage({ searchParams }: AuditPageProps) {
+  // Audit is hidden in the simplified MVP. Keep the route resolvable but send
+  // anyone who reaches it (old links, bookmarks) back to the dashboard.
+  if (!isFeatureEnabled("auditPage")) {
+    redirect("/dashboard");
+  }
+
   const params = (await searchParams) ?? {};
   const group = parseGroup(params.group);
   const fromDate = parseDate(params.from);
