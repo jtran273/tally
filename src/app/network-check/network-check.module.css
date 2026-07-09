@@ -1,0 +1,184 @@
+.shell {
+  display: grid;
+  min-height: 100vh;
+  gap: 20px;
+  padding: 32px;
+  background: var(--bg);
+}
+
+.hero,
+.notice,
+.card,
+.hosts {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+}
+
+.hero h1,
+.card h2,
+.hosts h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+}
+
+.hero h1 {
+  font-size: 42px;
+  line-height: 1;
+}
+
+.hero p {
+  max-width: 760px;
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+}
+
+.primaryButton {
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card {
+  padding: 18px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card h2 {
+  font-size: 24px;
+}
+
+.cardHeader span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+.card p {
+  margin: 14px 0 0;
+  color: var(--muted);
+}
+
+.ok {
+  border-color: color-mix(in oklab, var(--sage) 34%, var(--line));
+}
+
+.ok .cardHeader span {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.blocked {
+  border-color: color-mix(in oklab, var(--neg) 34%, var(--line));
+}
+
+.blocked .cardHeader span {
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.checking .cardHeader span {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.hosts {
+  padding: 20px;
+}
+
+.hosts h2 {
+  font-size: 26px;
+}
+
+.hosts ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hosts li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+}
+
+.hosts p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 18px;
+  }
+
+  .hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hero h1 {
+    font-size: 34px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -43,6 +43,16 @@ test("Google Calendar OAuth callback bypasses Supabase session redirects", () =>
   assert.equal(isSessionBypassPath("/api/calendar/callback"), true);
 });
 
+test("network diagnostics are public so blocked Wi-Fi can be debugged before sign-in", async () => {
+  const pageResponse = await updateSession(new NextRequest("http://localhost/network-check"));
+  const apiResponse = await updateSession(new NextRequest("http://localhost/api/network-check"));
+
+  assert.equal(pageResponse.status, 200);
+  assert.equal(pageResponse.headers.has("location"), false);
+  assert.equal(apiResponse.status, 200);
+  assert.equal(apiResponse.headers.has("location"), false);
+});
+
 test("ordinary app and API routes still require the normal session path", () => {
   assert.equal(isSessionBypassPath("/dashboard"), false);
   assert.equal(isSessionBypassPath("/api/plaid/sync"), false);
