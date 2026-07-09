@@ -4,13 +4,14 @@ import { isDemoRequest } from "@/lib/demo/auth";
 import { clearSupabaseAuthCookies, isInvalidRefreshTokenAuthError } from "./auth-errors";
 import { getSupabaseConfig } from "./env";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/network-check"];
 
 // Default-deny: every route handled by an alternate auth scheme (cron bearer,
 // OpenClaw bearer, OAuth state cookie) must be listed here explicitly. Adding a
 // new such route requires editing this list, which forces a deliberate review
 // of how the route authenticates callers.
 const SESSION_BYPASS_PATHS = [
+  "/api/network-check",
   "/api/agents/proactive-scan/scheduled",
   "/api/calendar/callback",
   "/api/openclaw/anomaly-alerts/scheduled",
